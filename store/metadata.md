@@ -28,7 +28,7 @@ Listen deeper and read sharper in one fast, client-side feed app.
 
 trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
 
-Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, stream or download episodes, build a persistent queue, and read clean extracted articles without creating an account. Playback includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, voice boost, silence trimming, lock-screen controls, and automatic download cleanup.
+Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, stream or download episodes, build a persistent queue, and read clean extracted articles without creating an account. Playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup.
 
 Your library stays on your device. trickle has no developer account system, advertising, analytics, or cloud backend. Export subscriptions as OPML or create a local backup whenever you want.
 

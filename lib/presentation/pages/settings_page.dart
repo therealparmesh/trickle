@@ -20,8 +20,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final speed = ref.watch(speedProvider).value ?? AppConstants.defaultSpeed;
-    final silence = ref.watch(silenceTrimProvider).value ?? false;
-    final boost = ref.watch(voiceBoostProvider).value ?? false;
     final autoDelete =
         ref.watch(autoDeleteProvider).value ?? AutoDeletePolicy.after24Hours;
     final refresh =
@@ -56,28 +54,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     .read(audioHandlerProvider)
                                     .setSpeed(value / 100),
                               ),
-                            ),
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: silence,
-                              onChanged: (value) => _runSilent(
-                                context,
-                                () => ref
-                                    .read(audioHandlerProvider)
-                                    .setSilenceTrim(value),
-                              ),
-                              title: const Text('Trim silence'),
-                            ),
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: boost,
-                              onChanged: (value) => _runSilent(
-                                context,
-                                () => ref
-                                    .read(audioHandlerProvider)
-                                    .setVoiceBoost(value),
-                              ),
-                              title: const Text('Voice boost'),
                             ),
                             AdaptiveDropdownFormField<AutoDeletePolicy>(
                               initialValue: autoDelete,

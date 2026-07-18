@@ -682,44 +682,20 @@ final class _SkipButton extends StatelessWidget {
 final class _PlaybackOptions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final silence = ref.watch(silenceTrimProvider).value ?? false;
-    final boost = ref.watch(voiceBoostProvider).value ?? false;
     final state = ref.watch(playbackStateProvider).value;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        FilterChip(
-          selected: silence,
-          label: const Text('Trim silence'),
-          onSelected: (enabled) => _run(
-            context,
-            () => ref.read(audioHandlerProvider).setSilenceTrim(enabled),
-          ),
-        ),
-        FilterChip(
-          selected: boost,
-          label: const Text('Voice boost'),
-          onSelected: (enabled) => _run(
-            context,
-            () => ref.read(audioHandlerProvider).setVoiceBoost(enabled),
-          ),
-        ),
-        FilterChip(
-          selected: state?.repeatMode == AudioServiceRepeatMode.one,
-          label: const Text('Repeat episode'),
-          onSelected: (enabled) => _run(
-            context,
-            () => ref
-                .read(audioHandlerProvider)
-                .setRepeatMode(
-                  enabled
-                      ? AudioServiceRepeatMode.one
-                      : AudioServiceRepeatMode.none,
-                ),
-          ),
-        ),
-      ],
+    return FilterChip(
+      selected: state?.repeatMode == AudioServiceRepeatMode.one,
+      label: const Text('Repeat episode'),
+      onSelected: (enabled) => _run(
+        context,
+        () => ref
+            .read(audioHandlerProvider)
+            .setRepeatMode(
+              enabled
+                  ? AudioServiceRepeatMode.one
+                  : AudioServiceRepeatMode.none,
+            ),
+      ),
     );
   }
 

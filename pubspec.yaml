@@ -28,8 +28,7 @@ dependencies:
   go_router: 17.3.0
   html: 0.15.6
   intl: 0.20.3
-  media_kit: 1.2.6
-  media_kit_libs_audio: 1.0.7
+  just_audio: 0.10.6
   package_info_plus: 10.2.1
   path: 1.9.1
   path_provider: 2.1.6

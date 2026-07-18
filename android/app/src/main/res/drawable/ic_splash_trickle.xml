@@ -7,19 +7,35 @@
     <group
         android:pivotX="512"
         android:pivotY="512"
-        android:scaleX="0.82"
-        android:scaleY="0.82">
-        <path
-            android:fillColor="#55E7F0"
-            android:pathData="M220,282H672L732,342H552V660L512,728L472,660V342H220Z" />
+        android:scaleX="0.8"
+        android:scaleY="0.8">
         <path
             android:fillColor="@android:color/transparent"
-            android:pathData="M700,252L764,316M754,252L818,316"
-            android:strokeColor="#FF4D9F"
-            android:strokeLineCap="square"
-            android:strokeWidth="24" />
+            android:pathData="M286,570C286,380 386,278 512,278C638,278 738,380 738,570"
+            android:strokeColor="#FF4FA3"
+            android:strokeLineCap="round"
+            android:strokeWidth="46" />
         <path
-            android:fillColor="#C2F05A"
-            android:pathData="M512,790a18,18 0,1 0,0 36a18,18 0,1 0,0 -36" />
+            android:fillColor="#14171D"
+            android:pathData="M512,168C512,168 310,410 310,582C310,720 400,818 512,818C624,818 714,720 714,582C714,410 512,168 512,168Z"
+            android:strokeColor="#42E8F5"
+            android:strokeLineJoin="round"
+            android:strokeWidth="38" />
+        <path
+            android:fillColor="#080A0F"
+            android:pathData="M286,520H314A42,42 0,0 1,356 562V680A42,42 0,0 1,314 722H286A42,42 0,0 1,244 680V562A42,42 0,0 1,286 520Z"
+            android:strokeColor="#FF4FA3"
+            android:strokeWidth="34" />
+        <path
+            android:fillColor="#080A0F"
+            android:pathData="M710,520H738A42,42 0,0 1,780 562V680A42,42 0,0 1,738 722H710A42,42 0,0 1,668 680V562A42,42 0,0 1,710 520Z"
+            android:strokeColor="#FF4FA3"
+            android:strokeWidth="34" />
+        <path
+            android:fillColor="@android:color/transparent"
+            android:pathData="M326,570V672M698,570V672"
+            android:strokeColor="#42E8F5"
+            android:strokeLineCap="round"
+            android:strokeWidth="20" />
     </group>
 </vector>

@@ -7,8 +7,6 @@ final class SettingsRepository {
   final AppDatabase _database;
 
   static const _speedKey = 'playback_speed';
-  static const _silenceKey = 'silence_trim';
-  static const _voiceBoostKey = 'voice_boost';
   static const _autoDeleteKey = 'auto_delete';
   static const _refreshKey = 'refresh_interval';
   static const _remoteImagesKey = 'remote_images';
@@ -31,14 +29,6 @@ final class SettingsRepository {
     }
     await _write(_speedKey, '$value');
   }
-
-  Stream<bool> watchSilenceTrim() => _watchBool(_silenceKey, false);
-  Future<bool> silenceTrim() => _readBool(_silenceKey, false);
-  Future<void> setSilenceTrim(bool value) => _write(_silenceKey, '$value');
-
-  Stream<bool> watchVoiceBoost() => _watchBool(_voiceBoostKey, false);
-  Future<bool> voiceBoost() => _readBool(_voiceBoostKey, false);
-  Future<void> setVoiceBoost(bool value) => _write(_voiceBoostKey, '$value');
 
   Stream<AutoDeletePolicy> watchAutoDelete() {
     return _watch(_autoDeleteKey).map((value) {
@@ -107,10 +97,6 @@ final class SettingsRepository {
       _database.appSettings,
     )..where((candidate) => candidate.key.equals(key))).getSingleOrNull();
     return row?.value;
-  }
-
-  Future<bool> _readBool(String key, bool fallback) async {
-    return _parseBool(await _read(key), fallback);
   }
 
   bool _parseBool(String? value, bool fallback) {

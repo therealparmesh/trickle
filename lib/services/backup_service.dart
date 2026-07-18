@@ -383,8 +383,6 @@ final class BackupService {
     'playback_speed' => AppConstants.allowedSpeeds.contains(
       int.tryParse(setting.value),
     ),
-    'silence_trim' ||
-    'voice_boost' ||
     'remote_images' => setting.value == 'true' || setting.value == 'false',
     'auto_delete' => switch (int.tryParse(setting.value)) {
       final value? => value >= 0 && value < AutoDeletePolicy.values.length,

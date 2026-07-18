@@ -4,11 +4,10 @@ import 'dart:math' as math;
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:drift/drift.dart';
-import 'package:media_kit/media_kit.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
-import '../../core/errors.dart';
 import '../../core/playback_rules.dart';
 import '../../data/database/app_database.dart';
 import '../../data/repositories/playback_source_resolver.dart';
@@ -48,7 +47,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   final AppDatabase _database;
   final SettingsRepository _settings;
   final PlaybackSourceResolver _sourceResolver;
-  Player? _player;
+  AudioPlayer? _player;
   final Uuid _uuid = const Uuid();
   final List<StreamSubscription<Object?>> _subscriptions = [];
   final StreamController<Duration> _positionEvents =
@@ -73,8 +72,6 @@ final class TrickleAudioHandler extends BaseAudioHandler
   bool _duckedForInterruption = false;
   bool _handlingCompletion = false;
   bool _loadingMedia = false;
-  bool _silenceTrim = false;
-  bool _voiceBoost = false;
   bool _repeatOne = false;
   int _speedPercent = AppConstants.defaultSpeed;
   Duration _position = Duration.zero;
@@ -137,6 +134,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.parmscript.trickle.playback',
           androidNotificationChannelName: 'Playback',
+          androidNotificationIcon: 'drawable/ic_stat_trickle',
           androidNotificationOngoing: true,
           androidStopForegroundOnPause: true,
           notificationColor: AppConstants.cyan,
@@ -145,13 +143,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
       _audioServiceInitialized = true;
     }
     _throwIfDisposed();
-    MediaKit.ensureInitialized();
-    final player = Player(
-      configuration: const PlayerConfiguration(
-        title: 'trickle',
-        pitch: false,
-        bufferSize: 8 * 1024 * 1024,
-      ),
+    final player = AudioPlayer(
+      handleInterruptions: false,
+      handleAudioSessionActivation: false,
+      useProxyForRequestHeaders: false,
     );
     try {
       _throwIfDisposed();
@@ -161,15 +156,11 @@ final class TrickleAudioHandler extends BaseAudioHandler
       _throwIfDisposed();
       _speedPercent = await _settings.speed();
       _throwIfDisposed();
-      _silenceTrim = await _settings.silenceTrim();
-      _throwIfDisposed();
-      _voiceBoost = await _settings.voiceBoost();
-      _throwIfDisposed();
 
       _player = player;
       _session = session;
       _subscriptions.addAll([
-        player.stream.playing.listen((playing) {
+        player.playingStream.listen((playing) {
           if (playing && !_loadingMedia && mediaItem.value != null) {
             _currentItemStarted = true;
           }
@@ -180,7 +171,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
             _checkpointTimer?.cancel();
           }
         }),
-        player.stream.position.listen((position) {
+        player.positionStream.listen((position) {
           _position = position;
           _positionEvents.add(position);
           if (!_handlingCompletion &&
@@ -194,7 +185,8 @@ final class TrickleAudioHandler extends BaseAudioHandler
             _runDetached(_handleCompletion());
           }
         }),
-        player.stream.duration.listen((duration) {
+        player.durationStream.listen((duration) {
+          if (duration == null) return;
           _duration = duration;
           _durationEvents.add(_effectiveDuration);
           final current = mediaItem.value;
@@ -212,25 +204,24 @@ final class TrickleAudioHandler extends BaseAudioHandler
           }
           _broadcastState();
         }),
-        player.stream.buffer.listen((buffered) {
+        player.bufferedPositionStream.listen((buffered) {
           _buffered = buffered;
           _broadcastState();
         }),
-        player.stream.buffering.listen((buffering) {
+        player.processingStateStream.listen((state) {
           if (_processingState == AudioProcessingState.error) return;
-          if (buffering) {
-            _processingState = AudioProcessingState.buffering;
-          } else if (_processingState == AudioProcessingState.buffering &&
-              !_loadingMedia) {
-            _processingState = mediaItem.value == null
-                ? AudioProcessingState.idle
-                : AudioProcessingState.ready;
-          }
-          _broadcastState();
-        }),
-        player.stream.completed.listen((completed) {
+          _processingState = switch (state) {
+            ProcessingState.idle =>
+              mediaItem.value == null
+                  ? AudioProcessingState.idle
+                  : _processingState,
+            ProcessingState.loading => AudioProcessingState.loading,
+            ProcessingState.buffering => AudioProcessingState.buffering,
+            ProcessingState.ready => AudioProcessingState.ready,
+            ProcessingState.completed => AudioProcessingState.completed,
+          };
           if (shouldHandlePlayerCompletion(
-            completed: completed,
+            completed: state == ProcessingState.completed,
             loadingMedia: _loadingMedia,
             hasMedia: mediaItem.value != null,
             playbackStarted: _currentItemStarted,
@@ -239,14 +230,15 @@ final class TrickleAudioHandler extends BaseAudioHandler
           )) {
             _runDetached(_handleCompletion());
           }
+          _broadcastState();
         }),
-        player.stream.error.listen((_) => _setPlaybackError()),
+        player.errorStream.listen((_) => _setPlaybackError()),
         session.interruptionEventStream.listen((event) {
           if (event.begin) {
             switch (event.type) {
               case AudioInterruptionType.duck:
                 _duckedForInterruption = true;
-                _runDetached(player.setVolume(30));
+                _runDetached(player.setVolume(0.3));
               case AudioInterruptionType.pause:
                 if (shouldResumeAfterInterruption(
                   playing: playbackState.value.playing,
@@ -272,7 +264,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
           } else {
             if (_duckedForInterruption) {
               _duckedForInterruption = false;
-              _runDetached(player.setVolume(100));
+              _runDetached(player.setVolume(1));
             }
             final resumeGeneration = event.type == AudioInterruptionType.pause
                 ? _pendingInterruptionResumeGeneration
@@ -391,14 +383,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
       return;
     }
     final player = _player!;
-    await player.play();
-    if (!_canActivatePlayback(
-      expectedLoadGeneration,
-      interruptionResumeGeneration,
-    )) {
-      await player.pause();
-      await _session?.setActive(false);
-    }
+    // just_audio's play future completes when playback later pauses or ends.
+    // Do not hold the load queue or UI action open for the entire episode.
+    _runDetached(player.play());
   }
 
   @override
@@ -563,42 +550,8 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _speedPercent = percent;
     await _settings.setSpeed(percent);
     final player = _player;
-    if (player != null) await player.setRate(percent / 100);
+    if (player != null) await player.setSpeed(percent / 100);
     _broadcastState();
-  }
-
-  Future<void> setSilenceTrim(bool enabled) async {
-    final previous = _silenceTrim;
-    _silenceTrim = enabled;
-    try {
-      await _applyDsp();
-      await _settings.setSilenceTrim(enabled);
-    } on Object catch (error, stackTrace) {
-      _silenceTrim = previous;
-      try {
-        await _applyDsp();
-      } on Object {
-        // Preserve the original failure while attempting to restore audio.
-      }
-      Error.throwWithStackTrace(error, stackTrace);
-    }
-  }
-
-  Future<void> setVoiceBoost(bool enabled) async {
-    final previous = _voiceBoost;
-    _voiceBoost = enabled;
-    try {
-      await _applyDsp();
-      await _settings.setVoiceBoost(enabled);
-    } on Object catch (error, stackTrace) {
-      _voiceBoost = previous;
-      try {
-        await _applyDsp();
-      } on Object {
-        // Preserve the original failure while attempting to restore audio.
-      }
-      Error.throwWithStackTrace(error, stackTrace);
-    }
   }
 
   Future<void> setSleepTimer(
@@ -628,9 +581,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _repeatOne = repeatMode == AudioServiceRepeatMode.one;
     final player = _player;
     if (player != null) {
-      await player.setPlaylistMode(
-        _repeatOne ? PlaylistMode.single : PlaylistMode.none,
-      );
+      await player.setLoopMode(_repeatOne ? LoopMode.one : LoopMode.off);
     }
     _broadcastState();
   }
@@ -766,16 +717,19 @@ final class TrickleAudioHandler extends BaseAudioHandler
       await initialize();
       if (generation != _loadGeneration || _disposed) return;
       final player = _player!;
-      await player.open(
-        Media(source.resource, httpHeaders: source.headers),
-        play: false,
-      );
+      if (source.isLocal) {
+        await player.setFilePath(source.resource);
+      } else {
+        await player.setUrl(
+          source.resource,
+          headers: source.headers.isEmpty ? null : source.headers,
+        );
+      }
       if (generation != _loadGeneration) {
         await player.stop();
         return;
       }
-      await player.setRate(_speedPercent / 100);
-      await _applyDsp();
+      await player.setSpeed(_speedPercent / 100);
       final progress = await (_database.select(
         _database.playbackProgresses,
       )..where((row) => row.episodeId.equals(item.id))).getSingleOrNull();
@@ -884,36 +838,6 @@ final class TrickleAudioHandler extends BaseAudioHandler
     }
   }
 
-  Future<void> _applyDsp() async {
-    final filters = <String>[];
-    if (_silenceTrim) {
-      filters.add(
-        'silenceremove=stop_periods=-1:stop_duration=0.35:'
-        'stop_threshold=-48dB:stop_silence=0.08:detection=rms:window=0.02',
-      );
-    }
-    if (_voiceBoost) {
-      filters.addAll(const [
-        'highpass=f=80',
-        'equalizer=f=2500:t=q:w=1:g=2',
-        'acompressor=threshold=0.126:ratio=3:attack=20:release=250:makeup=1.413',
-        'alimiter=limit=0.891',
-      ]);
-    }
-    final player = _player;
-    if (player == null) return;
-    final dynamic nativePlayer = player.platform;
-    if (nativePlayer == null) return;
-    final value = filters.isEmpty ? '' : 'lavfi=[${filters.join(',')}]';
-    try {
-      await nativePlayer.setProperty('af', value);
-    } on Object {
-      throw const AudioEffectException(
-        'This audio enhancement is unavailable on this device.',
-      );
-    }
-  }
-
   Future<void> _fadeAndPause(int generation) async {
     final player = _player;
     if (player == null) {
@@ -926,13 +850,13 @@ final class TrickleAudioHandler extends BaseAudioHandler
     try {
       for (var step = 4; step >= 0; step--) {
         if (generation != _sleepGeneration) return;
-        await player.setVolume(step * 20);
+        await player.setVolume(step * 0.2);
         if (step > 0) await Future<void>.delayed(const Duration(seconds: 1));
       }
       await pause();
     } finally {
       try {
-        await player.setVolume(100);
+        await player.setVolume(1);
       } on Object {
         // The timer state must still settle if the native player is gone.
       }
@@ -1088,12 +1012,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   Future<void> reloadSettingsFromDatabase() async {
     _speedPercent = await _settings.speed();
-    _silenceTrim = await _settings.silenceTrim();
-    _voiceBoost = await _settings.voiceBoost();
     final player = _player;
     if (player != null) {
-      await player.setRate(_speedPercent / 100);
-      await _applyDsp();
+      await player.setSpeed(_speedPercent / 100);
     }
     _broadcastState();
   }
@@ -1242,7 +1163,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     if (_disposed) return;
     final isPlaying = _processingState == AudioProcessingState.error
         ? false
-        : playing ?? _player?.state.playing ?? false;
+        : playing ?? _player?.playing ?? false;
     final controls = <MediaControl>[
       MediaControl.rewind,
       isPlaying ? MediaControl.pause : MediaControl.play,

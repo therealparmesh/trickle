@@ -238,12 +238,6 @@ final sleepTimerStatusProvider = StreamProvider<SleepTimerStatus>(
 final speedProvider = StreamProvider<int>(
   (ref) => ref.watch(settingsRepositoryProvider).watchSpeed(),
 );
-final silenceTrimProvider = StreamProvider<bool>(
-  (ref) => ref.watch(settingsRepositoryProvider).watchSilenceTrim(),
-);
-final voiceBoostProvider = StreamProvider<bool>(
-  (ref) => ref.watch(settingsRepositoryProvider).watchVoiceBoost(),
-);
 final autoDeleteProvider = StreamProvider<AutoDeletePolicy>(
   (ref) => ref.watch(settingsRepositoryProvider).watchAutoDelete(),
 );

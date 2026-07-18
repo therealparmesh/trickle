@@ -22,10 +22,6 @@ final class DownloadException extends TrickleException {
   const DownloadException(super.message);
 }
 
-final class AudioEffectException extends TrickleException {
-  const AudioEffectException(super.message);
-}
-
 String friendlyError(Object error) {
   if (error is TrickleException) return error.message;
   return 'Something went wrong.';
