@@ -1,0 +1,4 @@
+storePassword=replace-with-strong-password
+keyPassword=replace-with-strong-password
+keyAlias=upload
+storeFile=/absolute/path/to/trickle-upload-keystore.jks

@@ -1,0 +1,96 @@
+# Release Process
+
+## Publisher prerequisites
+
+1. The Apple Developer bundle identifier `com.parmscript.trickle` is registered. Create the initial App Store Connect and Google Play app records before uploading; Apple and Google public publishing APIs manage existing apps but do not create those initial store records. If the identifier must change, update it before the first release in `android/app/build.gradle.kts`, the iOS Runner target, `lib/services/background_refresh_service.dart`, `ios/Runner/AppDelegate.swift`, and `ios/Runner/Info.plist`.
+2. Confirm the lowercase `trickle` product name in both stores. Store consoles are authoritative for name and identifier availability.
+3. Complete Apple Developer and Google Play enrollment, agreements, identity verification, and any required tax or banking setup.
+4. Publish the public repository's `main/docs` directory through GitHub Pages, matching TrackMe. Verify the support and privacy targets in `store/metadata.md` without an authenticated session before adding them to either store record.
+5. Create the store records from `store/metadata.md`. Add the publisher's legal name, copyright, pricing, countries, content-rating answers, screenshots, review contact, and review notes.
+
+## Versioning
+
+The version in `pubspec.yaml` uses `major.minor.patch+build` format. Increment the build number for every upload. Increment the public version when the user-visible release version changes.
+
+Version control follows TrackMe: release from a clean `main`, commit each version/build change as `chore: prepare <version> build <build>`, and push it before uploading. Tags are not required because TrackMe uses the committed version and build as its release history.
+
+## Preflight checks
+
+From the repository root:
+
+```sh
+flutter pub get
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+flutter build appbundle --release
+flutter build ios --release --no-codesign
+```
+
+The final two commands prove both release targets compile without requiring publisher credentials. They do not produce store-uploadable signed artifacts.
+
+Flutter 3.44.4 reports forward-compatibility warnings because `disk_space_plus` and `workmanager_android` still apply the legacy Kotlin Gradle plugin and three iOS dependencies still require CocoaPods. The current compatible dependency versions build successfully. Recheck those upstream migrations before upgrading Flutter; CocoaPods is intentionally enabled until every required iOS plugin supports Swift Package Manager.
+
+## Android signing and upload
+
+Create an upload key once and keep it outside the repository:
+
+```sh
+keytool -genkeypair -v -keystore "$HOME/trickle-upload-keystore.jks" \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+cp android/key.properties.example android/key.properties
+```
+
+Edit `android/key.properties`, then build:
+
+```sh
+flutter pub get
+flutter test
+flutter build appbundle --release
+```
+
+Upload `build/app/outputs/bundle/release/app-release.aab`. Enable Play App Signing and retain the upload key securely. After the one-time app record, declarations, and service-account access are configured in Play Console, automate bundle, listing, and track updates through the Google Play Publishing API. The project has a minimum API of 24 and targets API 36, including Google's [API 36 requirement beginning August 31, 2026](https://developer.android.com/google/play/requirements/target-sdk).
+
+If `android/key.properties` is absent, release bundles are deliberately unsigned. This allows local and CI compilation checks without ever using the public Android debug key for a release artifact.
+
+Current Android release status: the application identifier and API levels are ready, but no upload keystore, `android/key.properties`, Play app record, or Publishing API service account has been created. Do not upload the existing unsigned bundle.
+
+Complete Play Console Data safety from `store/metadata.md`, declare no ads, select News & Magazines, provide the hosted privacy URL, complete content rating, and test the exact signed bundle in internal testing before production.
+
+If the publisher is using a personal Play developer account created after November 13, 2023, Google requires a closed test with at least 12 opted-in testers continuously for 14 days before production access can be requested. Organization accounts and older personal accounts follow the eligibility shown by Play Console.
+
+## iOS signing and upload
+
+The Xcode project uses automatic development signing with team `7654L3CX5L`. App Store export uses the explicit `trickle App Store` profile and Apple Distribution certificate so builds are reproducible without an Xcode UI account. Xcode 26 or later is required on the release Mac.
+
+```sh
+tool/release_ios.sh build
+```
+
+This runs formatting, analysis, and tests before producing `build/ios/ipa/trickle.ipa`. To rebuild, validate, and upload directly to App Store Connect without Xcode Organizer or Transporter UI:
+
+```sh
+tool/release_ios.sh upload
+```
+
+The upload uses App Store Connect key `DC6F5JMNM3` and issuer `19bebb70-4123-40d3-9379-1476fcc51b60` by default, with the private key kept outside the repository at `~/.appstoreconnect/private_keys/AuthKey_DC6F5JMNM3.p8`. Set `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, or `API_PRIVATE_KEYS_DIR` to override them.
+
+Apple has required [Xcode 26 or later with the iOS 26 SDK or later since April 28, 2026](https://developer.apple.com/news/upcoming-requirements/?id=02032026a). The verified local release environment uses Xcode 26.6 and the iOS 26.5 SDK.
+
+The application includes its privacy manifest, background-audio configuration, background-refresh identifier, encryption declaration, and 1024-pixel icon. A final build phase removes the downloader SDK's generic Photo Library declaration because trickle stores audio only in app-private storage and does not use that optional SDK feature.
+
+Five prepared 1206×2622 PNG screenshots are in `store/apple/screenshots/`. Regenerate them from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml` while the seeded screenshot build is running.
+
+In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the prepared screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
+
+## Acceptance checklist
+
+- Installation: fresh install, upgrade, relaunch, offline launch, low storage, and database migration
+- Playback: stream, seek, pause, resume, previous/next, interruptions, unplugged headphones, lock screen, background audio, and every global speed
+- Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, removal, and every cleanup policy
+- Queue and extras: reorder, remove, persistence, sleep timers, intro/outro skip, repeat-one, chapters, transcripts, and bookmarks
+- Subscriptions: catalog search, public/private direct URLs, query/path credentials, website discovery, malformed feeds, redirects, OPML, backup/restore, and unsubscribe cleanup
+- Reader: RSS, Atom, JSON Feed, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
+- System behavior: notification denied/granted, per-feed notifications, background refresh, airplane mode, DNS failure, and server errors
+- Accessibility and layout: VoiceOver, TalkBack, dynamic text, small/large phones, portrait/landscape, contrast, and smooth long-list scrolling
+- Packaging: signed store artifact, privacy report, no cleartext traffic, no committed secret material, and production signing

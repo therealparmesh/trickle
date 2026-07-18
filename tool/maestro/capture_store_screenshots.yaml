@@ -1,0 +1,26 @@
+appId: com.parmscript.trickle
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    text: "Back"
+    optional: true
+- tapOn:
+    text: "Back"
+    optional: true
+- assertVisible: ".*The Joe Rogan Experience.*"
+- takeScreenshot: "store/apple/screenshots/01-home"
+- tapOn: "Podcast The Joe Rogan Experience. Joe Rogan"
+- assertVisible: ".*The Joe Rogan Experience.*"
+- takeScreenshot: "store/apple/screenshots/02-podcast"
+- tapOn: ".*Played episode #2527 - MrBeast.*"
+- assertVisible: ".*#2527 - MrBeast.*"
+- takeScreenshot: "store/apple/screenshots/03-episode"
+- tapOn: "Back"
+- tapOn: "Back"
+- tapOn: "Unread, 60 items"
+- assertVisible: "Unread"
+- takeScreenshot: "store/apple/screenshots/04-unread"
+- tapOn: ".*Unread article Our Approach to Bioresilience.*"
+- assertVisible: ".*Our Approach to Bioresilience.*"
+- takeScreenshot: "store/apple/screenshots/05-reader"

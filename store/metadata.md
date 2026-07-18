@@ -1,0 +1,88 @@
+# Store Metadata
+
+## Identity
+
+- App Store name: trickle
+- On-device name: trickle
+- Bundle ID: com.parmscript.trickle
+- Version: 1.0.0
+- Build: 1
+
+## Name
+
+trickle
+
+## Apple subtitle
+
+Podcasts and feeds, distilled
+
+## Google short description
+
+A fast, private podcast player and RSS reader with a neon edge.
+
+## Promotional text
+
+Listen deeper and read sharper in one fast, client-side feed app.
+
+## Description
+
+trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
+
+Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, stream or download episodes, build a persistent queue, and read clean extracted articles without creating an account. Playback includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, voice boost, silence trimming, lock-screen controls, and automatic download cleanup.
+
+Your library stays on your device. trickle has no developer account system, advertising, analytics, or cloud backend. Export subscriptions as OPML or create a local backup whenever you want.
+
+## Keywords
+
+podcast,rss,feed,reader,offline,opml,audio,news,blog,private
+
+## Categories
+
+- Apple primary: News
+- Apple secondary: Entertainment
+- Google Play: News & Magazines
+
+## Supported platforms
+
+- Android 7.0 (API 24) or later
+- iOS and iPadOS 14.0 or later
+
+## Contact URLs
+
+- Support: https://therealparmesh.github.io/trickle/support
+- Privacy policy: https://therealparmesh.github.io/trickle/privacy
+- Email: parmesh@hey.com
+
+Both pages are published from `main/docs` in the public trickle repository. Verify that they load without authentication before submission.
+
+## Screenshots
+
+Upload the five iPhone screenshots from `store/apple/screenshots/` in filename order:
+
+1. Home
+2. Podcast
+3. Episode and playback actions
+4. Unread articles
+5. Reader mode
+
+## Pricing and availability
+
+- Price: Free ($0.00)
+- Base country or region: United States (USD)
+- Distribution: Public App Store
+- Release option: Automatically release after App Review approval
+
+## Version 1.0.0 release notes
+
+Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, private app. Search the Apple podcast catalog, stream or download episodes, build a queue, import and export OPML, and read articles in a clean reader view.
+
+## Privacy declarations
+
+- Apple App Privacy: Data Not Collected by the developer
+- Tracking: No
+- Google Play Data safety: No developer data collection or sharing
+- Ads: No
+- Account deletion: Not applicable; the app has no account
+- Encryption export compliance: Uses only operating-system and standard HTTPS encryption; `ITSAppUsesNonExemptEncryption` is false
+
+The publisher must supply the legal name, copyright, and review contact in the store consoles.
