@@ -8,7 +8,7 @@ Effective date: July 17, 2026
 
 ## Summary
 
-trickle is a client-side podcast player and feed reader. The developer does not operate an application backend and does not collect, sell, rent, or share personal data through trickle. The app contains no developer analytics, advertising, tracking, or crash-reporting SDK.
+trickle does not collect your information.
 
 ## Data stored on the device
 

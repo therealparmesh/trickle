@@ -1,5 +1,5 @@
 name: trickle
-description: "A fast, client-only podcast player and RSS reader."
+description: "A fast, private podcast player and RSS reader."
 publish_to: none
 version: 1.0.0+3
 

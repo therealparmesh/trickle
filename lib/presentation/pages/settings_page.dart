@@ -342,22 +342,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   const SectionHeader('Privacy'),
                   const AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Client-side by design',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'trickle has no account, analytics, advertising SDK, cloud sync, or trickle-operated server. Subscriptions and progress stay on this device. Podcast discovery contacts Apple. Feed, media, article, transcript, and image requests go directly to their publishers or hosts.',
-                          style: TextStyle(
-                            color: AppConstants.secondaryText,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'trickle doesn’t collect your information.',
+                      style: TextStyle(
+                        color: AppConstants.secondaryText,
+                        height: 1.5,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),

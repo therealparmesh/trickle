@@ -1,6 +1,6 @@
 # App Review Notes
 
-trickle is a client-side podcast player and RSS reader. No account, login, purchase, subscription, or reviewer credentials are required.
+trickle is a podcast player and RSS reader. No account, login, purchase, subscription, or reviewer credentials are required.
 
 ## Review steps
 

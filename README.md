@@ -1,6 +1,6 @@
 # trickle
 
-trickle is a client-only podcast player and RSS reader for iOS and Android. It combines compact information design with a restrained cyberpunk visual system.
+trickle is a podcast player and RSS reader for iOS and Android. It combines compact information design with a restrained cyberpunk visual system.
 
 ## Features
 
@@ -13,7 +13,7 @@ trickle is a client-only podcast player and RSS reader for iOS and Android. It c
 - Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
-- No trickle account, developer-operated backend, analytics SDK, advertising SDK, or cloud sync
+- trickle does not collect your information
 
 ## Supported platforms
 
