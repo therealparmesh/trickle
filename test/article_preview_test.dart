@@ -209,6 +209,67 @@ void main() {
     expect(result.text, isNot(contains('2025Science')));
   });
 
+  test('reader resolves base URLs and publisher lazy images', () async {
+    final adapter = _StaticAdapter(
+      body: '''
+        <html><head><base href="https://cdn.publisher.test/articles/"></head>
+        <body><article>
+          <p>The article uses publisher-relative resources.</p>
+          <a href="sources/report.html">Source report</a>
+          <img data-src="images/lazy.jpg" alt="Lazy image">
+          <picture>
+            <source srcset="images/small.jpg 480w, images/large.jpg 1280w">
+            <img alt="Responsive image">
+          </picture>
+          <img src="javascript:unsafe()" alt="Unsafe image">
+        </article></body></html>
+      ''',
+      contentType: 'text/html',
+    );
+    final repository = ArticleRepository(
+      database,
+      _client(adapter),
+      privateFeeds,
+    );
+
+    final result = await repository.load(await _seedArticle(database));
+
+    expect(
+      result.html,
+      contains(
+        'href="https://cdn.publisher.test/articles/sources/report.html"',
+      ),
+    );
+    expect(
+      result.html,
+      contains('src="https://cdn.publisher.test/articles/images/lazy.jpg"'),
+    );
+    expect(
+      result.html,
+      contains('src="https://cdn.publisher.test/articles/images/large.jpg"'),
+    );
+    expect(result.html, isNot(contains('data-src')));
+    expect(result.html, isNot(contains('srcset')));
+    expect(result.html, isNot(contains('javascript:')));
+    expect(result.html, isNot(contains('Unsafe image')));
+  });
+
+  test('reader falls back instead of rendering a non-HTML response', () async {
+    final repository = ArticleRepository(
+      database,
+      _client(_StaticAdapter(body: '%PDF', contentType: 'application/pdf')),
+      privateFeeds,
+    );
+
+    final result = await repository.load(
+      await _seedArticle(database, summary: 'Publisher supplied summary.'),
+    );
+
+    expect(result.readerFallback, isTrue);
+    expect(result.text, 'Publisher supplied summary.');
+    expect(result.text, isNot(contains('%PDF')));
+  });
+
   test(
     'reader refreshes a markup-heavy card cache and selects the article body',
     () async {

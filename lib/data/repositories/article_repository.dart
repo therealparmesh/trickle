@@ -117,16 +117,7 @@ final class ArticleRepository {
         maxBytes: AppConstants.discoveryLimitBytes,
         totalTimeout: const Duration(seconds: 8),
       );
-      final contentType = document
-          .header('content-type')
-          ?.split(';')
-          .first
-          .trim()
-          .toLowerCase();
-      if (contentType != null &&
-          contentType.isNotEmpty &&
-          contentType != 'text/html' &&
-          contentType != 'application/xhtml+xml') {
+      if (!_isHtmlDocument(document)) {
         _previewMisses.add(article.id);
         return null;
       }
@@ -208,6 +199,7 @@ final class ArticleRepository {
         headers: headers,
         maxBytes: AppConstants.articleLimitBytes,
       );
+      if (!_isHtmlDocument(document)) return _feedFallback(article);
       extracted = await compute(_extractArticle, (
         document.text,
         document.url.toString(),
@@ -260,6 +252,11 @@ ExtractedArticle _sanitizeArticleInput((String, String?) input) {
 ExtractedArticle _extractArticle((String, String) input) {
   final (source, baseUrl) = input;
   final document = html_parser.parse(source);
+  final page = Uri.tryParse(baseUrl);
+  final baseHref = document.querySelector('base')?.attributes['href'];
+  final resolvedBase = baseHref == null || page == null
+      ? baseUrl
+      : (_safeWebUri(baseHref, page) ?? page).toString();
   _removeReaderJunk(document.querySelectorAll('*'));
   final articles = document.querySelectorAll('article')
     ..sort((a, b) => _articleScore(b).compareTo(_articleScore(a)));
@@ -276,7 +273,7 @@ ExtractedArticle _extractArticle((String, String) input) {
   }
   return _sanitizeArticle(
     candidate?.innerHtml ?? document.body?.innerHtml ?? '',
-    baseUrl,
+    resolvedBase,
   );
 }
 
@@ -326,6 +323,14 @@ ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
   final base = baseUrl == null ? null : Uri.tryParse(baseUrl);
   _removeReaderJunk(fragment.querySelectorAll('*'));
   _separateAdjacentTextElements(fragment);
+  for (final image in fragment.querySelectorAll('img')) {
+    final resolved = _resolvedImageUri(image, base);
+    if (resolved == null) {
+      image.attributes.remove('src');
+    } else {
+      image.attributes['src'] = resolved.toString();
+    }
+  }
   for (final element in fragment.querySelectorAll('*').toList()) {
     final tag = element.localName?.toLowerCase() ?? '';
     if (!const {
@@ -389,17 +394,60 @@ ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
         }
       }
       final src = element.attributes['src'];
-      final resolved = src == null ? null : _safeWebUri(src, base);
-      if (resolved == null) {
+      if (src == null) {
         element.remove();
-      } else {
-        element.attributes['src'] = resolved.toString();
       }
     }
   }
   final html = fragment.outerHtml.trim();
   final text = (fragment.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
   return ExtractedArticle(html: html, text: text);
+}
+
+bool _isHtmlDocument(NetworkDocument document) {
+  final contentType = document
+      .header('content-type')
+      ?.split(';')
+      .first
+      .trim()
+      .toLowerCase();
+  return contentType == null ||
+      contentType.isEmpty ||
+      contentType == 'text/html' ||
+      contentType == 'application/xhtml+xml';
+}
+
+Uri? _resolvedImageUri(Element image, Uri? base) {
+  final candidates = <String?>[
+    image.attributes['data-src'],
+    image.attributes['data-original'],
+    image.attributes['data-lazy-src'],
+    ..._srcsetUrls(
+      image.attributes['data-srcset'] ?? image.attributes['srcset'],
+    ).reversed,
+    image.attributes['src'],
+    if (image.parent is Element &&
+        (image.parent as Element).localName?.toLowerCase() == 'picture')
+      for (final source in (image.parent as Element).querySelectorAll('source'))
+        ..._srcsetUrls(
+          source.attributes['data-srcset'] ?? source.attributes['srcset'],
+        ).reversed,
+  ];
+  for (final candidate in candidates) {
+    if (candidate == null || candidate.trim().isEmpty) continue;
+    final resolved = _safeWebUri(candidate.trim(), base);
+    if (resolved != null) return resolved;
+  }
+  return null;
+}
+
+List<String> _srcsetUrls(String? source) {
+  if (source == null || source.trim().isEmpty) return const [];
+  return source
+      .split(',')
+      .map((candidate) => candidate.trim().split(RegExp(r'\s+')).first)
+      .where((candidate) => candidate.isNotEmpty)
+      .toList(growable: false);
 }
 
 const _discardedReaderTags = {
