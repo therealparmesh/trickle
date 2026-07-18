@@ -418,27 +418,31 @@ bool _isHtmlDocument(NetworkDocument document) {
 }
 
 Uri? _resolvedImageUri(Element image, Uri? base) {
-  final candidates = <String?>[
-    image.attributes['data-src'],
-    image.attributes['data-original'],
-    image.attributes['data-lazy-src'],
-    ..._srcsetUrls(
-      image.attributes['data-srcset'] ?? image.attributes['srcset'],
-    ).reversed,
-    image.attributes['src'],
-    if (image.parent is Element &&
-        (image.parent as Element).localName?.toLowerCase() == 'picture')
-      for (final source in (image.parent as Element).querySelectorAll('source'))
-        ..._srcsetUrls(
-          source.attributes['data-srcset'] ?? source.attributes['srcset'],
-        ).reversed,
-  ];
-  for (final candidate in candidates) {
-    if (candidate == null || candidate.trim().isEmpty) continue;
-    final resolved = _safeWebUri(candidate.trim(), base);
+  for (final candidate in _imageCandidates(image)) {
+    final resolved = _safeWebUri(candidate, base);
     if (resolved != null) return resolved;
   }
   return null;
+}
+
+Iterable<String> _imageCandidates(Element image) sync* {
+  for (final name in const ['data-src', 'data-original', 'data-lazy-src']) {
+    final candidate = image.attributes[name]?.trim();
+    if (candidate != null && candidate.isNotEmpty) yield candidate;
+  }
+  for (final name in const ['data-srcset', 'srcset']) {
+    yield* _srcsetUrls(image.attributes[name]).reversed;
+  }
+  final parent = image.parent;
+  if (parent is Element && parent.localName?.toLowerCase() == 'picture') {
+    for (final source in parent.querySelectorAll('source')) {
+      for (final name in const ['data-srcset', 'srcset']) {
+        yield* _srcsetUrls(source.attributes[name]).reversed;
+      }
+    }
+  }
+  final source = image.attributes['src']?.trim();
+  if (source != null && source.isNotEmpty) yield source;
 }
 
 List<String> _srcsetUrls(String? source) {
@@ -485,7 +489,6 @@ const _discardedReaderIdentifiers = {
   'share',
   'share-bar',
   'share-buttons',
-  'share-toggle__button',
   'sharing',
   'social',
   'social-share',
@@ -592,12 +595,10 @@ String? _extractPreviewImage((String, String) input) {
     if ((width != null && width < 80) || (height != null && height < 80)) {
       continue;
     }
-    final raw =
-        element.attributes['src'] ??
-        element.attributes['data-src'] ??
-        element.attributes['data-original'];
-    final image = _safePreviewUri(raw, base);
-    if (image != null) return image.toString();
+    for (final candidate in _imageCandidates(element)) {
+      final image = _safePreviewUri(candidate, base);
+      if (image != null) return image.toString();
+    }
   }
   return null;
 }

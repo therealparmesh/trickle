@@ -152,7 +152,7 @@ void main() {
           <div class="ad">AD_SECRET</div>
           <div class="social">SOCIAL_SECRET</div>
           <div class="comments">COMMENTS_SECRET</div>
-          <label class="share-toggle__button">SHARE_CONTROL</label>
+          <label class="share">SHARE_CONTROL</label>
         ''',
       );
 
@@ -253,6 +253,32 @@ void main() {
     expect(result.html, isNot(contains('javascript:')));
     expect(result.html, isNot(contains('Unsafe image')));
   });
+
+  test(
+    'preview discovery tries responsive sources before placeholders',
+    () async {
+      final adapter = _StaticAdapter(
+        body: '''
+        <html><body><main>
+          <picture>
+            <source data-srcset="" srcset="/images/card-small.jpg 480w, /images/card-large.jpg 1280w">
+            <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Preview">
+          </picture>
+        </main></body></html>
+      ''',
+        contentType: 'text/html',
+      );
+      final repository = ArticleRepository(
+        database,
+        _client(adapter),
+        privateFeeds,
+      );
+
+      final image = await repository.previewImage(await _seedArticle(database));
+
+      expect(image, 'https://publisher.test/images/card-large.jpg');
+    },
+  );
 
   test('reader falls back instead of rendering a non-HTML response', () async {
     final repository = ArticleRepository(

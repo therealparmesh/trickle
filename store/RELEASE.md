@@ -89,7 +89,7 @@ In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, a
 - Playback: stream, seek, pause, resume, previous/next, interruptions, unplugged headphones, lock screen, background audio, and every global speed
 - Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, removal, and every cleanup policy
 - Queue and extras: reorder, remove, persistence, sleep timers, intro/outro skip, repeat-one, chapters, transcripts, and bookmarks
-- Subscriptions: catalog search, public/private direct URLs, query/path credentials, website discovery, malformed feeds, redirects, OPML, backup/restore, and unsubscribe cleanup
+- Subscriptions: concurrent row-level catalog subscriptions, public/private direct URLs, query/path credentials, website discovery, malformed feeds, redirects, UTF-8/UTF-16 OPML import, podcast/reading/combined OPML exports, backup/restore, and unsubscribe cleanup
 - Reader: RSS, Atom, JSON Feed, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
 - System behavior: notification denied/granted, per-feed notifications, background refresh, airplane mode, DNS failure, and server errors
 - Accessibility and layout: VoiceOver, TalkBack, dynamic text, small/large phones, portrait/landscape, contrast, and smooth long-list scrolling

@@ -126,7 +126,12 @@ final class BackupService {
   Future<BackupResult?> pickAndImport() async {
     final picked = await openFile(
       acceptedTypeGroups: const [
-        XTypeGroup(label: 'trickle backup', extensions: ['zip']),
+        XTypeGroup(
+          label: 'trickle backup',
+          extensions: ['zip'],
+          mimeTypes: ['application/zip'],
+          uniformTypeIdentifiers: ['public.zip-archive'],
+        ),
       ],
     );
     if (picked == null) return null;

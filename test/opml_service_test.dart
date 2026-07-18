@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -9,7 +11,7 @@ import 'package:trickle/services/opml_service.dart';
 import 'package:xml/xml.dart';
 
 void main() {
-  test('exports valid Fountain-compatible podcast OPML', () {
+  test('exports interoperable podcast OPML', () {
     final source = buildOpmlDocument(
       title: 'trickle podcasts',
       subscriptions: const [
@@ -105,8 +107,14 @@ void main() {
         privateFeeds: privateFeeds,
         scope: OpmlExportScope.allSubscriptions,
       );
+      final readingDocument = await buildOpmlExportDocument(
+        database,
+        privateFeeds: privateFeeds,
+        scope: OpmlExportScope.reading,
+      );
       final podcasts = extractOpmlUrls(podcastDocument.xml);
       final allSubscriptions = extractOpmlUrls(allDocument.xml);
+      final reading = extractOpmlUrls(readingDocument.xml);
 
       expect(podcasts, [
         'https://hybrid.test/rss',
@@ -119,21 +127,41 @@ void main() {
         'https://reader.test/rss',
         'https://token.test/rss?token=SECRET',
       ]);
+      expect(reading, ['https://hybrid.test/rss', 'https://reader.test/rss']);
       expect(podcastDocument.exported, 3);
       expect(podcastDocument.skippedHeaderAuth, 1);
       expect(podcastDocument.skippedMissingCredentials, 2);
       expect(allDocument.exported, 4);
       expect(allDocument.skippedHeaderAuth, 1);
       expect(allDocument.skippedMissingCredentials, 2);
+      expect(readingDocument.exported, 2);
+      expect(readingDocument.skippedHeaderAuth, 0);
+      expect(readingDocument.skippedMissingCredentials, 0);
     },
   );
 
-  test(
-    'imports nested Fountain-style OPML and deduplicates feed URLs',
-    () async {
-      const source = '''
+  test('decodes UTF-8 and UTF-16 OPML files', () {
+    const source =
+        '<?xml version="1.0"?><opml version="2.0"><body></body></opml>';
+    final utf16LittleEndian = <int>[0xFF, 0xFE];
+    final utf16BigEndian = <int>[0xFE, 0xFF];
+    for (final codeUnit in source.codeUnits) {
+      utf16LittleEndian.add(codeUnit & 0xFF);
+      utf16LittleEndian.add(codeUnit >> 8);
+      utf16BigEndian.add(codeUnit >> 8);
+      utf16BigEndian.add(codeUnit & 0xFF);
+    }
+
+    expect(decodeOpmlBytes(utf8.encode(source)), source);
+    expect(decodeOpmlBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(source)]), source);
+    expect(decodeOpmlBytes(utf16LittleEndian), source);
+    expect(decodeOpmlBytes(utf16BigEndian), source);
+  });
+
+  test('imports nested OPML and deduplicates feed URLs', () async {
+    const source = '''
       <opml version="1.0">
-        <head><title>Fountain Podcasts</title></head>
+        <head><title>Podcast subscriptions</title></head>
         <body>
           <outline text="feeds">
             <outline text="One" type="rss" xmlUrl="https://one.test/rss" />
@@ -144,18 +172,17 @@ void main() {
         </body>
       </opml>
     ''';
-      final imported = <String>[];
+    final imported = <String>[];
 
-      final result = await importOpmlSubscriptions(
-        source,
-        subscribe: (url) async => imported.add(url),
-      );
+    final result = await importOpmlSubscriptions(
+      source,
+      subscribe: (url) async => imported.add(url),
+    );
 
-      expect(imported, ['https://one.test/rss', 'https://two.test/feed.xml']);
-      expect(result.imported, 2);
-      expect(result.failed, 0);
-    },
-  );
+    expect(imported, ['https://one.test/rss', 'https://two.test/feed.xml']);
+    expect(result.imported, 2);
+    expect(result.failed, 0);
+  });
 
   test('continues after an individual subscription fails', () async {
     const source = '''

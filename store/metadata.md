@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 2
+- Build: 3
 
 ## Name
 
@@ -31,7 +31,7 @@ trickle brings podcasts, news, blogs, and independent feeds into one focused cyb
 
 Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, stream or download episodes, build a persistent queue, and read clean extracted articles without creating an account. Playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup.
 
-Your library stays on your device. trickle has no developer account system, advertising, analytics, or cloud backend. Export subscriptions as OPML or create a local backup whenever you want.
+Your library stays on your device. trickle has no developer account system, advertising, analytics, or cloud backend. Import standard OPML, export podcasts, reading feeds, or both, and create a local backup whenever you want.
 
 ## Keywords
 
@@ -75,7 +75,7 @@ Upload the five iPhone screenshots from `store/apple/screenshots/` in filename o
 
 ## Version 1.0.0 release notes
 
-Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, private app. Search the Apple podcast catalog, stream or download episodes, build a queue, import and export OPML, and read articles in a clean reader view.
+Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, private app. Search the Apple podcast catalog, stream or download episodes, build a queue, import standard OPML, export podcasts, reading feeds, or both, and read articles in a clean reader view.
 
 ## Privacy declarations
 

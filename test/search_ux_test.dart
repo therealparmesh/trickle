@@ -22,7 +22,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'catalog subscription survives a new search and keeps its row identified',
+    'catalog subscription affects only its row and keeps search usable',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
       final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -83,8 +83,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Explicit Signal'), findsOneWidget);
+      expect(find.text('Second Signal'), findsOneWidget);
       expect(find.text('E'), findsOneWidget);
-      await tester.tap(find.text('Subscribe'));
+      final firstRow = find.ancestor(
+        of: find.text('Explicit Signal'),
+        matching: find.byType(ListTile),
+      );
+      final secondRow = find.ancestor(
+        of: find.text('Second Signal'),
+        matching: find.byType(ListTile),
+      );
+      await tester.tap(
+        find.descendant(of: firstRow, matching: find.text('Subscribe')),
+      );
       for (
         var attempt = 0;
         attempt < 10 && !feedAdapter.started.isCompleted;
@@ -93,19 +104,30 @@ void main() {
         await tester.pump(const Duration(milliseconds: 10));
       }
       expect(feedAdapter.started.isCompleted, isTrue);
-      expect(find.text('Subscribing…'), findsOneWidget);
-
-      await tester.enterText(find.byType(EditableText), 'another search');
-      await tester.pump();
       expect(
-        find.text('Explicit Signal'),
-        findsNothing,
-        reason: 'results from the previous query must not remain actionable',
+        find.descendant(
+          of: firstRow,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
       );
+      final secondButton = tester.widget<TextButton>(
+        find.descendant(of: secondRow, matching: find.byType(TextButton)),
+      );
+      expect(secondButton.onPressed, isNotNull);
+      expect(
+        find.descendant(of: secondRow, matching: find.text('Subscribe')),
+        findsOneWidget,
+      );
+
       feedAdapter.release.complete();
       for (
         var attempt = 0;
-        attempt < 30 && find.text('Podcast detail').evaluate().isEmpty;
+        attempt < 30 &&
+            find
+                .descendant(of: firstRow, matching: find.text('Subscribed'))
+                .evaluate()
+                .isEmpty;
         attempt++
       ) {
         await tester.pump(const Duration(milliseconds: 50));
@@ -114,7 +136,11 @@ void main() {
         );
       }
 
-      expect(find.text('Podcast detail'), findsOneWidget);
+      expect(
+        find.descendant(of: firstRow, matching: find.text('Subscribed')),
+        findsOneWidget,
+      );
+      expect(find.text('Search'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -167,6 +193,13 @@ final class _CatalogAdapter implements HttpClientAdapter {
             "feedUrl": "https://example.test/feed.xml",
             "trackCount": 12,
             "collectionExplicitness": "explicit"
+          },
+          {
+            "collectionName": "Second Signal",
+            "artistName": "trickle tests",
+            "feedUrl": "https://second.test/feed.xml",
+            "trackCount": 4,
+            "collectionExplicitness": "cleaned"
           }
         ]
       }

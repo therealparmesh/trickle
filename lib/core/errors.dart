@@ -24,5 +24,5 @@ final class DownloadException extends TrickleException {
 
 String friendlyError(Object error) {
   if (error is TrickleException) return error.message;
-  return 'Something went wrong.';
+  return 'Couldn’t complete that action. Try again.';
 }

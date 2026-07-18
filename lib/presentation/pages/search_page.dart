@@ -30,7 +30,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
   List<SearchHit> _local = const [];
   List<PodcastSearchResult> _catalog = const [];
   int _searchGeneration = 0;
-  String? _subscribingFeedUrl;
   String _scheduledQuery = '';
   late int _scheduledTab;
 
@@ -204,15 +203,10 @@ class _SearchPageState extends ConsumerState<SearchPage>
             ].where((part) => part.isNotEmpty).join(' · '),
             maxLines: 2,
           ),
-          trailing: TextButton(
-            onPressed: _subscribingFeedUrl == null
-                ? () => _subscribe(result)
-                : null,
-            child: Text(
-              _subscribingFeedUrl == result.feedUrl.toString()
-                  ? 'Subscribing…'
-                  : 'Subscribe',
-            ),
+          trailing: _CatalogSubscribeButton(
+            key: ValueKey(result.feedUrl),
+            podcastName: result.name,
+            onSubscribe: () => _subscribe(result),
           ),
         );
       },
@@ -295,22 +289,74 @@ class _SearchPageState extends ConsumerState<SearchPage>
     }
   }
 
-  Future<void> _subscribe(PodcastSearchResult result) async {
+  Future<bool> _subscribe(PodcastSearchResult result) async {
     final feedUrl = result.feedUrl.toString();
-    if (_subscribingFeedUrl != null) return;
-    final router = GoRouter.of(context);
-    setState(() {
-      _subscribingFeedUrl = feedUrl;
-    });
     try {
-      final feed = await ref.read(feedRepositoryProvider).subscribe(feedUrl);
-      if (mounted) router.push('/podcast/${feed.id}');
+      await ref.read(feedRepositoryProvider).subscribe(feedUrl);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Subscribed to ${result.name}')));
+      }
+      return true;
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
-    } finally {
-      if (mounted && _subscribingFeedUrl == feedUrl) {
-        setState(() => _subscribingFeedUrl = null);
-      }
+      return false;
     }
+  }
+}
+
+final class _CatalogSubscribeButton extends StatefulWidget {
+  const _CatalogSubscribeButton({
+    required this.podcastName,
+    required this.onSubscribe,
+    super.key,
+  });
+
+  final String podcastName;
+  final Future<bool> Function() onSubscribe;
+
+  @override
+  State<_CatalogSubscribeButton> createState() =>
+      _CatalogSubscribeButtonState();
+}
+
+class _CatalogSubscribeButtonState extends State<_CatalogSubscribeButton> {
+  bool _busy = false;
+  bool _subscribed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _subscribed ? 'Subscribed' : 'Subscribe';
+    return Semantics(
+      button: true,
+      enabled: !_busy && !_subscribed,
+      liveRegion: _busy || _subscribed,
+      label: _busy ? 'Subscribing to ${widget.podcastName}' : label,
+      excludeSemantics: true,
+      child: SizedBox(
+        width: 108,
+        height: 48,
+        child: TextButton(
+          onPressed: _busy || _subscribed ? null : _subscribe,
+          child: _busy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(label),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _subscribe() async {
+    setState(() => _busy = true);
+    final subscribed = await widget.onSubscribe();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _subscribed = subscribed;
+    });
   }
 }

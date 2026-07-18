@@ -10,7 +10,7 @@ trickle is a client-side podcast player and RSS reader. No account, login, purch
 4. Use the episode menu to download it or add it to Up Next.
 5. In Search, add a public RSS, Atom, or JSON Feed URL.
 6. Open an article to use the extracted reader view. Share and Open in Browser are available from the reader toolbar.
-7. Settings contains global playback speed, download cleanup, OPML import/export, and local backup controls.
+7. Settings contains global playback speed, download cleanup, standard OPML import, separate podcast/reading/combined OPML exports, and local backup controls.
 
 Network access is required for catalog search, feed refresh, article extraction, artwork, and streaming. Downloaded episodes and previously cached content remain available offline.
 

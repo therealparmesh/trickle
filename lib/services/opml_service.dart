@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
@@ -10,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:xml/xml.dart';
 
 import '../core/constants.dart';
+import '../core/errors.dart';
 import '../data/database/app_database.dart';
 import '../data/repositories/feed_repository.dart';
 import '../data/security/private_feed_store.dart';
@@ -20,7 +22,7 @@ final class OpmlImportResult {
   final int failed;
 }
 
-enum OpmlExportScope { podcasts, allSubscriptions }
+enum OpmlExportScope { podcasts, reading, allSubscriptions }
 
 final class OpmlExportResult {
   const OpmlExportResult({
@@ -71,20 +73,24 @@ final class OpmlService {
     OpmlExportScope scope = OpmlExportScope.allSubscriptions,
     Rect? sharePositionOrigin,
   }) async {
-    final podcastsOnly = scope == OpmlExportScope.podcasts;
-    final title = podcastsOnly ? 'trickle podcasts' : 'trickle subscriptions';
+    final (title, filename) = switch (scope) {
+      OpmlExportScope.podcasts => ('trickle podcasts', 'trickle-podcasts.opml'),
+      OpmlExportScope.reading => (
+        'trickle reading feeds',
+        'trickle-reading-feeds.opml',
+      ),
+      OpmlExportScope.allSubscriptions => (
+        'trickle subscriptions',
+        'trickle-subscriptions.opml',
+      ),
+    };
     final document = await buildOpmlExportDocument(
       _database,
       privateFeeds: _privateFeeds,
       scope: scope,
     );
     final temp = await getTemporaryDirectory();
-    final file = File(
-      p.join(
-        temp.path,
-        podcastsOnly ? 'trickle-podcasts.opml' : 'trickle-subscriptions.opml',
-      ),
-    );
+    final file = File(p.join(temp.path, filename));
     await file.writeAsString(document.xml, flush: true);
     await SharePlus.instance.share(
       ShareParams(
@@ -101,22 +107,103 @@ final class OpmlService {
   }
 
   Future<OpmlImportResult?> pickAndImport() async {
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'OPML', extensions: ['opml', 'xml']),
-      ],
-    );
-    if (file == null) return null;
-    if (await file.length() > 10 * 1024 * 1024) {
-      throw const FormatException('OPML exceeds the 10 MiB import limit.');
+    XFile? file;
+    try {
+      file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'OPML',
+            extensions: ['opml', 'xml'],
+            mimeTypes: [
+              'text/x-opml',
+              'application/x-opml+xml',
+              'text/xml',
+              'application/xml',
+              // Android document providers commonly classify .opml as plain
+              // text or generic binary data. File contents are validated.
+              'text/plain',
+              'application/octet-stream',
+            ],
+            // iOS ignores extensions and requires uniform type identifiers.
+            // public.data keeps custom .opml files selectable; contents are
+            // still size-limited and validated before import.
+            uniformTypeIdentifiers: ['public.xml', 'public.data'],
+          ),
+        ],
+      );
+    } on Object {
+      throw const FeedParseException('Couldn’t open the file picker.');
     }
-    final text = await file.readAsString();
-    return importOpmlSubscriptions(
-      text,
-      subscribe: (url) =>
-          _feeds.subscribe(url, totalTimeout: const Duration(seconds: 45)),
-    );
+    if (file == null) return null;
+    try {
+      if (await file.length() > 10 * 1024 * 1024) {
+        throw const FeedParseException(
+          'That OPML file exceeds the 10 MiB import limit.',
+        );
+      }
+      final text = decodeOpmlBytes(await file.readAsBytes());
+      return await importOpmlSubscriptions(
+        text,
+        subscribe: (url) =>
+            _feeds.subscribe(url, totalTimeout: const Duration(seconds: 45)),
+      );
+    } on FeedParseException {
+      rethrow;
+    } on XmlException {
+      throw const FeedParseException('That file isn’t valid OPML.');
+    } on FormatException catch (error) {
+      final message = error.message.toString().trim();
+      throw FeedParseException(
+        message.isEmpty ? 'That file isn’t valid OPML.' : message,
+      );
+    } on FileSystemException {
+      throw const FeedParseException('Couldn’t read that OPML file.');
+    }
   }
+}
+
+String decodeOpmlBytes(List<int> bytes) {
+  if (bytes.length >= 2) {
+    if (bytes[0] == 0xFF && bytes[1] == 0xFE) {
+      return _decodeUtf16(bytes, offset: 2, littleEndian: true);
+    }
+    if (bytes[0] == 0xFE && bytes[1] == 0xFF) {
+      return _decodeUtf16(bytes, offset: 2, littleEndian: false);
+    }
+  }
+  if (bytes.length >= 4) {
+    if (bytes[0] == 0x3C && bytes[1] == 0 && bytes[2] == 0x3F) {
+      return _decodeUtf16(bytes, offset: 0, littleEndian: true);
+    }
+    if (bytes[0] == 0 && bytes[1] == 0x3C && bytes[2] == 0) {
+      return _decodeUtf16(bytes, offset: 0, littleEndian: false);
+    }
+  }
+  final offset =
+      bytes.length >= 3 &&
+          bytes[0] == 0xEF &&
+          bytes[1] == 0xBB &&
+          bytes[2] == 0xBF
+      ? 3
+      : 0;
+  return utf8.decode(bytes.sublist(offset));
+}
+
+String _decodeUtf16(
+  List<int> bytes, {
+  required int offset,
+  required bool littleEndian,
+}) {
+  if ((bytes.length - offset).isOdd) {
+    throw const FormatException('That file has invalid UTF-16 text.');
+  }
+  final codeUnits = <int>[];
+  for (var index = offset; index < bytes.length; index += 2) {
+    final first = bytes[index];
+    final second = bytes[index + 1];
+    codeUnits.add(littleEndian ? first | (second << 8) : (first << 8) | second);
+  }
+  return String.fromCharCodes(codeUnits);
 }
 
 Future<OpmlExportDocument> buildOpmlExportDocument(
@@ -126,10 +213,17 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
 }) async {
   final query = database.select(database.feeds)
     ..where((row) {
-      if (scope == OpmlExportScope.allSubscriptions) {
-        return const Constant(true);
-      }
-      return row.kind.isIn([FeedKind.podcast.index, FeedKind.hybrid.index]);
+      return switch (scope) {
+        OpmlExportScope.podcasts => row.kind.isIn([
+          FeedKind.podcast.index,
+          FeedKind.hybrid.index,
+        ]),
+        OpmlExportScope.reading => row.kind.isIn([
+          FeedKind.reader.index,
+          FeedKind.hybrid.index,
+        ]),
+        OpmlExportScope.allSubscriptions => const Constant(true),
+      };
     })
     ..orderBy([(row) => OrderingTerm.asc(row.title)]);
   final feeds = await query.get();
@@ -166,9 +260,11 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
   }
   return OpmlExportDocument(
     xml: buildOpmlDocument(
-      title: scope == OpmlExportScope.podcasts
-          ? 'trickle podcasts'
-          : 'trickle subscriptions',
+      title: switch (scope) {
+        OpmlExportScope.podcasts => 'trickle podcasts',
+        OpmlExportScope.reading => 'trickle reading feeds',
+        OpmlExportScope.allSubscriptions => 'trickle subscriptions',
+      },
       subscriptions: subscriptions,
     ),
     exported: subscriptions.length,

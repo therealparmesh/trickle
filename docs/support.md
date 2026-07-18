@@ -47,7 +47,7 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 
 ## Backup and migration
 
-Podcast and feed subscriptions can be exported as OPML. Settings also provides a local ZIP backup for subscriptions, reading and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
+Settings can import standard OPML and export podcast subscriptions, reading subscriptions, or both as OPML. It also provides a local ZIP backup for subscriptions, reading and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
 
 ## Project
 
