@@ -1,7 +1,7 @@
 name: trickle
 description: "A fast, private podcast player and RSS reader."
 publish_to: none
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: ^3.12.2
@@ -16,6 +16,7 @@ dependencies:
   background_downloader: 9.5.5
   connectivity_plus: 7.3.0
   crypto: 3.0.7
+  # Flutter's adaptive controls resolve this bundled font at release build time.
   cupertino_icons: 1.0.9
   dio: 5.10.0
   disk_space_plus: 0.2.6
