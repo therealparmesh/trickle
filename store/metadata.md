@@ -19,11 +19,11 @@ Podcasts and feeds, distilled
 
 ## Google short description
 
-A fast, private podcast player and RSS reader with a neon edge.
+A fast, private podcast and RSS app with a sharp cyberpunk interface.
 
 ## Promotional text
 
-Listen deeper and read sharper in one fast, private feed app.
+Podcasts and feeds in one fast, focused cyberpunk interface.
 
 ## Description
 

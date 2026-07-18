@@ -23,6 +23,11 @@ if [[ "$mode" == "upload" ]] && git rev-parse --is-inside-work-tree >/dev/null 2
 fi
 
 flutter pub get
+if ! command -v oxfmt >/dev/null 2>&1; then
+  echo "Missing oxfmt; install version 0.57.0 or later." >&2
+  exit 1
+fi
+oxfmt --check README.md 'docs/**/*.md' 'store/**/*.md'
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test

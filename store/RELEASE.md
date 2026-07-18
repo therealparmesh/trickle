@@ -20,6 +20,7 @@ From the repository root:
 
 ```sh
 flutter pub get
+oxfmt --check README.md 'docs/**/*.md' 'store/**/*.md'
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test

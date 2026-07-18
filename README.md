@@ -25,6 +25,7 @@ Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally ou
 ## Prerequisites
 
 - Flutter 3.44.4 stable with Dart 3.12.2
+- oxfmt 0.57.0 for Markdown formatting
 - Android SDK 36 for Android builds
 - Xcode 26 or later and CocoaPods for iOS builds
 
@@ -48,6 +49,7 @@ dart run build_runner build --delete-conflicting-outputs
 Run the same checks used before release:
 
 ```sh
+oxfmt --check README.md 'docs/**/*.md' 'store/**/*.md'
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
