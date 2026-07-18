@@ -2,8 +2,8 @@
 
 ## Publisher prerequisites
 
-1. The Apple Developer bundle identifier `com.parmscript.trickle` is registered. Create the initial App Store Connect and Google Play app records before uploading; Apple and Google public publishing APIs manage existing apps but do not create those initial store records. If the identifier must change, update it before the first release in `android/app/build.gradle.kts`, the iOS Runner target, `lib/services/background_refresh_service.dart`, `ios/Runner/AppDelegate.swift`, and `ios/Runner/Info.plist`.
-2. Confirm the lowercase `trickle` product name in both stores. Store consoles are authoritative for name and identifier availability.
+1. The Apple Developer bundle identifier `com.parmscript.trickle` is registered, and App Store Connect record `6792352845` exists. Create the initial Google Play app record before uploading there; public store APIs manage existing apps but do not create initial records. If the identifier must change, update it before the first release in `android/app/build.gradle.kts`, the iOS Runner target, `lib/services/background_refresh_service.dart`, `ios/Runner/AppDelegate.swift`, and `ios/Runner/Info.plist`.
+2. Use `trickle: podcasts & RSS` for the unique App Store listing name and lowercase `trickle` for the on-device product name. Store consoles are authoritative for name and identifier availability.
 3. Complete Apple Developer and Google Play enrollment, agreements, identity verification, and any required tax or banking setup.
 4. Publish the public repository's `main/docs` directory through GitHub Pages, matching TrackMe. Verify the support and privacy targets in `store/metadata.md` without an authenticated session before adding them to either store record.
 5. Create the store records from `store/metadata.md`. Add the publisher's legal name, copyright, pricing, countries, content-rating answers, screenshots, review contact, and review notes.
@@ -79,7 +79,7 @@ Apple has required [Xcode 26 or later with the iOS 26 SDK or later since April 2
 
 The application includes its privacy manifest, background-audio configuration, background-refresh identifier, encryption declaration, and 1024-pixel icon. A final build phase removes the downloader SDK's generic Photo Library declaration because trickle stores audio only in app-private storage and does not use that optional SDK feature.
 
-The iOS target is iPhone-only. Five prepared 1206×2622 PNG screenshots are in `store/apple/screenshots/`. Regenerate them from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml` while the seeded screenshot build is running.
+The iOS target is iPhone-only. Five prepared 1320×2868 iPhone 17 Pro Max PNG screenshots are in `store/apple/screenshots/`. Regenerate them from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml` while the seeded screenshot build is running.
 
 In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the prepared screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
 

@@ -87,4 +87,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages, 
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and five 1206×2622 App Store screenshots are in `store/apple/`; private signing-key material remains outside the repository.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and five 1320×2868 App Store screenshots are in `store/apple/`; private signing-key material remains outside the repository.

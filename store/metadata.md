@@ -2,15 +2,16 @@
 
 ## Identity
 
-- App Store name: trickle
+- App Store name: trickle: podcasts & RSS
 - On-device name: trickle
+- Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
 - Build: 1
 
 ## Name
 
-trickle
+trickle: podcasts & RSS
 
 ## Apple subtitle
 

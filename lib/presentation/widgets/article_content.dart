@@ -173,7 +173,7 @@ class _ArticleContentState extends State<ArticleContent> {
     final fragments = _fragments!;
     final titleToOmit = _normalizedHeading(widget.leadingTitleToOmit);
     var omittedHeading = false;
-    var sawSubstantiveContent = false;
+    var sawBodyContent = false;
     for (var index = 0; index < fragmentCount; index++) {
       final nodes = _parsedFragments[index] ??= html_parser
           .parseFragment(fragments[index])
@@ -184,14 +184,14 @@ class _ArticleContentState extends State<ArticleContent> {
           final heading = _normalizedHeading(node.text);
           if (heading == null) continue;
           if (!omittedHeading &&
-              !sawSubstantiveContent &&
+              !sawBodyContent &&
               titleToOmit != null &&
-              heading == titleToOmit) {
+              _headingMatchesTitle(heading, titleToOmit)) {
             omittedHeading = true;
             continue;
           }
         }
-        if (_isSubstantiveNode(node)) sawSubstantiveContent = true;
+        if (_isBodyNode(node)) sawBodyContent = true;
         yield* _block(node);
       }
     }
@@ -202,19 +202,38 @@ class _ArticleContentState extends State<ArticleContent> {
     _ => false,
   };
 
-  bool _isSubstantiveNode(dom.Node node) => switch (node) {
-    dom.Text() => node.data.trim().isNotEmpty,
-    dom.Element() =>
-      node.text.trim().isNotEmpty || node.querySelector('img') != null,
-    _ => false,
-  };
+  bool _isBodyNode(dom.Node node) {
+    if (node is! dom.Element) return false;
+    if (node.querySelector('img') != null) return true;
+    return switch (node.localName) {
+      'p' || 'blockquote' || 'ul' || 'ol' || 'pre' || 'img' => true,
+      'h1' ||
+      'h2' ||
+      'h3' ||
+      'h4' ||
+      'h5' ||
+      'h6' => node.text.trim().isNotEmpty,
+      _ => false,
+    };
+  }
 
   String? _normalizedHeading(String? value) {
     final normalized = value?.trim().toLowerCase().replaceAll(
-      RegExp(r'\s+'),
+      _inlineWhitespacePattern,
       ' ',
     );
     return normalized?.isEmpty == true ? null : normalized;
+  }
+
+  bool _headingMatchesTitle(String heading, String title) {
+    if (heading == title) return true;
+    if (!title.startsWith(heading)) return false;
+    final suffix = title.substring(heading.length).trimLeft();
+    return suffix.startsWith(':') ||
+        suffix.startsWith('—') ||
+        suffix.startsWith('–') ||
+        suffix.startsWith('|') ||
+        suffix.startsWith('- ');
   }
 
   Iterable<Widget> _block(dom.Node node) sync* {
@@ -373,10 +392,6 @@ class _ArticleContentState extends State<ArticleContent> {
         }
       case 'img':
         yield* _images(node);
-      case 'figure':
-        for (final child in node.nodes) {
-          yield* _block(child);
-        }
       case 'figcaption':
         yield Padding(
           padding: EdgeInsets.only(
@@ -393,10 +408,6 @@ class _ArticleContentState extends State<ArticleContent> {
             ),
           ),
         );
-      case 'div' || 'section':
-        for (final child in node.nodes) {
-          yield* _block(child);
-        }
       case 'a':
         if (node.text.trim().isNotEmpty) {
           yield _paragraph([node], continues: _fragmentContinues(node));
@@ -490,17 +501,24 @@ class _ArticleContentState extends State<ArticleContent> {
   );
 
   TextSpan _inline(List<dom.Node> nodes, [TextStyle? inherited]) {
+    final whitespace = _InlineWhitespace();
     return TextSpan(
       style: inherited,
-      children: [for (final node in nodes) _span(node, inherited)],
+      children: [for (final node in nodes) _span(node, inherited, whitespace)],
     );
   }
 
-  InlineSpan _span(dom.Node node, TextStyle? inherited) {
-    if (node is dom.Text) return TextSpan(text: node.data, style: inherited);
+  InlineSpan _span(
+    dom.Node node,
+    TextStyle? inherited,
+    _InlineWhitespace whitespace,
+  ) {
+    if (node is dom.Text) {
+      return TextSpan(text: whitespace.normalize(node.data), style: inherited);
+    }
     if (node is! dom.Element) return const TextSpan();
     final tag = node.localName?.toLowerCase();
-    if (tag == 'br') return const TextSpan(text: '\n');
+    if (tag == 'br') return TextSpan(text: whitespace.lineBreak());
     if (tag == 'img') return const TextSpan();
     var style = inherited;
     if (tag == 'strong' || tag == 'b') {
@@ -532,7 +550,9 @@ class _ArticleContentState extends State<ArticleContent> {
     return TextSpan(
       style: style,
       recognizer: recognizer,
-      children: [for (final child in node.nodes) _span(child, style)],
+      children: [
+        for (final child in node.nodes) _span(child, style, whitespace),
+      ],
     );
   }
 
@@ -563,6 +583,35 @@ class _ArticleContentState extends State<ArticleContent> {
     super.dispose();
   }
 }
+
+final class _InlineWhitespace {
+  bool _canSeparate = false;
+  bool _pendingSpace = false;
+
+  String normalize(String source) {
+    final collapsed = source.replaceAll(_inlineWhitespacePattern, ' ');
+    final content = collapsed.trim();
+    if (content.isEmpty) {
+      if (_canSeparate) _pendingSpace = true;
+      return '';
+    }
+    final hasLeadingSpace = collapsed.startsWith(' ');
+    final result = _canSeparate && (_pendingSpace || hasLeadingSpace)
+        ? ' $content'
+        : content;
+    _canSeparate = true;
+    _pendingSpace = collapsed.endsWith(' ');
+    return result;
+  }
+
+  String lineBreak() {
+    _canSeparate = false;
+    _pendingSpace = false;
+    return '\n';
+  }
+}
+
+final _inlineWhitespacePattern = RegExp(r'\s+');
 
 const _maxArticleFragmentLength = 8 * 1024;
 const _fragmentMetadataReserve = 256;

@@ -181,8 +181,10 @@ final class ArticleRepository {
     Article article, {
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh && (article.contentHtml?.trim().length ?? 0) >= 400) {
-      return sanitizeContent(article.contentHtml!, article.canonicalUrl);
+    final cachedSource = article.contentHtml?.trim();
+    if (!forceRefresh && cachedSource?.isNotEmpty == true) {
+      final cached = await sanitizeContent(cachedSource!, article.canonicalUrl);
+      if (cached.text.length >= _completeArticleTextLength) return cached;
     }
     final rawUrl = article.canonicalUrl;
     if (rawUrl == null) {
@@ -259,12 +261,18 @@ ExtractedArticle _extractArticle((String, String) input) {
   final (source, baseUrl) = input;
   final document = html_parser.parse(source);
   _removeReaderJunk(document.querySelectorAll('*'));
+  final articles = document.querySelectorAll('article')
+    ..sort((a, b) => _articleScore(b).compareTo(_articleScore(a)));
+  final bestArticle = articles.where(_looksLikeArticleBody).firstOrNull;
+  final main = document.querySelector('main');
   Element? candidate =
-      document.querySelector('article') ?? document.querySelector('main');
+      bestArticle ?? (main == null ? null : _articleBody(main));
   if (candidate == null) {
     final candidates = document.querySelectorAll('div, section');
     candidates.sort((a, b) => _articleScore(b).compareTo(_articleScore(a)));
-    candidate = candidates.isEmpty ? document.body : candidates.first;
+    candidate = candidates.isEmpty
+        ? document.body
+        : _articleBody(candidates.first);
   }
   return _sanitizeArticle(
     candidate?.innerHtml ?? document.body?.innerHtml ?? '',
@@ -272,15 +280,52 @@ ExtractedArticle _extractArticle((String, String) input) {
   );
 }
 
+Element _articleBody(Element root) {
+  final paragraphCount = root.querySelectorAll('p').length;
+  if (paragraphCount < 2) return root;
+  final containers = root
+      .querySelectorAll('div, section')
+      .where(
+        (element) => element.querySelectorAll('p').length == paragraphCount,
+      );
+  var body = containers.fold(
+    root,
+    (smallest, element) =>
+        element.text.length < smallest.text.length ? element : smallest,
+  );
+  if (identical(body, root)) return root;
+  var ancestor = body.parent;
+  while (ancestor is Element && !identical(ancestor, root)) {
+    if (ancestor.querySelectorAll('p').length != paragraphCount ||
+        ancestor.querySelector('h1') != null) {
+      break;
+    }
+    final addsContent = ancestor.text.trim().length > body.text.trim().length;
+    body = ancestor;
+    if (addsContent) break;
+    ancestor = body.parent;
+  }
+  return body;
+}
+
 int _articleScore(Element element) {
   final text = element.text.replaceAll(RegExp(r'\s+'), ' ').trim();
   return text.length + element.querySelectorAll('p').length * 120;
 }
 
+bool _looksLikeArticleBody(Element element) {
+  if (element.querySelectorAll('p').length >= 2) return true;
+  return element.text.replaceAll(RegExp(r'\s+'), ' ').trim().length >=
+      _completeArticleTextLength;
+}
+
+const _completeArticleTextLength = 400;
+
 ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
   final fragment = html_parser.parseFragment(source);
   final base = baseUrl == null ? null : Uri.tryParse(baseUrl);
   _removeReaderJunk(fragment.querySelectorAll('*'));
+  _separateAdjacentTextElements(fragment);
   for (final element in fragment.querySelectorAll('*').toList()) {
     final tag = element.localName?.toLowerCase() ?? '';
     if (!const {
@@ -392,6 +437,7 @@ const _discardedReaderIdentifiers = {
   'share',
   'share-bar',
   'share-buttons',
+  'share-toggle__button',
   'sharing',
   'social',
   'social-share',
@@ -425,6 +471,23 @@ void _unwrap(Element element) {
     parent.insertBefore(child, element);
   }
   element.remove();
+}
+
+void _separateAdjacentTextElements(Node root) {
+  final nodes = root.nodes.toList();
+  for (final node in nodes) {
+    if (node is Element) _separateAdjacentTextElements(node);
+  }
+  for (var index = 1; index < nodes.length; index++) {
+    final previous = nodes[index - 1];
+    final next = nodes[index];
+    if (previous is Element &&
+        next is Element &&
+        previous.text.trim().isNotEmpty &&
+        next.text.trim().isNotEmpty) {
+      root.insertBefore(Text(' '), next);
+    }
+  }
 }
 
 Uri? _safeWebUri(String raw, Uri? base) {

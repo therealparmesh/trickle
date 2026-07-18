@@ -152,6 +152,7 @@ void main() {
           <div class="ad">AD_SECRET</div>
           <div class="social">SOCIAL_SECRET</div>
           <div class="comments">COMMENTS_SECRET</div>
+          <label class="share-toggle__button">SHARE_CONTROL</label>
         ''',
       );
 
@@ -180,10 +181,79 @@ void main() {
         'AD_SECRET',
         'SOCIAL_SECRET',
         'COMMENTS_SECRET',
+        'SHARE_CONTROL',
       ]) {
         expect(result.text, isNot(contains(secret)));
         expect(result.html, isNot(contains(secret)));
       }
+    },
+  );
+
+  test('reader sanitizer separates adjacent inline wrappers', () async {
+    final repository = ArticleRepository(
+      database,
+      _client(_StaticAdapter(body: 'unused', contentType: 'text/html')),
+      privateFeeds,
+    );
+
+    final result = await repository.sanitizeContent('''
+      <div>
+        <span><time>June 2025</time></span><span>Science</span>
+        <a href="https://publisher.test/details">
+          <div></div><div>Learn more</div>
+        </a>
+      </div>
+    ''');
+
+    expect(result.text, contains('June 2025 Science'));
+    expect(result.text, isNot(contains('2025Science')));
+  });
+
+  test(
+    'reader refreshes a markup-heavy card cache and selects the article body',
+    () async {
+      final actualBody = List.filled(
+        35,
+        'The actual article explains the important research.',
+      ).join(' ');
+      final adapter = _StaticAdapter(
+        body:
+            '''
+          <html><body><main>
+            <div><div>Vision</div><h1>Research update</h1>
+              <div>&nbsp;min Read</div><div>&nbsp;min watch</div>
+            </div>
+            <div><p>$actualBody</p><p>A second substantive paragraph.</p></div>
+            <section><article>
+              <h3>Related story card</h3><div>June 2025Science</div>
+            </article></section>
+          </main></body></html>
+        ''',
+        contentType: 'text/html',
+      );
+      final repository = ArticleRepository(
+        database,
+        _client(adapter),
+        privateFeeds,
+      );
+      final article = await _seedArticle(
+        database,
+        contentHtml:
+            '<div>June 2025Science'
+            '<img src="https://publisher.test/${'x' * 450}.jpg"></div>',
+      );
+
+      final result = await repository.load(article);
+
+      expect(adapter.requests, 1);
+      expect(result.text, contains('The actual article explains'));
+      expect(result.text, contains('A second substantive paragraph.'));
+      expect(result.text, isNot(contains('min Read')));
+      expect(result.text, isNot(contains('Related story card')));
+      expect(
+        (await database.articleById(article.id))?.contentHtml,
+        result.html,
+      );
     },
   );
 
@@ -220,6 +290,38 @@ void main() {
       );
     },
   );
+
+  test('reader focuses a generic page wrapper on its paragraph body', () async {
+    final adapter = _StaticAdapter(
+      body:
+          '''
+        <html><body><div class="page">
+          <div><div>Vision</div><h1>Research update</h1>
+            <div>&nbsp;min Read</div><div>&nbsp;min watch</div>
+          </div>
+          <div><div>A concise lead introduces the research.</div>
+            <div><p>${List.filled(35, 'Substantive research detail.').join(' ')}</p>
+              <p>The article concludes here.</p>
+            </div>
+          </div>
+        </div></body></html>
+      ''',
+      contentType: 'text/html',
+    );
+    final repository = ArticleRepository(
+      database,
+      _client(adapter),
+      privateFeeds,
+    );
+
+    final result = await repository.load(await _seedArticle(database));
+
+    expect(result.text, contains('A concise lead introduces the research.'));
+    expect(result.text, contains('Substantive research detail.'));
+    expect(result.text, contains('The article concludes here.'));
+    expect(result.text, isNot(contains('min Read')));
+    expect(result.text, isNot(contains('min watch')));
+  });
 
   test('reader extraction survives a local cache write failure', () async {
     final adapter = _StaticAdapter(
@@ -478,8 +580,9 @@ void main() {
         home: Scaffold(
           body: ArticleContent(
             scale: 1,
-            leadingTitleToOmit: 'A Useful Headline',
+            leadingTitleToOmit: 'A Useful Headline: Studio Name',
             html: '''
+              <div>July 16, 2026 · Science</div>
               <h1> A Useful   Headline </h1>
               <p>Article body.</p>
               <h2>A Useful Headline</h2>
@@ -490,6 +593,7 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.text('July 16, 2026 · Science'), findsOneWidget);
     expect(find.text('A Useful Headline'), findsOneWidget);
     expect(find.text('Article body.'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -513,6 +617,34 @@ void main() {
 
     expect(find.text('Opening paragraph.'), findsOneWidget);
     expect(find.text('Section title'), findsOneWidget);
+  });
+
+  testWidgets('article renderer normalizes inline and link whitespace', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ArticleContent(
+            scale: 1,
+            html: '''
+              <p>  Alpha
+                <strong>signal</strong>  </p>
+              <a href="https://publisher.test/details">
+                <div></div> <div>Learn more</div>
+              </a>
+              <p>First line<br>Second line</p>
+            ''',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Alpha signal'), findsOneWidget);
+    expect(find.text('Learn more'), findsOneWidget);
+    expect(find.text('First line\nSecond line'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('empty headings do not block duplicate-title suppression', (
