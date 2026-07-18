@@ -45,7 +45,7 @@ podcast,rss,feed,reader,offline,opml,audio,news,blog,private
 ## Supported platforms
 
 - Android 7.0 (API 24) or later
-- iOS and iPadOS 14.0 or later
+- iOS 14.0 or later on iPhone
 
 ## Contact URLs
 

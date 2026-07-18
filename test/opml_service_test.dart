@@ -128,30 +128,34 @@ void main() {
     },
   );
 
-  test('imports nested Fountain-style OPML and deduplicates URLs', () async {
-    const source = '''
+  test(
+    'imports nested Fountain-style OPML and deduplicates feed URLs',
+    () async {
+      const source = '''
       <opml version="1.0">
         <head><title>Fountain Podcasts</title></head>
         <body>
           <outline text="feeds">
             <outline text="One" type="rss" xmlUrl="https://one.test/rss" />
             <outline text="Duplicate" xmlUrl=" https://one.test/rss " />
+            <outline text="Equivalent" xmlUrl="HTTP://ONE.TEST/rss#fragment" />
             <outline text="Two" XMLURL="https://two.test/feed.xml" />
           </outline>
         </body>
       </opml>
     ''';
-    final imported = <String>[];
+      final imported = <String>[];
 
-    final result = await importOpmlSubscriptions(
-      source,
-      subscribe: (url) async => imported.add(url),
-    );
+      final result = await importOpmlSubscriptions(
+        source,
+        subscribe: (url) async => imported.add(url),
+      );
 
-    expect(imported, ['https://one.test/rss', 'https://two.test/feed.xml']);
-    expect(result.imported, 2);
-    expect(result.failed, 0);
-  });
+      expect(imported, ['https://one.test/rss', 'https://two.test/feed.xml']);
+      expect(result.imported, 2);
+      expect(result.failed, 0);
+    },
+  );
 
   test('continues after an individual subscription fails', () async {
     const source = '''
@@ -185,6 +189,25 @@ void main() {
         subscribe: (_) async => attempts++,
       ),
       throwsA(isA<XmlException>()),
+    );
+    expect(attempts, 0);
+  });
+
+  test('rejects well-formed XML that is not OPML', () async {
+    var attempts = 0;
+
+    await expectLater(
+      importOpmlSubscriptions(
+        '<feeds><item xmlUrl="https://example.test/rss" /></feeds>',
+        subscribe: (_) async => attempts++,
+      ),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          'The selected file is not an OPML document.',
+        ),
+      ),
     );
     expect(attempts, 0);
   });

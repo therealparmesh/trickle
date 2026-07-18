@@ -79,7 +79,7 @@ Apple has required [Xcode 26 or later with the iOS 26 SDK or later since April 2
 
 The application includes its privacy manifest, background-audio configuration, background-refresh identifier, encryption declaration, and 1024-pixel icon. A final build phase removes the downloader SDK's generic Photo Library declaration because trickle stores audio only in app-private storage and does not use that optional SDK feature.
 
-Five prepared 1206×2622 PNG screenshots are in `store/apple/screenshots/`. Regenerate them from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml` while the seeded screenshot build is running.
+The iOS target is iPhone-only. Five prepared 1206×2622 PNG screenshots are in `store/apple/screenshots/`. Regenerate them from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml` while the seeded screenshot build is running.
 
 In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the prepared screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
 

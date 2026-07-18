@@ -241,20 +241,37 @@ Future<OpmlImportResult> importOpmlSubscriptions(
 
 List<String> extractOpmlUrls(String source) {
   final document = XmlDocument.parse(source);
-  return document.descendants
+  final root = document.rootElement;
+  final body = root.children
       .whereType<XmlElement>()
-      .map(
-        (element) => element.attributes
-            .where(
-              (attribute) => attribute.name.local.toLowerCase() == 'xmlurl',
-            )
-            .map((attribute) => attribute.value)
-            .firstOrNull,
-      )
-      .whereType<String>()
-      .map((url) => url.trim())
-      .where((url) => url.isNotEmpty)
-      .toSet()
-      .take(1000)
-      .toList(growable: false);
+      .where((element) => element.name.local.toLowerCase() == 'body')
+      .firstOrNull;
+  if (root.name.local.toLowerCase() != 'opml' || body == null) {
+    throw const FormatException('The selected file is not an OPML document.');
+  }
+
+  final urls = <String>[];
+  final identities = <String>{};
+  for (final element in body.descendants.whereType<XmlElement>()) {
+    final value = element.attributes
+        .where((attribute) => attribute.name.local.toLowerCase() == 'xmlurl')
+        .map((attribute) => attribute.value.trim())
+        .firstOrNull;
+    if (value == null || value.isEmpty) continue;
+    if (identities.add(_opmlUrlIdentity(value))) urls.add(value);
+    if (urls.length == 1000) break;
+  }
+  return List.unmodifiable(urls);
+}
+
+String _opmlUrlIdentity(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri == null || uri.host.isEmpty) return value;
+  final scheme = uri.scheme.toLowerCase() == 'http'
+      ? 'https'
+      : uri.scheme.toLowerCase();
+  return uri
+      .replace(scheme: scheme, host: uri.host.toLowerCase())
+      .removeFragment()
+      .toString();
 }

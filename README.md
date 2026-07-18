@@ -18,7 +18,7 @@ trickle is a client-only podcast player and RSS reader for iOS and Android. It c
 ## Supported platforms
 
 - Android 7.0 (API 24) or later
-- iOS and iPadOS 14.0 or later
+- iOS 14.0 or later on iPhone
 
 Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally out of scope.
 
