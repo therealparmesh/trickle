@@ -286,10 +286,9 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
       opened = false;
     }
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Couldn’t open this article in your browser.'),
-        ),
+      showMessageSnackBar(
+        context,
+        'Couldn’t open this article in your browser.',
       );
     }
   }
@@ -357,7 +356,10 @@ final class _ReaderFallbackNotice extends StatelessWidget {
               Wrap(
                 spacing: 4,
                 children: [
-                  TextButton(onPressed: onRetry, child: const Text('Retry')),
+                  TextButton(
+                    onPressed: onRetry,
+                    child: const Text('Try again'),
+                  ),
                   if (onOpenInBrowser != null)
                     TextButton(
                       onPressed: onOpenInBrowser,

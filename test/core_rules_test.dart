@@ -174,7 +174,7 @@ void main() {
       );
     });
 
-    test('uses feed duration when the native duration resets to zero', () {
+    test('completion uses feed duration after native duration resets', () {
       final duration = effectivePlaybackDuration(
         nativeDuration: Duration.zero,
         fallbackDuration: const Duration(minutes: 20),
@@ -253,7 +253,7 @@ void main() {
       }
     });
 
-    test('uses feed duration when the native duration resets to zero', () {
+    test('outro skip uses feed duration after native duration resets', () {
       final duration = effectivePlaybackDuration(
         nativeDuration: Duration.zero,
         fallbackDuration: const Duration(minutes: 20),

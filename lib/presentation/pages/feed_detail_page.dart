@@ -190,20 +190,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
               );
             }
             return RefreshIndicator(
-              onRefresh: () async {
-                final result = await ref
-                    .read(syncCoordinatorProvider)
-                    .refreshFeed(value);
-                if (result.failedFeeds > 0 && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Couldn’t refresh this feed. Check the error below.',
-                      ),
-                    ),
-                  );
-                }
-              },
+              onRefresh: () => _refresh(value),
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
@@ -314,6 +301,20 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
       if (mounted) setState(() => _unsubscribing = false);
+    }
+  }
+
+  Future<void> _refresh(Feed feed) async {
+    try {
+      final result = await ref.read(syncCoordinatorProvider).refreshFeed(feed);
+      if (result.failedFeeds > 0 && mounted) {
+        showMessageSnackBar(
+          context,
+          'Couldn’t refresh this feed. Check the error below.',
+        );
+      }
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
     }
   }
 }
@@ -553,7 +554,7 @@ final class FeedSettingsSheet extends ConsumerStatefulWidget {
   ConsumerState<FeedSettingsSheet> createState() => _FeedSettingsSheetState();
 }
 
-enum _FeedSettingsOperation { save, privateAccess, unsubscribe }
+enum _FeedSettingsOperation { notifications, save, privateAccess, unsubscribe }
 
 class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
   late bool _autoDownload = widget.feed.autoDownload;
@@ -644,24 +645,13 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _notifications,
-                  onChanged: _busy
-                      ? null
-                      : (value) async {
-                          var enabled = value;
-                          try {
-                            if (value) {
-                              enabled = await ref
-                                  .read(notificationServiceProvider)
-                                  .requestPermission();
-                            }
-                          } on Object catch (error) {
-                            enabled = false;
-                            if (context.mounted) {
-                              showErrorSnackBar(context, error);
-                            }
-                          }
-                          if (mounted) setState(() => _notifications = enabled);
-                        },
+                  onChanged: _busy ? null : _setNotifications,
+                  secondary: SizedBox.square(
+                    dimension: 24,
+                    child: _operation == _FeedSettingsOperation.notifications
+                        ? const CircularProgressIndicator(strokeWidth: 2)
+                        : const Icon(Icons.notifications_outlined),
+                  ),
                   title: Text(switch (_kind) {
                     FeedKind.reader => 'New article notifications',
                     FeedKind.hybrid => 'New item notifications',
@@ -747,12 +737,9 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
     final intro = int.tryParse(_intro.text.trim().isEmpty ? '0' : _intro.text);
     final outro = int.tryParse(_outro.text.trim().isEmpty ? '0' : _outro.text);
     if (intro == null || outro == null || intro > 600 || outro > 600) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Skip times must be between 0 and 10 minutes (600 seconds).',
-          ),
-        ),
+      showMessageSnackBar(
+        context,
+        'Skip times must be between 0 and 10 minutes (600 seconds).',
       );
       return;
     }
@@ -777,6 +764,30 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
       showErrorSnackBar(context, error);
     } finally {
       _finishOperation(_FeedSettingsOperation.save);
+    }
+  }
+
+  Future<void> _setNotifications(bool value) async {
+    if (!value) {
+      setState(() => _notifications = false);
+      return;
+    }
+    setState(() => _operation = _FeedSettingsOperation.notifications);
+    try {
+      final enabled = await ref
+          .read(notificationServiceProvider)
+          .requestPermission();
+      if (!mounted) return;
+      setState(() => _notifications = enabled);
+      if (!enabled) {
+        showMessageSnackBar(context, 'Notifications remain disabled');
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _notifications = false);
+      showErrorSnackBar(context, error);
+    } finally {
+      _finishOperation(_FeedSettingsOperation.notifications);
     }
   }
 
@@ -805,9 +816,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
           );
       ref.invalidate(privateFeedSecretProvider(widget.feed.id));
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Private access updated.')));
+      showMessageSnackBar(context, 'Private access updated.');
     } on Object catch (error) {
       if (!mounted) return;
       showErrorSnackBar(context, error);

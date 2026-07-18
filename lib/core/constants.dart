@@ -32,12 +32,12 @@ enum DownloadState { queued, running, paused, complete, failed, canceled }
 enum AutoDeletePolicy { immediately, after24Hours, after7Days, never }
 
 enum RefreshInterval {
-  manual(Duration.zero, 'Manual only'),
-  hourly(Duration(hours: 1), 'Every hour'),
-  every3Hours(Duration(hours: 3), 'Every 3 hours'),
-  every6Hours(Duration(hours: 6), 'Every 6 hours'),
-  every12Hours(Duration(hours: 12), 'Every 12 hours'),
-  daily(Duration(hours: 24), 'Every 24 hours');
+  manual(Duration.zero, 'Manual'),
+  hourly(Duration(hours: 1), '1 hour'),
+  every3Hours(Duration(hours: 3), '3 hours'),
+  every6Hours(Duration(hours: 6), '6 hours'),
+  every12Hours(Duration(hours: 12), '12 hours'),
+  daily(Duration(hours: 24), '24 hours');
 
   const RefreshInterval(this.duration, this.label);
   final Duration duration;

@@ -537,7 +537,7 @@ void main() {
 
     expect(find.text('Reader view unavailable'), findsOneWidget);
     expect(find.text('Showing the feed summary instead.'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     expect(find.text('Open in browser'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

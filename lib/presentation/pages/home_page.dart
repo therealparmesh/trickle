@@ -28,7 +28,7 @@ final class HomePage extends ConsumerWidget {
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
-          onRefresh: () => ref.read(syncCoordinatorProvider).refresh(),
+          onRefresh: () => refreshAllFeeds(context, ref),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [

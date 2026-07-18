@@ -101,7 +101,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         ref.watch(starredArticleCountProvider).value ?? 0,
     };
     return RefreshIndicator(
-      onRefresh: () => ref.read(syncCoordinatorProvider).refresh(),
+      onRefresh: () => refreshAllFeeds(context, ref),
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -222,7 +222,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Widget _feeds() {
     final feeds = ref.watch(readerFeedsProvider);
     return RefreshIndicator(
-      onRefresh: () => ref.read(syncCoordinatorProvider).refresh(),
+      onRefresh: () => refreshAllFeeds(context, ref),
       child: feeds.when(
         data: (items) => items.isEmpty
             ? ListView(

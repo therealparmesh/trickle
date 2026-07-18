@@ -4,6 +4,7 @@ import 'package:archive/archive.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trickle/core/errors.dart';
 import 'package:trickle/core/feed_identity.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/services/backup_service.dart';
@@ -30,6 +31,19 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('invalid archives return a safe, actionable backup error', () async {
+    await expectLater(
+      backups.importBytes(const [0, 1, 2, 3]),
+      throwsA(
+        isA<BackupException>().having(
+          (error) => error.message,
+          'message',
+          'That file isn’t a valid trickle backup.',
+        ),
+      ),
+    );
+  });
 
   test('restore remaps identities and rejects orphan state', () async {
     final now = DateTime.utc(2026, 7, 14);

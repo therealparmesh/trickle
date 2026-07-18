@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../data/database/app_database.dart';
 import '../core/constants.dart';
+import '../core/errors.dart';
 import '../core/feed_identity.dart';
 
 final class BackupResult {
@@ -136,7 +137,7 @@ final class BackupService {
     );
     if (picked == null) return null;
     if (await picked.length() > 50 * 1024 * 1024) {
-      throw const FormatException('Backup exceeds the 50 MiB import limit.');
+      throw const BackupException('Backup exceeds the 50 MiB import limit.');
     }
     final bytes = await picked.readAsBytes();
     return importBytes(bytes);
@@ -144,11 +145,16 @@ final class BackupService {
 
   Future<BackupResult> importBytes(List<int> bytes) async {
     if (bytes.length > 50 * 1024 * 1024) {
-      throw const FormatException('Backup exceeds the 50 MiB import limit.');
+      throw const BackupException('Backup exceeds the 50 MiB import limit.');
     }
-    final data = await compute(_decodeBackup, bytes);
+    late Map<String, Object?> data;
+    try {
+      data = await compute(_decodeBackup, bytes);
+    } on Object {
+      throw const BackupException('That file isn’t a valid trickle backup.');
+    }
     if (data['format'] != 'trickle-backup' || data['version'] != 1) {
-      throw const FormatException('Unsupported trickle backup version.');
+      throw const BackupException('Unsupported trickle backup version.');
     }
     final feeds = _maps(data['feeds']);
     final episodes = _maps(data['episodes']);
@@ -156,7 +162,7 @@ final class BackupService {
     if (feeds.length > 5000 ||
         episodes.length > 200000 ||
         articles.length > 200000) {
-      throw const FormatException('Backup contains too many records.');
+      throw const BackupException('Backup contains too many records.');
     }
     final acceptedFeeds = <String, String>{};
     final feedTitles = <String, String>{};

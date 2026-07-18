@@ -29,6 +29,8 @@ Do not include private-feed passwords, bearer tokens, authorization headers, or 
 
 Confirm the feed uses HTTPS and opens in a browser. For a private feed, verify its URL and authorization values in the feed settings.
 
+If a refresh finishes with failed feeds, open the affected subscription to see its stored refresh error and try again. Other subscriptions and existing items remain available.
+
 ### Playback
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
@@ -48,6 +50,8 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 ## Backup and migration
 
 Settings can import standard OPML and export podcast subscriptions, reading subscriptions, or both as OPML. It also provides a local ZIP backup for subscriptions, reading and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
+
+Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data.
 
 ## Project
 

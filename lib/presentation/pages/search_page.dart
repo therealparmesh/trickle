@@ -294,9 +294,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     try {
       await ref.read(feedRepositoryProvider).subscribe(feedUrl);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Subscribed to ${result.name}')));
+        showMessageSnackBar(context, 'Subscribed to ${result.name}');
       }
       return true;
     } on Object catch (error) {

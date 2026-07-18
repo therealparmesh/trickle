@@ -109,7 +109,7 @@ final class _TrickleBootstrapState extends State<_TrickleBootstrap> {
                                 ),
                               );
                             },
-                            child: const Text('Retry'),
+                            child: const Text('Try again'),
                           ),
                         ] else
                           const SizedBox(height: 42, child: LoadingView()),

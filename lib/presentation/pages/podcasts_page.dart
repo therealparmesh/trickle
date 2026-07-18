@@ -36,7 +36,7 @@ final class PodcastsPage extends ConsumerWidget {
       ),
       body: AppBackdrop(
         child: RefreshIndicator(
-          onRefresh: () => ref.read(syncCoordinatorProvider).refresh(),
+          onRefresh: () => refreshAllFeeds(context, ref),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [

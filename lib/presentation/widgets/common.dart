@@ -11,9 +11,36 @@ import '../../core/url_identity.dart';
 import '../../data/database/app_database.dart';
 
 void showErrorSnackBar(BuildContext context, Object error) {
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(friendlyError(error))));
+  showMessageSnackBar(context, friendlyError(error));
+}
+
+void showMessageSnackBar(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+Future<void> refreshAllFeeds(
+  BuildContext context,
+  WidgetRef ref, {
+  bool announceSuccess = false,
+}) async {
+  try {
+    final result = await ref.read(syncCoordinatorProvider).refresh();
+    if (!context.mounted) return;
+    if (result.failedFeeds > 0) {
+      final count = result.failedFeeds;
+      showMessageSnackBar(
+        context,
+        'Refresh finished with $count failed feed${count == 1 ? '' : 's'}',
+      );
+    } else if (announceSuccess) {
+      showMessageSnackBar(context, 'Feeds refreshed');
+    }
+  } on Object catch (error) {
+    if (context.mounted) showErrorSnackBar(context, error);
+  }
 }
 
 final class HorizontalShortcutStrip extends StatelessWidget {

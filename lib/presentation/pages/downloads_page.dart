@@ -43,13 +43,21 @@ final class DownloadsPage extends ConsumerWidget {
   }
 }
 
-final class _DownloadRow extends ConsumerWidget {
+final class _DownloadRow extends ConsumerStatefulWidget {
   const _DownloadRow(this.download);
 
   final MediaDownload download;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DownloadRow> createState() => _DownloadRowState();
+}
+
+final class _DownloadRowState extends ConsumerState<_DownloadRow> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final download = widget.download;
     final episode = ref.watch(episodeProvider(download.episodeId));
     final state = DownloadState
         .values[download.status.clamp(0, DownloadState.values.length - 1)];
@@ -83,26 +91,14 @@ final class _DownloadRow extends ConsumerWidget {
           if (value != null) EpisodePlaybackButton(episode: value),
           PopupMenuButton<String>(
             tooltip: 'Download actions',
-            onSelected: (action) async {
-              try {
-                final coordinator = ref.read(downloadCoordinatorProvider);
-                switch (action) {
-                  case 'pause':
-                    await coordinator.pause(download.episodeId);
-                  case 'resume':
-                    await coordinator.resume(download.episodeId);
-                  case 'keep':
-                    await coordinator.setKeep(
-                      download.episodeId,
-                      !download.keep,
-                    );
-                  case 'delete':
-                    await coordinator.delete(download.episodeId);
-                }
-              } on Object catch (error) {
-                if (context.mounted) showErrorSnackBar(context, error);
-              }
-            },
+            enabled: !_busy,
+            icon: _busy
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.more_vert_rounded),
+            onSelected: (action) => _runAction(action, download),
             itemBuilder: (_) => [
               if (state == DownloadState.running ||
                   state == DownloadState.queued)
@@ -156,6 +152,28 @@ final class _DownloadRow extends ConsumerWidget {
       ),
       error: (_, _) => row(null, fallbackTitle: 'Couldn’t load episode'),
     );
+  }
+
+  Future<void> _runAction(String action, MediaDownload download) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final coordinator = ref.read(downloadCoordinatorProvider);
+      switch (action) {
+        case 'pause':
+          await coordinator.pause(download.episodeId);
+        case 'resume':
+          await coordinator.resume(download.episodeId);
+        case 'keep':
+          await coordinator.setKeep(download.episodeId, !download.keep);
+        case 'delete':
+          await coordinator.delete(download.episodeId);
+      }
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   String _stateLabel(DownloadState state, MediaDownload download) {

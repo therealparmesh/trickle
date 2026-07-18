@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
-import '../../core/errors.dart';
 import '../../services/opml_service.dart';
 import '../widgets/common.dart';
 
@@ -15,7 +14,8 @@ final class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  String? _busyAction;
+  final Set<String> _busyActions = {};
+  String? _activeFileAction;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +27,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final images = ref.watch(remoteImagesProvider).value ?? true;
     final package = ref.watch(packageInfoProvider).value;
     return PopScope(
-      canPop: _busyAction == null,
+      canPop: _activeFileAction == null,
       child: Scaffold(
         appBar: AppBar(title: const Text('Settings')),
         body: AppBackdrop(
@@ -128,55 +128,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             'Loads artwork, reader images, show-note images, and link previews from publishers.',
                           ),
                         ),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.sync_rounded),
-                          title: const Text('Refresh now'),
-                          onTap: () async {
-                            try {
-                              final result = await ref
-                                  .read(syncCoordinatorProvider)
-                                  .refresh();
-                              if (!context.mounted) return;
-                              _message(
-                                context,
-                                result.failedFeeds == 0
-                                    ? 'Feeds refreshed'
-                                    : 'Refresh finished with ${result.failedFeeds} failed feed${result.failedFeeds == 1 ? '' : 's'}',
-                              );
-                            } on Object catch (error) {
-                              if (context.mounted) {
-                                _message(context, friendlyError(error));
-                              }
-                            }
-                          },
-                        ),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.notifications_outlined),
-                          title: const Text('Allow notifications'),
-                          subtitle: const Text(
-                            'Choose alerts in each feed’s settings.',
-                          ),
-                          onTap: () async {
-                            try {
-                              final granted = await ref
-                                  .read(notificationServiceProvider)
-                                  .requestPermission();
-                              if (context.mounted) {
-                                _message(
+                        _ActionTile(
+                          icon: Icons.sync_rounded,
+                          title: 'Refresh now',
+                          subtitle: 'Checks every subscription for new items.',
+                          busy: _busyActions.contains('refresh'),
+                          onTap: _busyActions.contains('refresh')
+                              ? null
+                              : () => _runTracked(
                                   context,
-                                  granted
-                                      ? 'Notifications allowed'
-                                      : 'Notifications remain disabled',
-                                );
-                              }
-                            } on Object catch (error) {
-                              if (context.mounted) {
-                                _message(context, friendlyError(error));
-                              }
-                            }
-                          },
+                                  'refresh',
+                                  () => refreshAllFeeds(
+                                    context,
+                                    ref,
+                                    announceSuccess: true,
+                                  ),
+                                ),
+                        ),
+                        _ActionTile(
+                          icon: Icons.notifications_outlined,
+                          title: 'Allow notifications',
+                          subtitle: 'Choose alerts in each feed’s settings.',
+                          busy: _busyActions.contains('notifications'),
+                          onTap: _busyActions.contains('notifications')
+                              ? null
+                              : () => _runTracked(
+                                  context,
+                                  'notifications',
+                                  () async {
+                                    final granted = await ref
+                                        .read(notificationServiceProvider)
+                                        .requestPermission();
+                                    if (context.mounted) {
+                                      showMessageSnackBar(
+                                        context,
+                                        granted
+                                            ? 'Notifications allowed'
+                                            : 'Notifications remain disabled',
+                                      );
+                                    }
+                                  },
+                                ),
                         ),
                       ],
                     ),
@@ -190,8 +182,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           title: 'Export podcast OPML',
                           subtitle:
                               'Exports podcast subscriptions. Private feeds that require sign-in headers are skipped.',
-                          busy: _busyAction == 'podcastExport',
-                          onTap: _busyAction == 'podcastExport'
+                          busy: _busyActions.contains('podcastExport'),
+                          onTap: _busyActions.contains('podcastExport')
                               ? null
                               : () => _runImportExport(
                                   context,
@@ -208,8 +200,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           title: 'Export reading feeds as OPML',
                           subtitle:
                               'Exports reading subscriptions. Private feeds that require sign-in headers are skipped.',
-                          busy: _busyAction == 'readerExport',
-                          onTap: _busyAction == 'readerExport'
+                          busy: _busyActions.contains('readerExport'),
+                          onTap: _busyActions.contains('readerExport')
                               ? null
                               : () => _runImportExport(
                                   context,
@@ -226,8 +218,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           title: 'Export all feeds as OPML',
                           subtitle:
                               'Exports podcast and reading subscriptions. Private feeds that require sign-in headers are skipped.',
-                          busy: _busyAction == 'feedExport',
-                          onTap: _busyAction == 'feedExport'
+                          busy: _busyActions.contains('feedExport'),
+                          onTap: _busyActions.contains('feedExport')
                               ? null
                               : () => _runImportExport(
                                   context,
@@ -244,27 +236,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           title: 'Import OPML',
                           subtitle:
                               'Imports podcast and reading subscriptions from standard OPML files.',
-                          busy: _busyAction == 'opmlImport',
-                          onTap: _busyAction == 'opmlImport'
+                          busy: _busyActions.contains('opmlImport'),
+                          onTap: _busyActions.contains('opmlImport')
                               ? null
                               : () => _runImportExport(
                                   context,
                                   'opmlImport',
                                   () async {
-                                    try {
-                                      final result = await ref
-                                          .read(opmlServiceProvider)
-                                          .pickAndImport();
-                                      if (context.mounted && result != null) {
-                                        _message(
-                                          context,
-                                          '${result.imported} imported · ${result.failed} failed',
-                                        );
-                                      }
-                                    } on Object catch (error) {
-                                      if (context.mounted) {
-                                        _message(context, friendlyError(error));
-                                      }
+                                    final result = await ref
+                                        .read(opmlServiceProvider)
+                                        .pickAndImport();
+                                    if (context.mounted && result != null) {
+                                      showMessageSnackBar(
+                                        context,
+                                        '${result.imported} imported · ${result.failed} failed',
+                                      );
                                     }
                                   },
                                 ),
@@ -274,65 +260,62 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           title: 'Export local backup',
                           subtitle:
                               'Exports subscriptions, settings, and progress without credentials or downloads.',
-                          busy: _busyAction == 'backupExport',
-                          onTap: _busyAction == 'backupExport'
+                          busy: _busyActions.contains('backupExport'),
+                          onTap: _busyActions.contains('backupExport')
                               ? null
                               : () => _runImportExport(
                                   context,
                                   'backupExport',
-                                  () => _run(
-                                    context,
-                                    () => ref
+                                  () async {
+                                    await ref
                                         .read(backupServiceProvider)
                                         .exportAndShare(
                                           sharePositionOrigin: _shareOrigin(
                                             context,
                                           ),
-                                        ),
-                                    'Backup ready to share',
-                                  ),
+                                        );
+                                    if (context.mounted) {
+                                      showMessageSnackBar(
+                                        context,
+                                        'Backup ready to share',
+                                      );
+                                    }
+                                  },
                                 ),
                         ),
                         _ActionTile(
                           icon: Icons.unarchive_outlined,
                           title: 'Restore local backup',
                           subtitle: 'Merges a trickle ZIP into this device.',
-                          busy: _busyAction == 'backupImport',
-                          onTap: _busyAction == 'backupImport'
+                          busy: _busyActions.contains('backupImport'),
+                          onTap: _busyActions.contains('backupImport')
                               ? null
                               : () => _runImportExport(
                                   context,
                                   'backupImport',
                                   () async {
-                                    try {
-                                      final result = await ref
-                                          .read(backupServiceProvider)
-                                          .pickAndImport();
-                                      if (result != null) {
-                                        final audio = ref.read(
-                                          audioHandlerProvider,
-                                        );
-                                        await audio.reloadQueueFromDatabase();
-                                        await audio
-                                            .reloadSettingsFromDatabase();
-                                        final interval = await ref
-                                            .read(settingsRepositoryProvider)
-                                            .watchRefreshInterval()
-                                            .first;
-                                        await ref
-                                            .read(backgroundRefreshProvider)
-                                            .schedule(interval);
-                                      }
-                                      if (context.mounted && result != null) {
-                                        _message(
-                                          context,
-                                          '${result.feeds} feeds · ${result.episodes} episodes · ${result.articles} articles restored',
-                                        );
-                                      }
-                                    } on Object catch (error) {
-                                      if (context.mounted) {
-                                        _message(context, friendlyError(error));
-                                      }
+                                    final result = await ref
+                                        .read(backupServiceProvider)
+                                        .pickAndImport();
+                                    if (result != null) {
+                                      final audio = ref.read(
+                                        audioHandlerProvider,
+                                      );
+                                      await audio.reloadQueueFromDatabase();
+                                      await audio.reloadSettingsFromDatabase();
+                                      final interval = await ref
+                                          .read(settingsRepositoryProvider)
+                                          .watchRefreshInterval()
+                                          .first;
+                                      await ref
+                                          .read(backgroundRefreshProvider)
+                                          .schedule(interval);
+                                    }
+                                    if (context.mounted && result != null) {
+                                      showMessageSnackBar(
+                                        context,
+                                        '${result.feeds} feeds · ${result.episodes} episodes · ${result.articles} articles restored',
+                                      );
                                     }
                                   },
                                 ),
@@ -385,9 +368,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   static String _autoDeleteLabel(AutoDeletePolicy policy) => switch (policy) {
-    AutoDeletePolicy.immediately => 'Immediately after playback finishes',
-    AutoDeletePolicy.after24Hours => '24 hours after playback finishes',
-    AutoDeletePolicy.after7Days => '7 days after playback finishes',
+    AutoDeletePolicy.immediately => 'Immediately',
+    AutoDeletePolicy.after24Hours => '24 hours',
+    AutoDeletePolicy.after7Days => '7 days',
     AutoDeletePolicy.never => 'Never',
   };
 
@@ -396,15 +379,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     String action,
     Future<void> Function() operation,
   ) async {
-    if (_busyAction != null) {
-      _message(context, 'Finish the current import or export first.');
+    if (_activeFileAction != null) {
+      showMessageSnackBar(
+        context,
+        'Finish the current import or export first.',
+      );
       return;
     }
-    setState(() => _busyAction = action);
+    setState(() {
+      _activeFileAction = action;
+      _busyActions.add(action);
+    });
     try {
       await operation();
+    } on Object catch (error) {
+      if (context.mounted) showErrorSnackBar(context, error);
     } finally {
-      if (mounted) setState(() => _busyAction = null);
+      if (mounted) {
+        setState(() {
+          _activeFileAction = null;
+          _busyActions.remove(action);
+        });
+      } else {
+        _activeFileAction = null;
+        _busyActions.remove(action);
+      }
+    }
+  }
+
+  Future<void> _runTracked(
+    BuildContext context,
+    String action,
+    Future<void> Function() operation,
+  ) async {
+    if (_busyActions.contains(action)) return;
+    setState(() => _busyActions.add(action));
+    try {
+      await operation();
+    } on Object catch (error) {
+      if (context.mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _busyActions.remove(action));
     }
   }
 
@@ -413,38 +428,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     OpmlExportScope scope,
     String success,
   ) async {
-    try {
-      final result = await ref
-          .read(opmlServiceProvider)
-          .exportAndShare(
-            scope: scope,
-            sharePositionOrigin: _shareOrigin(context),
-          );
-      if (!context.mounted) return;
-      final details = <String>[
-        '${result.exported} ${result.exported == 1 ? 'feed' : 'feeds'} exported',
-        if (result.skippedHeaderAuth case final count when count > 0)
-          '$count header-authenticated feed${count == 1 ? '' : 's'} skipped',
-        if (result.skippedMissingCredentials case final count when count > 0)
-          '$count feed${count == 1 ? '' : 's'} with unavailable credentials skipped',
-      ];
-      _message(context, '$success · ${details.join(' · ')}');
-    } on Object catch (error) {
-      if (context.mounted) _message(context, friendlyError(error));
-    }
-  }
-
-  static Future<void> _run(
-    BuildContext context,
-    Future<void> Function() action,
-    String success,
-  ) async {
-    try {
-      await action();
-      if (context.mounted) _message(context, success);
-    } on Object catch (error) {
-      if (context.mounted) _message(context, friendlyError(error));
-    }
+    final result = await ref
+        .read(opmlServiceProvider)
+        .exportAndShare(
+          scope: scope,
+          sharePositionOrigin: _shareOrigin(context),
+        );
+    if (!context.mounted) return;
+    final details = <String>[
+      '${result.exported} ${result.exported == 1 ? 'feed' : 'feeds'} exported',
+      if (result.skippedHeaderAuth case final count when count > 0)
+        '$count header-authenticated feed${count == 1 ? '' : 's'} skipped',
+      if (result.skippedMissingCredentials case final count when count > 0)
+        '$count feed${count == 1 ? '' : 's'} with unavailable credentials skipped',
+    ];
+    showMessageSnackBar(context, '$success · ${details.join(' · ')}');
   }
 
   static Future<void> _runSilent(
@@ -454,14 +452,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       await action();
     } on Object catch (error) {
-      if (context.mounted) _message(context, friendlyError(error));
+      if (context.mounted) showErrorSnackBar(context, error);
     }
-  }
-
-  static void _message(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -494,7 +486,8 @@ final class _ActionTile extends StatelessWidget {
       return Semantics(
         button: true,
         enabled: onTap != null,
-        label: '$title. $subtitle',
+        liveRegion: busy,
+        label: busy ? '$title. In progress. $subtitle' : '$title. $subtitle',
         excludeSemantics: true,
         onTap: onTap,
         child: InkWell(
@@ -541,18 +534,26 @@ final class _ActionTile extends StatelessWidget {
         ),
       );
     }
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: busy
-          ? const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.chevron_right_rounded),
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      liveRegion: busy,
+      label: busy ? '$title. In progress. $subtitle' : '$title. $subtitle',
+      excludeSemantics: true,
       onTap: onTap,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: busy
+            ? const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
     );
   }
 }

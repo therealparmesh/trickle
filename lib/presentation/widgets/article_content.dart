@@ -15,6 +15,7 @@ import '../../app/theme.dart';
 import '../../core/constants.dart';
 import '../../core/url_identity.dart';
 import '../../data/security/private_feed_store.dart';
+import 'common.dart';
 
 final class ArticleContent extends StatefulWidget {
   const ArticleContent({
@@ -568,9 +569,7 @@ class _ArticleContentState extends State<ArticleContent> {
       opened = false;
     }
     if (!opened && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Couldn’t open that link.')));
+      showMessageSnackBar(context, 'Couldn’t open that link.');
     }
   }
 

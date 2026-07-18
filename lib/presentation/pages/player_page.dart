@@ -376,9 +376,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
             .setSleepTimer(Duration(minutes: int.parse(choice)));
       }
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        showMessageSnackBar(context, message);
       }
     } on Object catch (error) {
       if (context.mounted) showErrorSnackBar(context, error);
@@ -429,9 +427,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               ),
             );
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Bookmark saved')));
+          showMessageSnackBar(context, 'Bookmark saved');
         }
       }
     } on Object catch (error) {
@@ -880,7 +876,7 @@ class _ExtrasState extends ConsumerState<_Extras> {
         subtitle: Text(friendlyError(chapters.error!)),
         trailing: TextButton(
           onPressed: () => ref.invalidate(chaptersProvider(widget.episodeId)),
-          child: const Text('Retry'),
+          child: const Text('Try again'),
         ),
       );
     }
@@ -921,7 +917,7 @@ class _ExtrasState extends ConsumerState<_Extras> {
         subtitle: Text(friendlyError(transcript.error!)),
         trailing: TextButton(
           onPressed: () => ref.invalidate(transcriptProvider(widget.episodeId)),
-          child: const Text('Retry'),
+          child: const Text('Try again'),
         ),
       );
     }

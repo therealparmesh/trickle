@@ -42,7 +42,10 @@ final class EpisodeShowNotes extends StatelessWidget {
         contentPadding: EdgeInsets.zero,
         title: const Text('Couldn’t load show notes'),
         subtitle: Text(friendlyError(error)),
-        trailing: TextButton(onPressed: onRetry, child: const Text('Retry')),
+        trailing: TextButton(
+          onPressed: onRetry,
+          child: const Text('Try again'),
+        ),
       ),
       data: (notes) {
         if (notes == null || notes.text.trim().isEmpty) {

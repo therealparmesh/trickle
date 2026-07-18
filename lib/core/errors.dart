@@ -22,6 +22,10 @@ final class DownloadException extends TrickleException {
   const DownloadException(super.message);
 }
 
+final class BackupException extends TrickleException {
+  const BackupException(super.message);
+}
+
 String friendlyError(Object error) {
   if (error is TrickleException) return error.message;
   return 'Couldn’t complete that action. Try again.';
