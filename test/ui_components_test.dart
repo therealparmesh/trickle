@@ -605,7 +605,7 @@ void main() {
             id: 'feed',
             title: 'Signal',
             feedUrl: 'https://example.test/feed.xml',
-            kind: Value(FeedKind.hybrid.index),
+            kind: Value(FeedKind.podcast.index),
             createdAt: now,
             updatedAt: now,
           ),

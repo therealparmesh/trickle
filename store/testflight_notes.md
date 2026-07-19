@@ -13,6 +13,7 @@ Please test the combined podcast and feed-reader flow:
 - Pull to refresh from Home, Podcasts, and Reader; failed feeds should produce one clear result while the existing lists remain usable
 - Open an article in reader mode, share it, and open it in the browser
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
+- Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
 - During Refresh now or OPML import, confirm the row reports item progress, other settings remain usable, and Back works immediately while the operation continues
 - Reopen Settings during an active import and tap Import OPML again; it should rejoin the existing operation instead of opening another picker
 - Export podcast subscriptions, reading subscriptions, and all subscriptions separately; verify each file contains the expected feeds

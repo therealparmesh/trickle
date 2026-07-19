@@ -6,7 +6,7 @@ import 'package:trickle/data/parsing/feed_parser.dart';
 void main() {
   const parser = FeedParser();
 
-  test('parses a hybrid RSS feed and upgrades item URLs to HTTPS', () {
+  test('keeps a podcast with a non-audio item out of reading feeds', () {
     final parsed = parser.parse('''
       <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
         <channel>
@@ -30,9 +30,9 @@ void main() {
       </rss>
     ''', Uri.parse('https://example.com/feed.xml'));
 
-    expect(parsed.kind, FeedKind.hybrid);
+    expect(parsed.kind, FeedKind.podcast);
     expect(parsed.episodes, hasLength(1));
-    expect(parsed.articles, hasLength(1));
+    expect(parsed.articles, isEmpty);
     expect(
       parsed.episodes.single.duration,
       const Duration(hours: 1, minutes: 2, seconds: 3),
@@ -45,10 +45,6 @@ void main() {
     expect(
       parsed.episodes.single.imageUrl.toString(),
       'https://images.example.com/episode-one.jpg',
-    );
-    expect(
-      parsed.articles.single.canonicalUrl.toString(),
-      'https://example.com/dispatch',
     );
   });
 
@@ -79,17 +75,17 @@ void main() {
       </rss>
     ''', Uri.parse('https://example.com/feed.xml'));
 
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(2));
+    expect(parsed.articles.first.imageUrl, isNull);
     expect(
-      parsed.episodes.single.imageUrl.toString(),
-      'https://images.example.com/show.jpg',
-    );
-    expect(
-      parsed.articles.single.imageUrl.toString(),
+      parsed.articles.last.imageUrl.toString(),
       'https://images.example.com/article.webp',
     );
   });
 
-  test('uses RSS image enclosures for article and episode artwork', () {
+  test('uses RSS image enclosures as reading-entry artwork', () {
     final parsed = parser.parse('''
       <rss version="2.0">
         <channel>
@@ -115,12 +111,15 @@ void main() {
       </rss>
     ''', Uri.parse('https://example.com/feed.xml'));
 
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(2));
     expect(
-      parsed.articles.single.imageUrl.toString(),
+      parsed.articles.first.imageUrl.toString(),
       'https://images.example.com/article.jpg',
     );
     expect(
-      parsed.episodes.single.imageUrl.toString(),
+      parsed.articles.last.imageUrl.toString(),
       'https://images.example.com/episode.webp',
     );
   });
@@ -205,10 +204,9 @@ void main() {
       }
     ''', Uri.parse('https://example.com/feed.json'));
 
-    expect(parsed.episodes, hasLength(1));
-    expect(parsed.episodes.single.duration, isNull);
-    expect(parsed.episodes.single.fileSize, isNull);
-    expect(parsed.articles, hasLength(1));
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(2));
   });
 
   test('rejects fractional and out-of-range enclosure sizes', () {
@@ -293,17 +291,15 @@ void main() {
 
     expect(parsed.title, 'RDF Signal');
     expect(parsed.description, 'A plain summary.');
-    expect(parsed.kind, FeedKind.hybrid);
-    expect(parsed.articles.single.title, 'Root-level story');
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(2));
+    expect(parsed.articles.first.title, 'Root-level story');
     expect(
-      parsed.articles.single.canonicalUrl.toString(),
+      parsed.articles.first.canonicalUrl.toString(),
       'https://example.com/story',
     );
-    expect(parsed.episodes.single.title, 'Root-level episode');
-    expect(
-      parsed.episodes.single.enclosureUrl.toString(),
-      'https://cdn.example.com/episode.mp3',
-    );
+    expect(parsed.articles.last.title, 'Root-level episode');
   });
 
   test('preserves Atom HTML and XHTML but escapes plain text content', () {
@@ -343,8 +339,9 @@ void main() {
 
     expect(parsed.title, 'Typed feed');
     expect(parsed.description, 'A clean summary.');
-    expect(parsed.kind, FeedKind.hybrid);
-    expect(parsed.articles, hasLength(3));
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(4));
     expect(
       parsed.articles[0].contentHtml,
       'Literal &lt;b&gt;markup&lt;/b&gt; &amp; text',
@@ -358,12 +355,12 @@ void main() {
     expect(parsed.articles[2].contentHtml, contains('<em>body</em>'));
     expect(parsed.articles[2].contentHtml, contains('<img'));
     expect(
-      parsed.episodes.single.description,
+      parsed.articles.last.contentHtml,
       'Notes with &lt;script&gt;literal text&lt;/script&gt;',
     );
   });
 
-  test('uses Atom entry media and image enclosures as artwork', () {
+  test('uses Atom entry media and image enclosures for reading artwork', () {
     final parsed = parser.parse('''
       <feed xmlns="http://www.w3.org/2005/Atom"
         xmlns:media="http://search.yahoo.com/mrss/">
@@ -388,12 +385,15 @@ void main() {
       </feed>
     ''', Uri.parse('https://example.com/feed.atom'));
 
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(2));
     expect(
-      parsed.articles.single.imageUrl.toString(),
+      parsed.articles.first.imageUrl.toString(),
       'https://images.example.com/article.png',
     );
     expect(
-      parsed.episodes.single.imageUrl.toString(),
+      parsed.articles.last.imageUrl.toString(),
       'https://images.example.com/episode.jpg',
     );
   });
@@ -456,10 +456,7 @@ void main() {
       '&lt;h1&gt;Not markup&lt;/h1&gt; &amp; still text',
     );
     expect(parsed.articles[1].contentHtml, '<p>Actual <em>markup</em>.</p>');
-    expect(
-      parsed.episodes.single.description,
-      '&lt;b&gt;Literal notes&lt;/b&gt;',
-    );
+    expect(parsed.articles[2].contentHtml, '&lt;b&gt;Literal notes&lt;/b&gt;');
   });
 
   test('uses JSON Feed banner_image when an item image is absent', () {
@@ -486,12 +483,15 @@ void main() {
       }
     ''', Uri.parse('https://example.com/feed.json'));
 
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(2));
     expect(
-      parsed.articles.single.imageUrl.toString(),
+      parsed.articles.first.imageUrl.toString(),
       'https://images.example.com/article-banner.jpg',
     );
     expect(
-      parsed.episodes.single.imageUrl.toString(),
+      parsed.articles.last.imageUrl.toString(),
       'https://images.example.com/episode-banner.jpg',
     );
   });

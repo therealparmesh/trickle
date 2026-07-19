@@ -36,60 +36,82 @@ final class BackupService {
     final publicFeeds = await (_database.select(
       _database.feeds,
     )..where((row) => row.isPrivate.equals(false))).get();
-    final episodeQuery = _database.select(_database.episodes).join([
-      innerJoin(
-        _database.feeds,
-        _database.feeds.id.equalsExp(_database.episodes.feedId),
-      ),
-    ])..where(_database.feeds.isPrivate.equals(false));
+    final episodeQuery =
+        _database.select(_database.episodes).join([
+          innerJoin(
+            _database.feeds,
+            _database.feeds.id.equalsExp(_database.episodes.feedId),
+          ),
+        ])..where(
+          _database.feeds.isPrivate.equals(false) &
+              _database.feeds.kind.equals(FeedKind.podcast.index),
+        );
     final episodes = (await episodeQuery.get())
         .map((row) => row.readTable(_database.episodes))
         .toList(growable: false);
-    final articleQuery = _database.select(_database.articles).join([
-      innerJoin(
-        _database.feeds,
-        _database.feeds.id.equalsExp(_database.articles.feedId),
-      ),
-    ])..where(_database.feeds.isPrivate.equals(false));
+    final articleQuery =
+        _database.select(_database.articles).join([
+          innerJoin(
+            _database.feeds,
+            _database.feeds.id.equalsExp(_database.articles.feedId),
+          ),
+        ])..where(
+          _database.feeds.isPrivate.equals(false) &
+              _database.feeds.kind.equals(FeedKind.reader.index),
+        );
     final articles = (await articleQuery.get())
         .map((row) => row.readTable(_database.articles))
         .toList(growable: false);
-    final progressQuery = _database.select(_database.playbackProgresses).join([
-      innerJoin(
-        _database.episodes,
-        _database.episodes.id.equalsExp(_database.playbackProgresses.episodeId),
-      ),
-      innerJoin(
-        _database.feeds,
-        _database.feeds.id.equalsExp(_database.episodes.feedId),
-      ),
-    ])..where(_database.feeds.isPrivate.equals(false));
+    final progressQuery =
+        _database.select(_database.playbackProgresses).join([
+          innerJoin(
+            _database.episodes,
+            _database.episodes.id.equalsExp(
+              _database.playbackProgresses.episodeId,
+            ),
+          ),
+          innerJoin(
+            _database.feeds,
+            _database.feeds.id.equalsExp(_database.episodes.feedId),
+          ),
+        ])..where(
+          _database.feeds.isPrivate.equals(false) &
+              _database.feeds.kind.equals(FeedKind.podcast.index),
+        );
     final progress = (await progressQuery.get())
         .map((row) => row.readTable(_database.playbackProgresses))
         .toList(growable: false);
-    final queueQuery = _database.select(_database.queueEntries).join([
-      innerJoin(
-        _database.episodes,
-        _database.episodes.id.equalsExp(_database.queueEntries.episodeId),
-      ),
-      innerJoin(
-        _database.feeds,
-        _database.feeds.id.equalsExp(_database.episodes.feedId),
-      ),
-    ])..where(_database.feeds.isPrivate.equals(false));
+    final queueQuery =
+        _database.select(_database.queueEntries).join([
+          innerJoin(
+            _database.episodes,
+            _database.episodes.id.equalsExp(_database.queueEntries.episodeId),
+          ),
+          innerJoin(
+            _database.feeds,
+            _database.feeds.id.equalsExp(_database.episodes.feedId),
+          ),
+        ])..where(
+          _database.feeds.isPrivate.equals(false) &
+              _database.feeds.kind.equals(FeedKind.podcast.index),
+        );
     final queue = (await queueQuery.get())
         .map((row) => row.readTable(_database.queueEntries))
         .toList(growable: false);
-    final bookmarkQuery = _database.select(_database.bookmarks).join([
-      innerJoin(
-        _database.episodes,
-        _database.episodes.id.equalsExp(_database.bookmarks.episodeId),
-      ),
-      innerJoin(
-        _database.feeds,
-        _database.feeds.id.equalsExp(_database.episodes.feedId),
-      ),
-    ])..where(_database.feeds.isPrivate.equals(false));
+    final bookmarkQuery =
+        _database.select(_database.bookmarks).join([
+          innerJoin(
+            _database.episodes,
+            _database.episodes.id.equalsExp(_database.bookmarks.episodeId),
+          ),
+          innerJoin(
+            _database.feeds,
+            _database.feeds.id.equalsExp(_database.episodes.feedId),
+          ),
+        ])..where(
+          _database.feeds.isPrivate.equals(false) &
+              _database.feeds.kind.equals(FeedKind.podcast.index),
+        );
     final bookmarks = (await bookmarkQuery.get())
         .map((row) => row.readTable(_database.bookmarks))
         .toList(growable: false);
@@ -164,6 +186,7 @@ final class BackupService {
     }
     final acceptedFeeds = <String, String>{};
     final feedTitles = <String, String>{};
+    final feedKinds = <String, FeedKind>{};
     final acceptedEpisodes = <String, String>{};
     final episodeIdentities = <String, Map<String, String>>{};
     final articleIdentities = <String, Map<String, String>>{};
@@ -173,6 +196,10 @@ final class BackupService {
     )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
     final existingQueueIds = {
       for (final entry in existingQueue) entry.episodeId: entry.id,
+    };
+    final backupFeedsWithEpisodes = {
+      for (final episode in episodes)
+        if (episode['feedId'] case final String feedId) feedId,
     };
     var nextQueueSortKey = existingQueue.isEmpty
         ? 0
@@ -197,8 +224,21 @@ final class BackupService {
             (idCollision == null
                 ? feed.id
                 : stableContentId('feed', feed.feedUrl));
+        final importedKind = feed.kind == 2
+            ? (backupFeedsWithEpisodes.contains(feed.id)
+                  ? FeedKind.podcast
+                  : FeedKind.reader)
+            : FeedKind.values[feed.kind];
+        final existingKind = sameUrl?.kind;
+        final kind =
+            existingKind != null &&
+                existingKind >= 0 &&
+                existingKind < FeedKind.values.length
+            ? FeedKind.values[existingKind]
+            : importedKind;
         final sanitized = feed.copyWith(
           id: actualFeedId,
+          kind: kind.index,
           isPrivate: false,
           credentialRef: const Value(null),
           siteUrl: Value(_https(feed.siteUrl)),
@@ -210,6 +250,7 @@ final class BackupService {
         await _database.into(_database.feeds).insertOnConflictUpdate(sanitized);
         acceptedFeeds[feed.id] = actualFeedId;
         feedTitles[actualFeedId] = feed.title;
+        feedKinds[actualFeedId] = kind;
         await _database.indexSearchItem(
           entityId: actualFeedId,
           kind: 'feed',
@@ -226,6 +267,7 @@ final class BackupService {
         final enclosure = Uri.tryParse(episode.enclosureUrl);
         final actualFeedId = acceptedFeeds[episode.feedId];
         if (actualFeedId == null ||
+            feedKinds[actualFeedId] != FeedKind.podcast ||
             enclosure?.scheme != 'https' ||
             enclosure!.host.isEmpty ||
             enclosure.userInfo.isNotEmpty) {
@@ -278,7 +320,10 @@ final class BackupService {
       for (final json in articles) {
         final article = Article.fromJson(json);
         final actualFeedId = acceptedFeeds[article.feedId];
-        if (actualFeedId == null) continue;
+        if (actualFeedId == null ||
+            feedKinds[actualFeedId] != FeedKind.reader) {
+          continue;
+        }
         var identities = articleIdentities[actualFeedId];
         if (identities == null) {
           final existing = await (_database.select(

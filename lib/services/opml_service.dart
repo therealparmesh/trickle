@@ -289,14 +289,8 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
   final query = database.select(database.feeds)
     ..where((row) {
       return switch (scope) {
-        OpmlExportScope.podcasts => row.kind.isIn([
-          FeedKind.podcast.index,
-          FeedKind.hybrid.index,
-        ]),
-        OpmlExportScope.reading => row.kind.isIn([
-          FeedKind.reader.index,
-          FeedKind.hybrid.index,
-        ]),
+        OpmlExportScope.podcasts => row.kind.equals(FeedKind.podcast.index),
+        OpmlExportScope.reading => row.kind.equals(FeedKind.reader.index),
         OpmlExportScope.allSubscriptions => const Constant(true),
       };
     })

@@ -60,7 +60,6 @@ void main() {
       for (final entry in const [
         ('podcast', 'Podcast', FeedKind.podcast, false),
         ('reader', 'Reader', FeedKind.reader, false),
-        ('hybrid', 'Hybrid', FeedKind.hybrid, false),
         ('private', 'Private', FeedKind.podcast, true),
         ('token', 'Token', FeedKind.podcast, true),
         ('missing', 'Missing', FeedKind.podcast, true),
@@ -122,24 +121,22 @@ void main() {
       final reading = extractOpmlUrls(readingDocument.xml);
 
       expect(podcasts, [
-        'https://hybrid.test/rss',
         'https://podcast.test/rss',
         'https://token.test/rss?token=SECRET',
       ]);
       expect(allSubscriptions, [
-        'https://hybrid.test/rss',
         'https://podcast.test/rss',
         'https://reader.test/rss',
         'https://token.test/rss?token=SECRET',
       ]);
-      expect(reading, ['https://hybrid.test/rss', 'https://reader.test/rss']);
-      expect(podcastDocument.exported, 3);
+      expect(reading, ['https://reader.test/rss']);
+      expect(podcastDocument.exported, 2);
       expect(podcastDocument.skippedHeaderAuth, 1);
       expect(podcastDocument.skippedMissingCredentials, 2);
-      expect(allDocument.exported, 4);
+      expect(allDocument.exported, 3);
       expect(allDocument.skippedHeaderAuth, 1);
       expect(allDocument.skippedMissingCredentials, 2);
-      expect(readingDocument.exported, 2);
+      expect(readingDocument.exported, 1);
       expect(readingDocument.skippedHeaderAuth, 0);
       expect(readingDocument.skippedMissingCredentials, 0);
     },
@@ -212,12 +209,12 @@ void main() {
     expect(result.failed, 1);
   });
 
-  test('reports deterministic progress for Fountain-style OPML', () async {
+  test('reports deterministic progress for a standard podcast OPML', () async {
     const source = '''
       <?xml version="1.0" encoding="UTF-8"?>
       <opml version="2.0">
         <head>
-          <title>Fountain OPML</title>
+          <title>Podcast subscriptions</title>
           <dateCreated>Sat, 18 Jul 2026 17:00:42 GMT</dateCreated>
         </head>
         <body>

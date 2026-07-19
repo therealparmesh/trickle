@@ -27,7 +27,7 @@ abstract final class AppConstants {
   static const hairline = Color(0xFF2A303A);
 }
 
-enum FeedKind { podcast, reader, hybrid }
+enum FeedKind { podcast, reader }
 
 enum DownloadState { queued, running, paused, complete, failed, canceled }
 

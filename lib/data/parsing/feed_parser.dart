@@ -59,11 +59,10 @@ final class FeedParser {
       final enclosure = _audioEnclosure(item, sourceUrl);
       if (enclosure != null) {
         episodes.add(_rssEpisode(item, sourceUrl, image, enclosure));
-      } else {
-        articles.add(_rssArticle(item, sourceUrl));
       }
+      articles.add(_rssArticle(item, sourceUrl));
     }
-    return ParsedFeed(
+    return _exclusiveFeed(
       title: title,
       description: _plainText(_childText(channel, 'description')),
       siteUrl: _uri(_childText(channel, 'link'), sourceUrl),
@@ -71,9 +70,9 @@ final class FeedParser {
       author:
           _childText(channel, 'author') ??
           _childText(channel, 'managingEditor'),
-      kind: _kind(episodes, articles),
       episodes: episodes,
       articles: articles,
+      hasPodcastMetadata: _hasPodcastMetadata(channel),
     );
   }
 
@@ -194,24 +193,23 @@ final class FeedParser {
             transcripts: const [],
           ),
         );
-      } else {
-        articles.add(
-          ParsedArticle(
-            guid: _childText(entry, 'id'),
-            title: title ?? 'Untitled article',
-            author: _descendant(entry, 'author') == null
-                ? null
-                : _childText(_descendant(entry, 'author')!, 'name'),
-            summary: _plainText(summary),
-            contentHtml: content,
-            canonicalUrl: _uri(alternate.getAttribute('href'), sourceUrl),
-            imageUrl: entryImage,
-            publishedAt: _date(
-              _childText(entry, 'published') ?? _childText(entry, 'updated'),
-            ),
-          ),
-        );
       }
+      articles.add(
+        ParsedArticle(
+          guid: _childText(entry, 'id'),
+          title: title ?? 'Untitled article',
+          author: _descendant(entry, 'author') == null
+              ? null
+              : _childText(_descendant(entry, 'author')!, 'name'),
+          summary: _plainText(summary),
+          contentHtml: content,
+          canonicalUrl: _uri(alternate.getAttribute('href'), sourceUrl),
+          imageUrl: entryImage,
+          publishedAt: _date(
+            _childText(entry, 'published') ?? _childText(entry, 'updated'),
+          ),
+        ),
+      );
     }
     final alternate = root.children.whereType<XmlElement>().firstWhere(
       (element) =>
@@ -220,7 +218,7 @@ final class FeedParser {
               element.getAttribute('rel')?.toLowerCase() == 'alternate'),
       orElse: () => XmlElement(const XmlName.parts('missing')),
     );
-    return ParsedFeed(
+    return _exclusiveFeed(
       title: _plainText(_atomHtml(root, 'title')) ?? sourceUrl.host,
       description: _plainText(_atomHtml(root, 'subtitle')),
       siteUrl: _uri(alternate.getAttribute('href'), sourceUrl),
@@ -228,9 +226,9 @@ final class FeedParser {
       author: _descendant(root, 'author') == null
           ? null
           : _childText(_descendant(root, 'author')!, 'name'),
-      kind: _kind(episodes, articles),
       episodes: episodes,
       articles: articles,
+      hasPodcastMetadata: _hasPodcastMetadata(root),
     );
   }
 
@@ -281,31 +279,30 @@ final class FeedParser {
                 transcripts: const [],
               ),
             );
-          } else {
-            articles.add(
-              ParsedArticle(
-                guid: item['id']?.toString(),
-                title: item['title'] as String? ?? 'Untitled article',
-                author: _jsonAuthor(item),
-                summary: item['summary'] as String?,
-                contentHtml: content,
-                canonicalUrl: _uri(
-                  item['url'] as String? ?? item['external_url'] as String?,
-                  sourceUrl,
-                ),
-                imageUrl: _uri(
-                  item['image'] as String? ?? item['banner_image'] as String?,
-                  sourceUrl,
-                ),
-                publishedAt: _date(item['date_published'] as String?),
-              ),
-            );
           }
+          articles.add(
+            ParsedArticle(
+              guid: item['id']?.toString(),
+              title: item['title'] as String? ?? 'Untitled article',
+              author: _jsonAuthor(item),
+              summary: item['summary'] as String?,
+              contentHtml: content,
+              canonicalUrl: _uri(
+                item['url'] as String? ?? item['external_url'] as String?,
+                sourceUrl,
+              ),
+              imageUrl: _uri(
+                item['image'] as String? ?? item['banner_image'] as String?,
+                sourceUrl,
+              ),
+              publishedAt: _date(item['date_published'] as String?),
+            ),
+          );
         } on Object {
           // One malformed JSON Feed item must not hide every valid item.
         }
       }
-      return ParsedFeed(
+      return _exclusiveFeed(
         title: data['title'] as String? ?? sourceUrl.host,
         description: _plainText(data['description'] as String?),
         siteUrl: _uri(data['home_page_url'] as String?, sourceUrl),
@@ -314,9 +311,9 @@ final class FeedParser {
           sourceUrl,
         ),
         author: _jsonAuthor(data),
-        kind: _kind(episodes, articles),
         episodes: episodes,
         articles: articles,
+        hasPodcastMetadata: false,
       );
     } on FeedParseException {
       rethrow;
@@ -502,10 +499,38 @@ final class FeedParser {
     ].any(path.endsWith);
   }
 
-  FeedKind _kind(List<ParsedEpisode> episodes, List<ParsedArticle> articles) {
-    if (episodes.isNotEmpty && articles.isNotEmpty) return FeedKind.hybrid;
-    if (episodes.isNotEmpty) return FeedKind.podcast;
-    return FeedKind.reader;
+  ParsedFeed _exclusiveFeed({
+    required String title,
+    required String? description,
+    required Uri? siteUrl,
+    required Uri? imageUrl,
+    required String? author,
+    required List<ParsedEpisode> episodes,
+    required List<ParsedArticle> articles,
+    required bool hasPodcastMetadata,
+  }) {
+    final isPodcast =
+        episodes.isNotEmpty &&
+        (hasPodcastMetadata || episodes.length * 2 > articles.length);
+    return ParsedFeed(
+      title: title,
+      description: description,
+      siteUrl: siteUrl,
+      imageUrl: imageUrl,
+      author: author,
+      kind: isPodcast ? FeedKind.podcast : FeedKind.reader,
+      episodes: isPodcast ? episodes : const [],
+      articles: isPodcast ? const [] : articles,
+    );
+  }
+
+  bool _hasPodcastMetadata(XmlElement root) {
+    return root.descendants.whereType<XmlElement>().any((element) {
+      final namespace = element.name.namespaceUri?.toLowerCase();
+      return namespace == 'http://www.itunes.com/dtds/podcast-1.0.dtd' ||
+          namespace == 'https://www.itunes.com/dtds/podcast-1.0.dtd' ||
+          namespace == 'https://podcastindex.org/namespace/1.0';
+    });
   }
 
   String? _childText(XmlElement parent, String localName) {

@@ -5,7 +5,7 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 ## Features
 
 - Apple podcast catalog search, direct feed subscription, website feed discovery, standard OPML import, and podcast-only, reading-only, or combined OPML export
-- RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing, including hybrid audio/article feeds
+- RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or reading-feed classification
 - Streaming, resumable app-private downloads, persistent Up Next, automatic download cleanup, and per-feed automation
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`

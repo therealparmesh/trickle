@@ -31,7 +31,6 @@ Future<bool> _confirmUnsubscribe(BuildContext context, Feed feed) async {
   final noun = switch (kind) {
     FeedKind.podcast => 'podcast',
     FeedKind.reader => 'feed',
-    FeedKind.hybrid => 'channel',
   };
   return await showDialog<bool>(
         context: context,
@@ -89,7 +88,7 @@ Future<void> _removeSubscription(WidgetRef ref, Feed feed) async {
   );
 }
 
-/// Detail surface shared by podcast, article, and hybrid feeds.
+/// Detail surface shared by podcast and reading feeds.
 final class FeedDetailPage extends ConsumerStatefulWidget {
   const FeedDetailPage({required this.feedId, super.key});
 
@@ -115,8 +114,8 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
             0,
             FeedKind.values.length - 1,
           )];
-    final canShowEpisodes = kind == FeedKind.podcast || kind == FeedKind.hybrid;
-    final canShowArticles = kind == FeedKind.reader || kind == FeedKind.hybrid;
+    final canShowEpisodes = kind == FeedKind.podcast;
+    final canShowArticles = kind == FeedKind.reader;
     final AsyncValue<List<Episode>> episodes = canShowEpisodes
         ? ref.watch(episodesForFeedProvider(page))
         : const AsyncData([]);
@@ -143,7 +142,6 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       appBar: AppBar(
         title: Text(switch (kind) {
           FeedKind.reader => 'Feed',
-          FeedKind.hybrid => 'Channel',
           FeedKind.podcast => 'Podcast',
           null => 'Subscription',
         }),
@@ -157,7 +155,6 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
           IconButton(
             tooltip: switch (kind) {
               FeedKind.podcast => 'Podcast settings',
-              FeedKind.hybrid => 'Channel settings',
               _ => 'Feed settings',
             },
             onPressed: feed.value == null
@@ -601,7 +598,6 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
               children: [
                 Text(switch (_kind) {
                   FeedKind.reader => 'Feed settings',
-                  FeedKind.hybrid => 'Channel settings',
                   FeedKind.podcast => 'Podcast settings',
                 }, style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 14),
@@ -654,7 +650,6 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                   ),
                   title: Text(switch (_kind) {
                     FeedKind.reader => 'New article notifications',
-                    FeedKind.hybrid => 'New item notifications',
                     FeedKind.podcast => 'New episode notifications',
                   }),
                   subtitle: const Text(

@@ -494,11 +494,31 @@ final class FeedRepository {
       )..where((row) => row.feedId.equals(feedId))).get())
         article.id: article,
     };
+    final currentKind =
+        currentFeed != null &&
+            currentFeed.kind >= 0 &&
+            currentFeed.kind < FeedKind.values.length
+        ? FeedKind.values[currentFeed.kind]
+        : null;
+    // A temporary publisher-side feed regression must not move a populated
+    // subscription to the other library or erase its local history. Empty
+    // subscriptions may adopt a type once their first entries arrive.
+    final kind =
+        currentKind != null &&
+            (currentEpisodes.isNotEmpty || currentArticles.isNotEmpty)
+        ? currentKind
+        : parsed.kind;
+    final parsedEpisodes = kind == FeedKind.podcast
+        ? parsed.episodes
+        : const <ParsedEpisode>[];
+    final parsedArticles = kind == FeedKind.reader
+        ? parsed.articles
+        : const <ParsedArticle>[];
     final previousPrivateMedia = <String, Uri?>{};
 
     try {
       if (isPrivate) {
-        for (final episode in parsed.episodes) {
+        for (final episode in parsedEpisodes) {
           if (_feedDeletions.containsKey(feedId)) {
             throw const _FeedNoLongerExists();
           }
@@ -527,7 +547,7 @@ final class FeedRepository {
                 siteUrl: Value(parsed.siteUrl?.toString()),
                 imageUrl: Value(parsed.imageUrl?.toString()),
                 author: Value(parsed.author),
-                kind: Value(parsed.kind.index),
+                kind: Value(kind.index),
                 isPrivate: Value(isPrivate),
                 credentialRef: Value(credentialRef),
                 etag: Value(document.header('etag')),
@@ -552,12 +572,32 @@ final class FeedRepository {
           feedTitle: parsed.title,
         );
 
+        if (kind == FeedKind.podcast) {
+          await _database.customStatement(
+            "DELETE FROM search_index WHERE kind = 'article' AND entity_id "
+            'IN (SELECT id FROM articles WHERE feed_id = ?)',
+            [feedId],
+          );
+          await (_database.delete(
+            _database.articles,
+          )..where((row) => row.feedId.equals(feedId))).go();
+        } else {
+          await _database.customStatement(
+            "DELETE FROM search_index WHERE kind = 'episode' AND entity_id "
+            'IN (SELECT id FROM episodes WHERE feed_id = ?)',
+            [feedId],
+          );
+          await (_database.delete(
+            _database.episodes,
+          )..where((row) => row.feedId.equals(feedId))).go();
+        }
+
         for (
           var episodeIndex = 0;
-          episodeIndex < parsed.episodes.length;
+          episodeIndex < parsedEpisodes.length;
           episodeIndex++
         ) {
-          final parsedEpisode = parsed.episodes[episodeIndex];
+          final parsedEpisode = parsedEpisodes[episodeIndex];
           final identity = _episodeIdentity(
             parsedEpisode,
             isPrivate: isPrivate,
@@ -638,10 +678,10 @@ final class FeedRepository {
 
         for (
           var articleIndex = 0;
-          articleIndex < parsed.articles.length;
+          articleIndex < parsedArticles.length;
           articleIndex++
         ) {
-          final parsedArticle = parsed.articles[articleIndex];
+          final parsedArticle = parsedArticles[articleIndex];
           final identity = _articleIdentity(
             parsedArticle,
             isPrivate: isPrivate,

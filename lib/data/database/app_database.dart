@@ -202,7 +202,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -211,14 +211,44 @@ class AppDatabase extends _$AppDatabase {
       await _createIndexes();
       await _createSearchIndex();
     },
+    onUpgrade: (_, from, to) async {
+      if (from != 1 || to != 2) {
+        throw StateError('Unsupported database migration from $from to $to.');
+      }
+      // Version 2 changes feed classification data, not the SQL schema. The
+      // idempotent repair runs in beforeOpen after the search index is ready.
+    },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
       await customStatement('PRAGMA busy_timeout = 5000');
       if (details.wasCreated) return;
       await _createIndexes();
       await _createSearchIndex();
+      await _repairLegacyMixedFeeds();
     },
   );
+
+  Future<void> _repairLegacyMixedFeeds() async {
+    // Version 1 stored mixed feeds as kind 2 and surfaced them in both
+    // libraries. Preserve their playable side, remove the accidental article
+    // copies, and normalize the subscription to one library.
+    await customStatement(
+      "DELETE FROM search_index WHERE kind = 'article' AND entity_id IN ("
+      'SELECT articles.id FROM articles INNER JOIN feeds '
+      'ON feeds.id = articles.feed_id WHERE feeds.kind = 2 '
+      'AND EXISTS (SELECT 1 FROM episodes WHERE episodes.feed_id = feeds.id))',
+    );
+    await customStatement(
+      'DELETE FROM articles WHERE feed_id IN ('
+      'SELECT feeds.id FROM feeds WHERE feeds.kind = 2 '
+      'AND EXISTS (SELECT 1 FROM episodes WHERE episodes.feed_id = feeds.id))',
+    );
+    await customStatement(
+      'UPDATE feeds SET kind = 0 WHERE kind = 2 '
+      'AND EXISTS (SELECT 1 FROM episodes WHERE episodes.feed_id = feeds.id)',
+    );
+    await customStatement('UPDATE feeds SET kind = 1 WHERE kind = 2');
+  }
 
   Future<void> _createIndexes() async {
     await customStatement('DROP INDEX IF EXISTS idx_articles_unread');
@@ -285,7 +315,7 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<Feed>> watchPodcastFeeds() {
     return (select(feeds)
-          ..where((row) => row.kind.isIn(const [0, 2]))
+          ..where((row) => row.kind.equals(FeedKind.podcast.index))
           ..orderBy([
             (row) => OrderingTerm.asc(row.title),
             (row) => OrderingTerm.asc(row.id),
@@ -295,7 +325,7 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<Feed>> watchReaderFeeds() {
     return (select(feeds)
-          ..where((row) => row.kind.isIn(const [1, 2]))
+          ..where((row) => row.kind.equals(FeedKind.reader.index))
           ..orderBy([
             (row) => OrderingTerm.asc(row.title),
             (row) => OrderingTerm.asc(row.id),

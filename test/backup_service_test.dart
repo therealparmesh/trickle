@@ -4,6 +4,7 @@ import 'package:archive/archive.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trickle/core/constants.dart';
 import 'package:trickle/core/errors.dart';
 import 'package:trickle/core/feed_identity.dart';
 import 'package:trickle/data/database/app_database.dart';
@@ -24,6 +25,7 @@ void main() {
             id: 'local-feed',
             title: 'Local title',
             feedUrl: 'https://example.com/feed.xml',
+            kind: Value(FeedKind.podcast.index),
             createdAt: now,
             updatedAt: now,
           ),
@@ -197,5 +199,54 @@ void main() {
         ),
       ),
     });
+  });
+
+  test('restore normalizes a version 1 mixed feed to podcast-only', () async {
+    final now = DateTime.utc(2026, 7, 19);
+    final localFeed = (await database.select(database.feeds).get()).single;
+    final importedFeed = localFeed.copyWith(
+      id: 'legacy-mixed',
+      feedUrl: 'https://example.com/legacy.xml',
+      kind: 2,
+    );
+    final episode = Episode(
+      id: 'legacy-episode',
+      feedId: importedFeed.id,
+      title: 'Playable',
+      enclosureUrl: 'https://example.com/playable.mp3',
+      discoveredAt: now,
+      explicit: false,
+      played: false,
+      starred: false,
+      automationApplied: true,
+    );
+    final article = Article(
+      id: 'legacy-article',
+      feedId: importedFeed.id,
+      title: 'Accidental article copy',
+      discoveredAt: now,
+      starred: false,
+    );
+    final payload = {
+      'format': 'trickle-backup',
+      'version': 1,
+      'feeds': [importedFeed.toJson()],
+      'episodes': [episode.toJson()],
+      'articles': [article.toJson()],
+      'progress': <Object?>[],
+      'queue': <Object?>[],
+      'bookmarks': <Object?>[],
+      'settings': <Object?>[],
+    };
+    final archive = Archive()
+      ..addFile(ArchiveFile.string('trickle.json', jsonEncode(payload)));
+
+    final result = await backups.importBytes(ZipEncoder().encode(archive));
+    final restored = await database.feedByUrl(importedFeed.feedUrl);
+
+    expect(restored?.kind, FeedKind.podcast.index);
+    expect(result.episodes, 1);
+    expect(result.articles, 0);
+    expect(await database.select(database.articles).get(), isEmpty);
   });
 }

@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
@@ -122,6 +123,56 @@ void main() {
     );
   });
 
+  test('an imported podcast is stored only in the podcast library', () async {
+    network.close();
+    await database.close();
+    database = AppDatabase.forTesting(NativeDatabase.memory());
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _PodcastWithTextItemAdapter(),
+      addressValidator: (_) async {},
+    );
+    privateFeeds = PrivateFeedStore(storage: const FlutterSecureStorage());
+    repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+
+    final feed = await repository.subscribe('https://example.test/show.xml');
+
+    expect(feed.kind, FeedKind.podcast.index);
+    expect(await database.select(database.episodes).get(), hasLength(1));
+    expect(await database.select(database.articles).get(), isEmpty);
+    expect(await database.watchPodcastFeeds().first, hasLength(1));
+    expect(await database.watchReaderFeeds().first, isEmpty);
+  });
+
+  test('a malformed refresh cannot erase or reclassify a podcast', () async {
+    network.close();
+    await database.close();
+    database = AppDatabase.forTesting(NativeDatabase.memory());
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _PodcastThenArticleAdapter(),
+      addressValidator: (_) async {},
+    );
+    privateFeeds = PrivateFeedStore(storage: const FlutterSecureStorage());
+    repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+    final subscribed = await repository.subscribe(
+      'https://example.test/show.xml',
+    );
+
+    expect(await repository.refreshFeed(subscribed), isTrue);
+
+    final refreshed = await database.feedById(subscribed.id);
+    expect(refreshed?.kind, FeedKind.podcast.index);
+    expect(await database.select(database.episodes).get(), hasLength(1));
+    expect(await database.select(database.articles).get(), isEmpty);
+  });
+
   test(
     'a not-modified refresh preserves content and clears the prior error',
     () async {
@@ -141,16 +192,11 @@ void main() {
       );
 
       final subscribed = await repository.subscribe(
-        'https://example.test/hybrid.xml',
+        'https://example.test/mixed.xml',
       );
-      final episode = (await database.select(database.episodes).get()).single;
-      final article = (await database.select(database.articles).get()).single;
+      final articles = await database.select(database.articles).get();
+      final article = articles.singleWhere((item) => item.guid == 'article-1');
       final readAt = DateTime.utc(2024, 1, 2, 3, 4, 5);
-      await (database.update(
-        database.episodes,
-      )..where((row) => row.id.equals(episode.id))).write(
-        const EpisodesCompanion(played: Value(true), starred: Value(true)),
-      );
       await (database.update(
         database.articles,
       )..where((row) => row.id.equals(article.id))).write(
@@ -170,20 +216,17 @@ void main() {
       expect(await repository.refreshFeed(staleFeed!), isTrue);
 
       final refreshedFeed = await database.feedById(subscribed.id);
-      final preservedEpisode = await database.episodeById(episode.id);
       final preservedArticle = await database.articleById(article.id);
       expect(refreshedFeed?.lastRefresh?.isAfter(oldRefresh), isTrue);
       expect(refreshedFeed?.refreshError, isNull);
-      expect(refreshedFeed?.etag, '"hybrid-v1"');
+      expect(refreshedFeed?.etag, '"mixed-v1"');
       expect(refreshedFeed?.lastModified, 'Wed, 01 Jan 2025 00:00:00 GMT');
-      expect(await database.select(database.episodes).get(), hasLength(1));
-      expect(await database.select(database.articles).get(), hasLength(1));
-      expect(preservedEpisode?.played, isTrue);
-      expect(preservedEpisode?.starred, isTrue);
+      expect(await database.select(database.episodes).get(), isEmpty);
+      expect(await database.select(database.articles).get(), hasLength(2));
       expect(preservedArticle?.readAt?.isAtSameMomentAs(readAt), isTrue);
       expect(preservedArticle?.starred, isTrue);
       expect(adapter.requests, hasLength(2));
-      expect(adapter.requests.last.headers['If-None-Match'], '"hybrid-v1"');
+      expect(adapter.requests.last.headers['If-None-Match'], '"mixed-v1"');
       expect(
         adapter.requests.last.headers['If-Modified-Since'],
         'Wed, 01 Jan 2025 00:00:00 GMT',
@@ -637,7 +680,7 @@ final class _NotModifiedFeedAdapter implements HttpClientAdapter {
       '''
       <rss version="2.0">
         <channel>
-          <title>Hybrid Signal</title>
+          <title>Mixed Signal</title>
           <item>
             <guid>episode-1</guid>
             <title>Audio Dispatch</title>
@@ -658,8 +701,89 @@ final class _NotModifiedFeedAdapter implements HttpClientAdapter {
       200,
       headers: {
         Headers.contentTypeHeader: ['application/rss+xml'],
-        'etag': ['"hybrid-v1"'],
+        'etag': ['"mixed-v1"'],
         'last-modified': ['Wed, 01 Jan 2025 00:00:00 GMT'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _PodcastWithTextItemAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      '''
+      <rss version="2.0"
+        xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+        <channel>
+          <title>Imported show</title>
+          <itunes:author>Publisher</itunes:author>
+          <item>
+            <guid>episode-1</guid>
+            <title>Playable episode</title>
+            <enclosure
+              url="https://cdn.example.test/audio.mp3"
+              type="audio/mpeg"
+            />
+          </item>
+          <item>
+            <guid>announcement-1</guid>
+            <title>Announcement without audio</title>
+            <description>Show announcement.</description>
+          </item>
+        </channel>
+      </rss>
+      ''',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/rss+xml'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _PodcastThenArticleAdapter implements HttpClientAdapter {
+  var _requests = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    _requests++;
+    return ResponseBody.fromString(
+      _requests == 1
+          ? '''
+            <rss version="2.0">
+              <channel><title>Show</title><item>
+                <guid>episode-1</guid><title>Episode</title>
+                <enclosure url="https://example.test/audio.mp3"
+                  type="audio/mpeg" />
+              </item></channel>
+            </rss>
+            '''
+          : '''
+            <rss version="2.0">
+              <channel><title>Temporarily malformed show</title><item>
+                <guid>text-1</guid><title>Publisher notice</title>
+                <description>Audio is temporarily unavailable.</description>
+              </item></channel>
+            </rss>
+            ''',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/rss+xml'],
       },
     );
   }
