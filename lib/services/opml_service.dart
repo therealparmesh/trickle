@@ -63,11 +63,18 @@ final class OpmlSubscription {
 }
 
 final class OpmlService {
-  OpmlService(this._database, this._feeds, this._privateFeeds);
+  OpmlService(
+    this._database,
+    this._feeds,
+    this._privateFeeds, {
+    Future<XFile?> Function()? pickFile,
+  }) : _pickFile = pickFile ?? _pickOpmlFile;
 
   final AppDatabase _database;
   final FeedRepository _feeds;
   final PrivateFeedStore _privateFeeds;
+  final Future<XFile?> Function() _pickFile;
+  _ActiveOpmlImport? _activeImport;
 
   Future<OpmlExportResult> exportAndShare({
     OpmlExportScope scope = OpmlExportScope.allSubscriptions,
@@ -108,31 +115,33 @@ final class OpmlService {
 
   Future<OpmlImportResult?> pickAndImport({
     void Function(int completed, int total)? onProgress,
-  }) async {
+  }) {
+    final active = _activeImport;
+    if (active != null) {
+      active.addProgressListener(onProgress);
+      return active.future;
+    }
+    final run = _ActiveOpmlImport()..addProgressListener(onProgress);
+    final future = _pickAndImport(run.reportProgress);
+    run.future = future;
+    _activeImport = run;
+    future.then<void>(
+      (_) => _clearActiveImport(run),
+      onError: (Object _, StackTrace _) => _clearActiveImport(run),
+    );
+    return future;
+  }
+
+  void _clearActiveImport(_ActiveOpmlImport run) {
+    if (identical(_activeImport, run)) _activeImport = null;
+  }
+
+  Future<OpmlImportResult?> _pickAndImport(
+    void Function(int completed, int total) onProgress,
+  ) async {
     XFile? file;
     try {
-      file = await openFile(
-        acceptedTypeGroups: const [
-          XTypeGroup(
-            label: 'OPML',
-            extensions: ['opml', 'xml'],
-            mimeTypes: [
-              'text/x-opml',
-              'application/x-opml+xml',
-              'text/xml',
-              'application/xml',
-              // Android document providers commonly classify .opml as plain
-              // text or generic binary data. File contents are validated.
-              'text/plain',
-              'application/octet-stream',
-            ],
-            // iOS ignores extensions and requires uniform type identifiers.
-            // public.data keeps custom .opml files selectable; contents are
-            // still size-limited and validated before import.
-            uniformTypeIdentifiers: ['public.xml', 'public.data'],
-          ),
-        ],
-      );
+      file = await _pickFile();
     } on Object {
       throw const FeedParseException('Couldn’t open the file picker.');
     }
@@ -181,6 +190,50 @@ final class OpmlService {
       url,
       totalTimeout: AppConstants.opmlImportFeedTimeout,
     );
+  }
+}
+
+Future<XFile?> _pickOpmlFile() => openFile(
+  acceptedTypeGroups: const [
+    XTypeGroup(
+      label: 'OPML',
+      extensions: ['opml', 'xml'],
+      mimeTypes: [
+        'text/x-opml',
+        'application/x-opml+xml',
+        'text/xml',
+        'application/xml',
+        // Android document providers commonly classify .opml as plain text or
+        // generic binary data. File contents are validated after selection.
+        'text/plain',
+        'application/octet-stream',
+      ],
+      // iOS ignores extensions and requires uniform type identifiers.
+      // public.data keeps custom .opml files selectable; contents are still
+      // size-limited and validated before import.
+      uniformTypeIdentifiers: ['public.xml', 'public.data'],
+    ),
+  ],
+);
+
+final class _ActiveOpmlImport {
+  late final Future<OpmlImportResult?> future;
+  final List<void Function(int completed, int total)> _progressListeners = [];
+  int _completed = 0;
+  int? _total;
+
+  void addProgressListener(void Function(int completed, int total)? listener) {
+    if (listener == null) return;
+    _progressListeners.add(listener);
+    if (_total case final total?) listener(_completed, total);
+  }
+
+  void reportProgress(int completed, int total) {
+    _completed = completed;
+    _total = total;
+    for (final listener in _progressListeners) {
+      listener(completed, total);
+    }
   }
 }
 

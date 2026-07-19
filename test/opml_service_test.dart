@@ -1,11 +1,16 @@
 import 'dart:convert';
+import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
+import 'package:trickle/data/network/safe_network_client.dart';
+import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/services/opml_service.dart';
 import 'package:xml/xml.dart';
@@ -235,6 +240,50 @@ void main() {
     expect(result.imported, 5);
     expect(result.failed, 0);
     expect(progress, [(0, 5), (4, 5), (5, 5)]);
+  });
+
+  test('reuses an active import instead of reopening the picker', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    final privateFeeds = PrivateFeedStore(
+      storage: const FlutterSecureStorage(),
+    );
+    final feeds = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+    final picker = Completer<XFile?>();
+    var pickerCalls = 0;
+    final service = OpmlService(
+      database,
+      feeds,
+      privateFeeds,
+      pickFile: () {
+        pickerCalls++;
+        return picker.future;
+      },
+    );
+    addTearDown(() async {
+      network.close();
+      await database.close();
+    });
+
+    final first = service.pickAndImport();
+    final second = service.pickAndImport();
+
+    expect(identical(first, second), isTrue);
+    expect(pickerCalls, 1);
+    picker.complete(null);
+    expect(await first, null);
+    expect(await second, null);
+    await Future<void>.delayed(Duration.zero);
+    expect(await service.pickAndImport(), null);
+    expect(pickerCalls, 2);
   });
 
   test('rejects malformed OPML without attempting partial import', () async {
