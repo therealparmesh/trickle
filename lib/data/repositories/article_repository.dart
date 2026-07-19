@@ -100,7 +100,7 @@ final class ArticleRepository {
       if (canceled?.call() == true) return null;
       final uri = Uri.tryParse(article.canonicalUrl!);
       if (uri == null) {
-        _previewMisses.add(article.id);
+        _rememberPreviewMiss(article.id);
         return null;
       }
       final feed = await _database.feedById(article.feedId);
@@ -118,7 +118,7 @@ final class ArticleRepository {
         totalTimeout: const Duration(seconds: 8),
       );
       if (!_isHtmlDocument(document)) {
-        _previewMisses.add(article.id);
+        _rememberPreviewMiss(article.id);
         return null;
       }
       final image = await compute(_extractPreviewImage, (
@@ -126,7 +126,7 @@ final class ArticleRepository {
         document.url.toString(),
       )).timeout(const Duration(seconds: 2));
       if (image == null) {
-        _previewMisses.add(article.id);
+        _rememberPreviewMiss(article.id);
         return null;
       }
       if (canceled?.call() == true) return null;
@@ -147,6 +147,13 @@ final class ArticleRepository {
       return null;
     } finally {
       _releasePreviewSlot();
+    }
+  }
+
+  void _rememberPreviewMiss(String articleId) {
+    if (!_previewMisses.add(articleId)) return;
+    if (_previewMisses.length > _maxRememberedPreviewMisses) {
+      _previewMisses.remove(_previewMisses.first);
     }
   }
 
@@ -317,6 +324,7 @@ bool _looksLikeArticleBody(Element element) {
 }
 
 const _completeArticleTextLength = 400;
+const _maxRememberedPreviewMisses = 512;
 
 ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
   final fragment = html_parser.parseFragment(source);

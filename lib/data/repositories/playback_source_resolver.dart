@@ -30,13 +30,20 @@ final class PlaybackSourceResolver {
       _database.mediaDownloads,
     )..where((row) => row.episodeId.equals(episode.id))).getSingleOrNull();
     if (download?.status == DownloadState.complete.index &&
-        download?.filePath != null &&
-        await File(download!.filePath!).exists()) {
-      return PlaybackSource(
-        resource: download.filePath!,
-        headers: const {},
-        isLocal: true,
-      );
+        download?.filePath != null) {
+      try {
+        final file = File(download!.filePath!);
+        if (await file.exists() && await file.length() > 0) {
+          return PlaybackSource(
+            resource: download.filePath!,
+            headers: const {},
+            isLocal: true,
+          );
+        }
+      } on FileSystemException {
+        // Reconciliation will repair the stale row. Streaming remains usable
+        // in the meantime instead of failing on an unreadable local path.
+      }
     }
     final feed = await _database.feedById(episode.feedId);
     if (feed?.isPrivate == true) {
