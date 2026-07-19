@@ -22,9 +22,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final speed = ref.watch(speedProvider).value ?? AppConstants.defaultSpeed;
     final autoDelete =
-        ref.watch(autoDeleteProvider).value ?? AutoDeletePolicy.after24Hours;
+        ref.watch(autoDeleteProvider).value ?? AutoDeletePolicy.after1Day;
     final refresh =
-        ref.watch(refreshIntervalProvider).value ?? RefreshInterval.every6Hours;
+        ref.watch(refreshIntervalProvider).value ?? RefreshInterval.every4Hours;
     final images = ref.watch(remoteImagesProvider).value ?? true;
     final package = ref.watch(packageInfoProvider).value;
     return Scaffold(
@@ -406,9 +406,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   static String _autoDeleteLabel(AutoDeletePolicy policy) => switch (policy) {
     AutoDeletePolicy.immediately => 'Immediately',
-    AutoDeletePolicy.after24Hours => '24 hours',
-    AutoDeletePolicy.after7Days => '7 days',
-    AutoDeletePolicy.never => 'Never',
+    AutoDeletePolicy.after1Day => '1 day',
+    AutoDeletePolicy.after1Week => '1 week',
   };
 
   Future<void> _runTracked(

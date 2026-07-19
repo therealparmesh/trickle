@@ -285,12 +285,26 @@ void main() {
     expect(compactDuration(const Duration(minutes: 1).inMilliseconds), '1m');
   });
 
-  test('refresh intervals use the declared hours', () {
-    expect(RefreshInterval.hourly.duration, const Duration(hours: 1));
-    expect(RefreshInterval.every3Hours.duration, const Duration(hours: 3));
-    expect(RefreshInterval.every6Hours.duration, const Duration(hours: 6));
-    expect(RefreshInterval.every12Hours.duration, const Duration(hours: 12));
-    expect(RefreshInterval.daily.duration, const Duration(hours: 24));
+  test('settings expose the exact cleanup and refresh choices', () {
+    expect(AutoDeletePolicy.values, const [
+      AutoDeletePolicy.immediately,
+      AutoDeletePolicy.after1Day,
+      AutoDeletePolicy.after1Week,
+    ]);
+    expect(
+      RefreshInterval.values
+          .map((interval) => (interval.duration, interval.label))
+          .toList(),
+      const [
+        (Duration(hours: 1), '1 hour'),
+        (Duration(hours: 2), '2 hours'),
+        (Duration(hours: 4), '4 hours'),
+        (Duration(hours: 8), '8 hours'),
+        (Duration(hours: 12), '12 hours'),
+        (Duration(days: 1), '1 day'),
+        (Duration(days: 7), '1 week'),
+      ],
+    );
   });
 
   group('public URL identity', () {

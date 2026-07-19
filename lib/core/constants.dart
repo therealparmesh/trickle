@@ -31,15 +31,16 @@ enum FeedKind { podcast, reader }
 
 enum DownloadState { queued, running, paused, complete, failed, canceled }
 
-enum AutoDeletePolicy { immediately, after24Hours, after7Days, never }
+enum AutoDeletePolicy { immediately, after1Day, after1Week }
 
 enum RefreshInterval {
-  manual(Duration.zero, 'Manual'),
   hourly(Duration(hours: 1), '1 hour'),
-  every3Hours(Duration(hours: 3), '3 hours'),
-  every6Hours(Duration(hours: 6), '6 hours'),
+  every2Hours(Duration(hours: 2), '2 hours'),
+  every4Hours(Duration(hours: 4), '4 hours'),
+  every8Hours(Duration(hours: 8), '8 hours'),
   every12Hours(Duration(hours: 12), '12 hours'),
-  daily(Duration(hours: 24), '24 hours');
+  daily(Duration(days: 1), '1 day'),
+  weekly(Duration(days: 7), '1 week');
 
   const RefreshInterval(this.duration, this.label);
   final Duration duration;

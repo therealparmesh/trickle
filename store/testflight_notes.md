@@ -8,6 +8,8 @@ Please test the combined podcast and feed-reader flow:
 - Stream an episode whose audio passes through several publisher or measurement redirects
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
+- Verify played-download cleanup offers only Immediately, 1 day, and 1 week
+- Verify background refresh offers 1, 2, 4, 8, and 12 hours, 1 day, and 1 week
 - Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
 - Add a public RSS feed and test unread, read, and saved states
 - Pull to refresh from Home, Podcasts, and Reader; failed feeds should produce one clear result while the existing lists remain usable
@@ -23,5 +25,6 @@ Please test the combined podcast and feed-reader flow:
 - Add a bookmark with and without a note, then cancel the bookmark dialog and confirm playback remains usable
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views
+- Cold-launch the app and confirm the logo appears directly on the dark background without a light square
 
 Please include the device model, operating-system version, network state, and the feed or episode involved when reporting a problem. Never include private-feed credentials or complete private-feed URLs.

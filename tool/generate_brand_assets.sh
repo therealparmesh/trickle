@@ -13,6 +13,13 @@ render_svg() {
   printf '%s/%s.png' "$work" "$(basename "$source")"
 }
 
+render_transparent_svg() {
+  source="$1"
+  output="$work/$(basename "$source").png"
+  sips -s format png "$source" --out "$output" >/dev/null
+  printf '%s' "$output"
+}
+
 resize() {
   source="$1"
   size="$2"
@@ -30,7 +37,7 @@ resize_opaque() {
 }
 
 mark="$(render_svg "$root/assets/brand/trickle-mark.svg")"
-launch="$(render_svg "$root/assets/brand/trickle-launch.svg")"
+launch="$(render_transparent_svg "$root/assets/brand/trickle-launch.svg")"
 ios="$root/ios/Runner/Assets.xcassets/AppIcon.appiconset"
 
 resize_opaque "$mark" 1024 "$ios/Icon-App-1024x1024@1x.png"
@@ -56,7 +63,7 @@ resize_opaque "$mark" 144 "$root/android/app/src/main/res/mipmap-xxhdpi/ic_launc
 resize_opaque "$mark" 192 "$root/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
 resize_opaque "$mark" 512 "$root/store/trickle-icon-512.png"
 
-launch_set="$root/ios/Runner/Assets.xcassets/LaunchImage.imageset"
-resize "$launch" 96 "$launch_set/LaunchImage.png"
-resize "$launch" 192 "$launch_set/LaunchImage@2x.png"
-resize "$launch" 288 "$launch_set/LaunchImage@3x.png"
+launch_set="$root/ios/Runner/Assets.xcassets/TrickleLaunchMark.imageset"
+resize "$launch" 96 "$launch_set/TrickleLaunchMark.png"
+resize "$launch" 192 "$launch_set/TrickleLaunchMark@2x.png"
+resize "$launch" 288 "$launch_set/TrickleLaunchMark@3x.png"

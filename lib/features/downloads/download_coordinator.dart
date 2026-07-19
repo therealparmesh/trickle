@@ -376,7 +376,6 @@ final class DownloadCoordinator {
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
     final policy = await _settings.watchAutoDelete().first;
-    if (policy == AutoDeletePolicy.never) return;
     final now = DateTime.now().toUtc();
     final completed =
         await (_database.select(_database.mediaDownloads)..where(
@@ -398,11 +397,10 @@ final class DownloadCoordinator {
       final completedAt = progress.completedAt ?? progress.updatedAt;
       final due = switch (policy) {
         AutoDeletePolicy.immediately => completedAt,
-        AutoDeletePolicy.after24Hours => completedAt.add(
+        AutoDeletePolicy.after1Day => completedAt.add(
           const Duration(hours: 24),
         ),
-        AutoDeletePolicy.after7Days => completedAt.add(const Duration(days: 7)),
-        AutoDeletePolicy.never => DateTime.utc(9999),
+        AutoDeletePolicy.after1Week => completedAt.add(const Duration(days: 7)),
       };
       if (!due.isAfter(now)) {
         await delete(download.episodeId);

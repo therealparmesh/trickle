@@ -143,7 +143,6 @@ final class BackgroundRefreshService {
 
   Future<void> schedule(RefreshInterval interval) async {
     await Workmanager().cancelByUniqueName(backgroundRefreshTask);
-    if (interval == RefreshInterval.manual) return;
     await Workmanager().registerPeriodicTask(
       backgroundRefreshTask,
       backgroundRefreshTask,

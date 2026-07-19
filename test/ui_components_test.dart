@@ -471,10 +471,8 @@ void main() {
               width: 280,
               child: AdaptiveDropdownFormField<int>(
                 label: 'Remove played downloads',
-                initialValue: 24,
-                items: const [
-                  DropdownMenuItem(value: 24, child: Text('24 hours')),
-                ],
+                initialValue: 1,
+                items: const [DropdownMenuItem(value: 1, child: Text('1 day'))],
                 onChanged: (_) {},
               ),
             ),
@@ -484,7 +482,7 @@ void main() {
     );
 
     expect(
-      tester.getTopLeft(find.text('24 hours')).dy,
+      tester.getTopLeft(find.text('1 day')).dy,
       greaterThan(
         tester.getBottomLeft(find.text('Remove played downloads')).dy,
       ),

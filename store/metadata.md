@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 8
+- Build: 10
 
 ## Name
 
@@ -76,6 +76,8 @@ Upload the five iPhone screenshots from `store/apple/screenshots/` in filename o
 ## Version 1.0.0 release notes
 
 Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, stream or download episodes, build a queue, import standard OPML, export podcasts, reading feeds, or both, and read articles in a clean reader view.
+
+Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
 ## Privacy declarations
 

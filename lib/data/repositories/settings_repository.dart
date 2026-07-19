@@ -36,7 +36,7 @@ final class SettingsRepository {
       if (index == null ||
           index < 0 ||
           index >= AutoDeletePolicy.values.length) {
-        return AutoDeletePolicy.after24Hours;
+        return AutoDeletePolicy.after1Day;
       }
       return AutoDeletePolicy.values[index];
     });
@@ -60,7 +60,7 @@ final class SettingsRepository {
   RefreshInterval _parseRefreshInterval(String? value) {
     return RefreshInterval.values.firstWhere(
       (interval) => interval.name == value,
-      orElse: () => RefreshInterval.every6Hours,
+      orElse: () => RefreshInterval.every4Hours,
     );
   }
 
@@ -69,7 +69,6 @@ final class SettingsRepository {
 
   Future<bool> isBackgroundRefreshDue(DateTime now) async {
     final interval = await _refreshInterval();
-    if (interval == RefreshInterval.manual) return false;
     final raw = await _read(_lastBackgroundRefreshKey);
     final previous = raw == null ? null : DateTime.tryParse(raw);
     return previous == null ||

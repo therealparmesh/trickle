@@ -27,26 +27,21 @@ void main() {
 
   test('background due calculation respects the selected interval', () async {
     final now = DateTime.utc(2026, 7, 14, 12);
-    await settings.setRefreshInterval(RefreshInterval.every6Hours);
+    await settings.setRefreshInterval(RefreshInterval.every8Hours);
     expect(await settings.isBackgroundRefreshDue(now), isTrue);
     await settings.markBackgroundRefresh(now);
     expect(
       await settings.isBackgroundRefreshDue(
-        now.add(const Duration(hours: 5, minutes: 59)),
+        now.add(const Duration(hours: 7, minutes: 59)),
       ),
       isFalse,
     );
     expect(
-      await settings.isBackgroundRefreshDue(now.add(const Duration(hours: 6))),
+      await settings.isBackgroundRefreshDue(now.add(const Duration(hours: 8))),
       isTrue,
     );
     await settings.markBackgroundRefresh(now.add(const Duration(days: 1)));
     expect(await settings.isBackgroundRefreshDue(now), isTrue);
-    await settings.setRefreshInterval(RefreshInterval.manual);
-    expect(
-      await settings.isBackgroundRefreshDue(now.add(const Duration(days: 30))),
-      isFalse,
-    );
   });
 
   test(
@@ -66,7 +61,7 @@ void main() {
     },
   );
 
-  test('corrupt auto-delete values use the 24-hour fallback', () async {
+  test('corrupt auto-delete values use the 1-day fallback', () async {
     Future<void> store(String value) => database
         .into(database.appSettings)
         .insertOnConflictUpdate(
@@ -81,7 +76,7 @@ void main() {
       await store(value);
       expect(
         await settings.watchAutoDelete().first,
-        AutoDeletePolicy.after24Hours,
+        AutoDeletePolicy.after1Day,
       );
     }
   });
