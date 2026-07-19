@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 7
+- Build: 8
 
 ## Name
 
@@ -19,7 +19,7 @@ Podcasts and feeds, distilled
 
 ## Google short description
 
-A fast, private podcast and RSS app with a sharp cyberpunk interface.
+A fast podcast and RSS app with a sharp cyberpunk interface.
 
 ## Promotional text
 
@@ -35,7 +35,7 @@ trickle does not collect your information. Import standard OPML, export podcasts
 
 ## Keywords
 
-podcast,rss,feed,reader,offline,opml,audio,news,blog,private
+podcast,rss,feed,reader,offline,opml,audio,news,blog,queue
 
 ## Categories
 
@@ -75,7 +75,7 @@ Upload the five iPhone screenshots from `store/apple/screenshots/` in filename o
 
 ## Version 1.0.0 release notes
 
-Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, private app. Search the Apple podcast catalog, stream or download episodes, build a queue, import standard OPML, export podcasts, reading feeds, or both, and read articles in a clean reader view.
+Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, stream or download episodes, build a queue, import standard OPML, export podcasts, reading feeds, or both, and read articles in a clean reader view.
 
 ## Privacy declarations
 

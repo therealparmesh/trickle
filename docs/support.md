@@ -35,6 +35,8 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
+If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
+
 ### Background refresh or downloads
 
 Allow background activity for trickle in system settings. Android battery restrictions and iOS Low Power Mode can delay operating-system scheduled work.

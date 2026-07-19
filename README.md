@@ -76,7 +76,7 @@ The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and F
 - `docs/`: user-facing privacy and support documents
 - `store/`: release checklist, store metadata, App Store screenshots, and signing export configuration
 - `test/`: unit, repository, database, network, and widget regression tests
-- `tool/`: deterministic brand-asset, screenshot, and command-line release tooling
+- `tool/`: deterministic brand-asset generation, screenshot capture, and command-line release tooling
 
 After changing a brand source, run `tool/generate_brand_assets.sh` to rebuild the required Android, iOS, launch, and store raster assets.
 
@@ -85,7 +85,7 @@ After changing a brand source, run `tool/generate_brand_assets.sh` to rebuild th
 - [Privacy policy](https://therealparmesh.github.io/trickle/privacy)
 - [Support](https://therealparmesh.github.io/trickle/support)
 
-The repository publishes these documents from `main/docs` through GitHub Pages, matching the TrackMe release setup.
+The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 

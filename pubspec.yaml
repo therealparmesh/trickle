@@ -1,7 +1,7 @@
 name: trickle
-description: "A fast, private podcast player and RSS reader."
+description: "A fast podcast player and RSS reader that does not collect user information."
 publish_to: none
-version: 1.0.0+7
+version: 1.0.0+8
 
 environment:
   sdk: ^3.12.2
@@ -48,8 +48,9 @@ dev_dependencies:
 
 flutter:
   config:
-    # CocoaPods is required by three plugins. Using one dependency manager
-    # avoids duplicate registration and deployment-target drift in Xcode.
+    # CocoaPods is still required by part of the iOS plugin set. Using one
+    # dependency manager avoids duplicate registration and deployment-target
+    # drift in Xcode.
     enable-swift-package-manager: false
   uses-material-design: true
   assets:
