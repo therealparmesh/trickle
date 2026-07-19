@@ -15,7 +15,8 @@ final class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   final Set<String> _busyActions = {};
-  String? _activeFileAction;
+  String? _refreshProgress;
+  String? _opmlProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -26,340 +27,376 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ref.watch(refreshIntervalProvider).value ?? RefreshInterval.every6Hours;
     final images = ref.watch(remoteImagesProvider).value ?? true;
     final package = ref.watch(packageInfoProvider).value;
-    return PopScope(
-      canPop: _activeFileAction == null,
-      child: Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
-        body: AppBackdrop(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
-                children: [
-                  const SectionHeader('Playback'),
-                  AppCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text('Playback speed'),
-                        const SizedBox(height: 10),
-                        PlaybackSpeedSelector(
-                          selected: speed,
-                          onSelected: (value) => _runSilent(
-                            context,
-                            () => ref
-                                .read(audioHandlerProvider)
-                                .setSpeed(value / 100),
-                          ),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: AppBackdrop(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
+              children: [
+                const SectionHeader('Playback'),
+                AppCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Playback speed'),
+                      const SizedBox(height: 10),
+                      PlaybackSpeedSelector(
+                        selected: speed,
+                        onSelected: (value) => _runSilent(
+                          context,
+                          () => ref
+                              .read(audioHandlerProvider)
+                              .setSpeed(value / 100),
                         ),
-                        const SizedBox(height: 20),
-                        AdaptiveDropdownFormField<AutoDeletePolicy>(
-                          initialValue: autoDelete,
-                          label: 'Remove played downloads',
-                          items: AutoDeletePolicy.values
-                              .map(
-                                (value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(
-                                    _autoDeleteLabel(value),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) async {
-                            if (value == null) return;
-                            await _runSilent(context, () async {
-                              await ref
-                                  .read(settingsRepositoryProvider)
-                                  .setAutoDelete(value);
-                              await ref
-                                  .read(downloadCoordinatorProvider)
-                                  .cleanupPlayed();
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SectionHeader('Feeds'),
-                  AppCard(
-                    child: Column(
-                      children: [
-                        AdaptiveDropdownFormField<RefreshInterval>(
-                          initialValue: refresh,
-                          label: 'Background refresh',
-                          helperText:
-                              'Scheduled by your device; timing is approximate.',
-                          items: RefreshInterval.values
-                              .map(
-                                (value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value.label),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) async {
-                            if (value == null) return;
-                            await _runSilent(context, () async {
-                              await ref
-                                  .read(settingsRepositoryProvider)
-                                  .setRefreshInterval(value);
-                              await ref
-                                  .read(backgroundRefreshProvider)
-                                  .schedule(value);
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: images,
-                          onChanged: (value) => _runSilent(
-                            context,
-                            () => ref
-                                .read(settingsRepositoryProvider)
-                                .setRemoteImages(value),
-                          ),
-                          title: const Text('Remote images'),
-                          subtitle: const Text(
-                            'Loads artwork, reader images, show-note images, and link previews from publishers.',
-                          ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.sync_rounded,
-                          title: 'Refresh now',
-                          subtitle: 'Checks every subscription for new items.',
-                          busy: _busyActions.contains('refresh'),
-                          onTap: _busyActions.contains('refresh')
-                              ? null
-                              : () => _runTracked(
-                                  context,
-                                  'refresh',
-                                  () => refreshAllFeeds(
-                                    context,
-                                    ref,
-                                    announceSuccess: true,
-                                  ),
-                                ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.notifications_outlined,
-                          title: 'Allow notifications',
-                          subtitle: 'Choose alerts in each feed’s settings.',
-                          busy: _busyActions.contains('notifications'),
-                          onTap: _busyActions.contains('notifications')
-                              ? null
-                              : () => _runTracked(
-                                  context,
-                                  'notifications',
-                                  () async {
-                                    final granted = await ref
-                                        .read(notificationServiceProvider)
-                                        .requestPermission();
-                                    if (context.mounted) {
-                                      showMessageSnackBar(
-                                        context,
-                                        granted
-                                            ? 'Notifications allowed'
-                                            : 'Notifications remain disabled',
-                                      );
-                                    }
-                                  },
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SectionHeader('Import and export'),
-                  AppCard(
-                    child: Column(
-                      children: [
-                        _ActionTile(
-                          icon: Icons.upload_file_rounded,
-                          title: 'Export podcast OPML',
-                          subtitle:
-                              'Exports podcast subscriptions. Private feeds that require sign-in headers are skipped.',
-                          busy: _busyActions.contains('podcastExport'),
-                          onTap: _busyActions.contains('podcastExport')
-                              ? null
-                              : () => _runImportExport(
-                                  context,
-                                  'podcastExport',
-                                  () => _exportOpml(
-                                    context,
-                                    OpmlExportScope.podcasts,
-                                    'Podcast OPML ready',
-                                  ),
-                                ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.rss_feed_rounded,
-                          title: 'Export reading feeds as OPML',
-                          subtitle:
-                              'Exports reading subscriptions. Private feeds that require sign-in headers are skipped.',
-                          busy: _busyActions.contains('readerExport'),
-                          onTap: _busyActions.contains('readerExport')
-                              ? null
-                              : () => _runImportExport(
-                                  context,
-                                  'readerExport',
-                                  () => _exportOpml(
-                                    context,
-                                    OpmlExportScope.reading,
-                                    'Reading-feed OPML ready',
-                                  ),
-                                ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.dynamic_feed_rounded,
-                          title: 'Export all feeds as OPML',
-                          subtitle:
-                              'Exports podcast and reading subscriptions. Private feeds that require sign-in headers are skipped.',
-                          busy: _busyActions.contains('feedExport'),
-                          onTap: _busyActions.contains('feedExport')
-                              ? null
-                              : () => _runImportExport(
-                                  context,
-                                  'feedExport',
-                                  () => _exportOpml(
-                                    context,
-                                    OpmlExportScope.allSubscriptions,
-                                    'Subscription OPML ready',
-                                  ),
-                                ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.file_download_outlined,
-                          title: 'Import OPML',
-                          subtitle:
-                              'Imports podcast and reading subscriptions from standard OPML files.',
-                          busy: _busyActions.contains('opmlImport'),
-                          onTap: _busyActions.contains('opmlImport')
-                              ? null
-                              : () => _runImportExport(
-                                  context,
-                                  'opmlImport',
-                                  () async {
-                                    final result = await ref
-                                        .read(opmlServiceProvider)
-                                        .pickAndImport();
-                                    if (context.mounted && result != null) {
-                                      showMessageSnackBar(
-                                        context,
-                                        '${result.imported} imported · ${result.failed} failed',
-                                      );
-                                    }
-                                  },
-                                ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.archive_outlined,
-                          title: 'Export local backup',
-                          subtitle:
-                              'Exports subscriptions, settings, and progress without credentials or downloads.',
-                          busy: _busyActions.contains('backupExport'),
-                          onTap: _busyActions.contains('backupExport')
-                              ? null
-                              : () => _runImportExport(
-                                  context,
-                                  'backupExport',
-                                  () async {
-                                    await ref
-                                        .read(backupServiceProvider)
-                                        .exportAndShare(
-                                          sharePositionOrigin: _shareOrigin(
-                                            context,
-                                          ),
-                                        );
-                                    if (context.mounted) {
-                                      showMessageSnackBar(
-                                        context,
-                                        'Backup ready to share',
-                                      );
-                                    }
-                                  },
-                                ),
-                        ),
-                        _ActionTile(
-                          icon: Icons.unarchive_outlined,
-                          title: 'Restore local backup',
-                          subtitle: 'Merges a trickle ZIP into this device.',
-                          busy: _busyActions.contains('backupImport'),
-                          onTap: _busyActions.contains('backupImport')
-                              ? null
-                              : () => _runImportExport(
-                                  context,
-                                  'backupImport',
-                                  () async {
-                                    final result = await ref
-                                        .read(backupServiceProvider)
-                                        .pickAndImport();
-                                    if (result != null) {
-                                      final audio = ref.read(
-                                        audioHandlerProvider,
-                                      );
-                                      await audio.reloadQueueFromDatabase();
-                                      await audio.reloadSettingsFromDatabase();
-                                      final interval = await ref
-                                          .read(settingsRepositoryProvider)
-                                          .watchRefreshInterval()
-                                          .first;
-                                      await ref
-                                          .read(backgroundRefreshProvider)
-                                          .schedule(interval);
-                                    }
-                                    if (context.mounted && result != null) {
-                                      showMessageSnackBar(
-                                        context,
-                                        '${result.feeds} feeds · ${result.episodes} episodes · ${result.articles} articles restored',
-                                      );
-                                    }
-                                  },
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SectionHeader('Privacy'),
-                  const AppCard(
-                    child: Text(
-                      'trickle doesn’t collect your information.',
-                      style: TextStyle(
-                        color: AppConstants.secondaryText,
-                        height: 1.5,
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      AdaptiveDropdownFormField<AutoDeletePolicy>(
+                        initialValue: autoDelete,
+                        label: 'Remove played downloads',
+                        items: AutoDeletePolicy.values
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(
+                                  _autoDeleteLabel(value),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          await _runSilent(context, () async {
+                            await ref
+                                .read(settingsRepositoryProvider)
+                                .setAutoDelete(value);
+                            await ref
+                                .read(downloadCoordinatorProvider)
+                                .cleanupPlayed();
+                          });
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  AppCard(
-                    onTap: () => showLicensePage(
-                      context: context,
-                      applicationName: 'trickle',
-                      applicationLegalese: 'Third-party open-source licenses',
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.balance_rounded, color: AppConstants.cyan),
-                        SizedBox(width: 14),
-                        Expanded(child: Text('Open-source licenses')),
-                        Icon(Icons.chevron_right_rounded),
-                      ],
-                    ),
+                ),
+                const SectionHeader('Feeds'),
+                AppCard(
+                  child: Column(
+                    children: [
+                      AdaptiveDropdownFormField<RefreshInterval>(
+                        initialValue: refresh,
+                        label: 'Background refresh',
+                        helperText:
+                            'Scheduled by your device; timing is approximate.',
+                        items: RefreshInterval.values
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          await _runSilent(context, () async {
+                            await ref
+                                .read(settingsRepositoryProvider)
+                                .setRefreshInterval(value);
+                            await ref
+                                .read(backgroundRefreshProvider)
+                                .schedule(value);
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: images,
+                        onChanged: (value) => _runSilent(
+                          context,
+                          () => ref
+                              .read(settingsRepositoryProvider)
+                              .setRemoteImages(value),
+                        ),
+                        title: const Text('Remote images'),
+                        subtitle: const Text(
+                          'Loads artwork, reader images, show-note images, and link previews from publishers.',
+                        ),
+                      ),
+                      _ActionTile(
+                        icon: Icons.sync_rounded,
+                        title: 'Refresh now',
+                        subtitle:
+                            _refreshProgress ??
+                            'Checks every subscription for new items.',
+                        busy: _busyActions.contains('refresh'),
+                        onTap: _busyActions.contains('refresh')
+                            ? null
+                            : () async {
+                                setState(
+                                  () => _refreshProgress = 'Starting refresh…',
+                                );
+                                try {
+                                  await _runTracked(
+                                    context,
+                                    'refresh',
+                                    () => refreshAllFeeds(
+                                      context,
+                                      ref,
+                                      announceSuccess: true,
+                                      onProgress: (completed, total) {
+                                        if (!mounted) return;
+                                        setState(
+                                          () => _refreshProgress = total == 0
+                                              ? 'No subscriptions to refresh'
+                                              : 'Refreshing $completed of $total',
+                                        );
+                                      },
+                                    ),
+                                  );
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _refreshProgress = null);
+                                  }
+                                }
+                              },
+                      ),
+                      _ActionTile(
+                        icon: Icons.notifications_outlined,
+                        title: 'Allow notifications',
+                        subtitle: 'Choose alerts in each feed’s settings.',
+                        busy: _busyActions.contains('notifications'),
+                        onTap: _busyActions.contains('notifications')
+                            ? null
+                            : () => _runTracked(
+                                context,
+                                'notifications',
+                                () async {
+                                  final granted = await ref
+                                      .read(notificationServiceProvider)
+                                      .requestPermission();
+                                  if (context.mounted) {
+                                    showMessageSnackBar(
+                                      context,
+                                      granted
+                                          ? 'Notifications allowed'
+                                          : 'Notifications remain disabled',
+                                    );
+                                  }
+                                },
+                              ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'trickle ${package?.version ?? ''} (${package?.buildNumber ?? ''})',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
+                ),
+                const SectionHeader('Import and export'),
+                AppCard(
+                  child: Column(
+                    children: [
+                      _ActionTile(
+                        icon: Icons.upload_file_rounded,
+                        title: 'Export podcast OPML',
+                        subtitle:
+                            'Exports podcast subscriptions. Private feeds that require sign-in headers are skipped.',
+                        busy: _busyActions.contains('podcastExport'),
+                        onTap: _busyActions.contains('podcastExport')
+                            ? null
+                            : () => _runTracked(
+                                context,
+                                'podcastExport',
+                                () => _exportOpml(
+                                  context,
+                                  OpmlExportScope.podcasts,
+                                  'Podcast OPML ready',
+                                ),
+                              ),
+                      ),
+                      _ActionTile(
+                        icon: Icons.rss_feed_rounded,
+                        title: 'Export reading feeds as OPML',
+                        subtitle:
+                            'Exports reading subscriptions. Private feeds that require sign-in headers are skipped.',
+                        busy: _busyActions.contains('readerExport'),
+                        onTap: _busyActions.contains('readerExport')
+                            ? null
+                            : () => _runTracked(
+                                context,
+                                'readerExport',
+                                () => _exportOpml(
+                                  context,
+                                  OpmlExportScope.reading,
+                                  'Reading-feed OPML ready',
+                                ),
+                              ),
+                      ),
+                      _ActionTile(
+                        icon: Icons.dynamic_feed_rounded,
+                        title: 'Export all feeds as OPML',
+                        subtitle:
+                            'Exports podcast and reading subscriptions. Private feeds that require sign-in headers are skipped.',
+                        busy: _busyActions.contains('feedExport'),
+                        onTap: _busyActions.contains('feedExport')
+                            ? null
+                            : () => _runTracked(
+                                context,
+                                'feedExport',
+                                () => _exportOpml(
+                                  context,
+                                  OpmlExportScope.allSubscriptions,
+                                  'Subscription OPML ready',
+                                ),
+                              ),
+                      ),
+                      _ActionTile(
+                        icon: Icons.file_download_outlined,
+                        title: 'Import OPML',
+                        subtitle:
+                            _opmlProgress ??
+                            'Imports podcast and reading subscriptions from standard OPML files.',
+                        busy: _busyActions.contains('opmlImport'),
+                        onTap: _busyActions.contains('opmlImport')
+                            ? null
+                            : () async {
+                                try {
+                                  await _runTracked(
+                                    context,
+                                    'opmlImport',
+                                    () async {
+                                      final result = await ref
+                                          .read(opmlServiceProvider)
+                                          .pickAndImport(
+                                            onProgress: (completed, total) {
+                                              if (!mounted) return;
+                                              setState(
+                                                () => _opmlProgress = total == 0
+                                                    ? 'No subscriptions found'
+                                                    : 'Importing $completed of $total',
+                                              );
+                                            },
+                                          );
+                                      if (context.mounted && result != null) {
+                                        showMessageSnackBar(
+                                          context,
+                                          '${result.imported} imported · ${result.failed} failed',
+                                        );
+                                      }
+                                    },
+                                  );
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _opmlProgress = null);
+                                  }
+                                }
+                              },
+                      ),
+                      _ActionTile(
+                        icon: Icons.archive_outlined,
+                        title: 'Export local backup',
+                        subtitle:
+                            'Exports subscriptions, settings, and progress without credentials or downloads.',
+                        busy: _busyActions.contains('backupExport'),
+                        onTap: _busyActions.contains('backupExport')
+                            ? null
+                            : () => _runTracked(
+                                context,
+                                'backupExport',
+                                () async {
+                                  await ref
+                                      .read(backupServiceProvider)
+                                      .exportAndShare(
+                                        sharePositionOrigin: _shareOrigin(
+                                          context,
+                                        ),
+                                      );
+                                  if (context.mounted) {
+                                    showMessageSnackBar(
+                                      context,
+                                      'Backup ready to share',
+                                    );
+                                  }
+                                },
+                              ),
+                      ),
+                      _ActionTile(
+                        icon: Icons.unarchive_outlined,
+                        title: 'Restore local backup',
+                        subtitle: 'Merges a trickle ZIP into this device.',
+                        busy: _busyActions.contains('backupImport'),
+                        onTap: _busyActions.contains('backupImport')
+                            ? null
+                            : () => _runTracked(
+                                context,
+                                'backupImport',
+                                () async {
+                                  final result = await ref
+                                      .read(backupServiceProvider)
+                                      .pickAndImport();
+                                  if (result != null) {
+                                    final audio = ref.read(
+                                      audioHandlerProvider,
+                                    );
+                                    await audio.reloadQueueFromDatabase();
+                                    await audio.reloadSettingsFromDatabase();
+                                    final interval = await ref
+                                        .read(settingsRepositoryProvider)
+                                        .watchRefreshInterval()
+                                        .first;
+                                    await ref
+                                        .read(backgroundRefreshProvider)
+                                        .schedule(interval);
+                                  }
+                                  if (context.mounted && result != null) {
+                                    showMessageSnackBar(
+                                      context,
+                                      '${result.feeds} feeds · ${result.episodes} episodes · ${result.articles} articles restored',
+                                    );
+                                  }
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SectionHeader('Privacy'),
+                const AppCard(
+                  child: Text(
+                    'trickle doesn’t collect your information.',
+                    style: TextStyle(
                       color: AppConstants.secondaryText,
-                      fontSize: 12,
+                      height: 1.5,
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+                AppCard(
+                  onTap: () => showLicensePage(
+                    context: context,
+                    applicationName: 'trickle',
+                    applicationLegalese: 'Third-party open-source licenses',
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.balance_rounded, color: AppConstants.cyan),
+                      SizedBox(width: 14),
+                      Expanded(child: Text('Open-source licenses')),
+                      Icon(Icons.chevron_right_rounded),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'trickle ${package?.version ?? ''} (${package?.buildNumber ?? ''})',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppConstants.secondaryText,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -373,39 +410,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     AutoDeletePolicy.after7Days => '7 days',
     AutoDeletePolicy.never => 'Never',
   };
-
-  Future<void> _runImportExport(
-    BuildContext context,
-    String action,
-    Future<void> Function() operation,
-  ) async {
-    if (_activeFileAction != null) {
-      showMessageSnackBar(
-        context,
-        'Finish the current import or export first.',
-      );
-      return;
-    }
-    setState(() {
-      _activeFileAction = action;
-      _busyActions.add(action);
-    });
-    try {
-      await operation();
-    } on Object catch (error) {
-      if (context.mounted) showErrorSnackBar(context, error);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _activeFileAction = null;
-          _busyActions.remove(action);
-        });
-      } else {
-        _activeFileAction = null;
-        _busyActions.remove(action);
-      }
-    }
-  }
 
   Future<void> _runTracked(
     BuildContext context,

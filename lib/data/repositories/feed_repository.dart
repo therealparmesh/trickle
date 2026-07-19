@@ -239,6 +239,7 @@ final class FeedRepository {
   Future<RefreshAllResult> refreshAll({
     Duration? budget,
     int maxConcurrent = 4,
+    void Function(int completed, int total)? onProgress,
   }) async {
     if (maxConcurrent < 1 || maxConcurrent > 4) {
       throw ArgumentError.value(maxConcurrent, 'maxConcurrent');
@@ -248,23 +249,24 @@ final class FeedRepository {
     )..orderBy([(row) => OrderingTerm.asc(row.lastRefresh)])).get();
     final stopwatch = Stopwatch()..start();
     var failed = 0;
+    onProgress?.call(0, feeds.length);
     for (var offset = 0; offset < feeds.length; offset += maxConcurrent) {
       final remaining = budget == null ? null : budget - stopwatch.elapsed;
       if (remaining != null && remaining <= Duration.zero) {
         return RefreshAllResult(failedFeeds: failed);
       }
       final end = (offset + maxConcurrent).clamp(0, feeds.length);
+      final perFeedTimeout =
+          remaining == null || remaining > AppConstants.feedRefreshTimeout
+          ? AppConstants.feedRefreshTimeout
+          : remaining;
       final outcomes = await Future.wait(
         feeds
             .sublist(offset, end)
-            .map(
-              (feed) => refreshFeed(
-                feed,
-                totalTimeout: remaining ?? const Duration(seconds: 120),
-              ),
-            ),
+            .map((feed) => refreshFeed(feed, totalTimeout: perFeedTimeout)),
       );
       failed += outcomes.where((success) => !success).length;
+      onProgress?.call(end, feeds.length);
     }
     return RefreshAllResult(failedFeeds: failed);
   }

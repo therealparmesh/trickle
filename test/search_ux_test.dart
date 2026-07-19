@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/app/theme.dart';
+import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
@@ -40,6 +42,19 @@ void main() {
         network: feedNetwork,
         privateFeeds: PrivateFeedStore(storage: const FlutterSecureStorage()),
       );
+      final now = DateTime.utc(2026, 7, 18);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'existing',
+              title: 'Existing Signal',
+              feedUrl: 'http://existing.test/feed.xml#catalog',
+              kind: Value(FeedKind.podcast.index),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
       final router = GoRouter(
         initialLocation: '/search',
         routes: [
@@ -53,13 +68,6 @@ void main() {
           ),
         ],
       );
-      addTearDown(() async {
-        router.dispose();
-        searchNetwork.close();
-        feedNetwork.close();
-        await database.close();
-      });
-
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -84,6 +92,7 @@ void main() {
 
       expect(find.text('Explicit Signal'), findsOneWidget);
       expect(find.text('Second Signal'), findsOneWidget);
+      expect(find.text('Existing Signal'), findsOneWidget);
       expect(find.text('E'), findsOneWidget);
       final firstRow = find.ancestor(
         of: find.text('Explicit Signal'),
@@ -92,6 +101,14 @@ void main() {
       final secondRow = find.ancestor(
         of: find.text('Second Signal'),
         matching: find.byType(ListTile),
+      );
+      final existingRow = find.ancestor(
+        of: find.text('Existing Signal'),
+        matching: find.byType(ListTile),
+      );
+      expect(
+        find.descendant(of: existingRow, matching: find.text('Subscribed')),
+        findsOneWidget,
       );
       await tester.tap(
         find.descendant(of: firstRow, matching: find.text('Subscribe')),
@@ -142,6 +159,13 @@ void main() {
       );
       expect(find.text('Search'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+      router.dispose();
+      searchNetwork.close();
+      feedNetwork.close();
+      await database.close();
+      await tester.pump(const Duration(milliseconds: 1));
     },
   );
 
@@ -199,6 +223,13 @@ final class _CatalogAdapter implements HttpClientAdapter {
             "artistName": "trickle tests",
             "feedUrl": "https://second.test/feed.xml",
             "trackCount": 4,
+            "collectionExplicitness": "cleaned"
+          },
+          {
+            "collectionName": "Existing Signal",
+            "artistName": "trickle tests",
+            "feedUrl": "https://existing.test/feed.xml",
+            "trackCount": 8,
             "collectionExplicitness": "cleaned"
           }
         ]

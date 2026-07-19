@@ -25,9 +25,12 @@ Future<void> refreshAllFeeds(
   BuildContext context,
   WidgetRef ref, {
   bool announceSuccess = false,
+  void Function(int completed, int total)? onProgress,
 }) async {
   try {
-    final result = await ref.read(syncCoordinatorProvider).refresh();
+    final result = await ref
+        .read(syncCoordinatorProvider)
+        .refresh(onProgress: onProgress);
     if (!context.mounted) return;
     if (result.failedFeeds > 0) {
       final count = result.failedFeeds;

@@ -117,8 +117,6 @@ final class BackupService {
       ShareParams(
         files: [XFile(file.path, mimeType: 'application/zip')],
         subject: 'trickle backup',
-        text:
-            'Local trickle backup. Private feed credentials and downloaded media are excluded.',
         sharePositionOrigin: sharePositionOrigin,
       ),
     );

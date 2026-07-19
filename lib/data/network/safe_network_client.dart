@@ -10,6 +10,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/errors.dart';
 import '../../core/url_identity.dart';
 
+const _maxMediaRedirects = 10;
+
 final class NetworkDocument {
   const NetworkDocument({
     required this.url,
@@ -269,7 +271,7 @@ final class SafeNetworkClient {
     var current = normalizeHttps(requested);
     var requestHeaders = Map<String, String>.of(headers)
       ..removeWhere((name, _) => name.toLowerCase() == 'range');
-    for (var redirects = 0; redirects <= 5; redirects++) {
+    for (var redirects = 0; redirects <= _maxMediaRedirects; redirects++) {
       final dnsBudget = _remaining(totalTimeout, stopwatch);
       final validator = _addressValidator;
       if (validator == null) {
@@ -303,7 +305,7 @@ final class SafeNetworkClient {
               'The media server returned an invalid redirect.',
             );
           }
-          if (redirects == 5) {
+          if (redirects == _maxMediaRedirects) {
             throw const NetworkException(
               'The media server redirected too many times.',
             );

@@ -207,6 +207,36 @@ void main() {
     expect(result.failed, 1);
   });
 
+  test('reports deterministic progress for Fountain-style OPML', () async {
+    const source = '''
+      <?xml version="1.0" encoding="UTF-8"?>
+      <opml version="2.0">
+        <head>
+          <title>Fountain OPML</title>
+          <dateCreated>Sat, 18 Jul 2026 17:00:42 GMT</dateCreated>
+        </head>
+        <body>
+          <outline text="One" type="rss" xmlUrl="https://one.test/rss" />
+          <outline text="Two" type="rss" xmlUrl="https://two.test/rss" />
+          <outline text="Three" type="rss" xmlUrl="https://three.test/rss" />
+          <outline text="Four" type="rss" xmlUrl="https://four.test/rss" />
+          <outline text="Five" type="rss" xmlUrl="https://five.test/rss" />
+        </body>
+      </opml>
+    ''';
+    final progress = <(int, int)>[];
+
+    final result = await importOpmlSubscriptions(
+      source,
+      subscribe: (_) async {},
+      onProgress: (completed, total) => progress.add((completed, total)),
+    );
+
+    expect(result.imported, 5);
+    expect(result.failed, 0);
+    expect(progress, [(0, 5), (4, 5), (5, 5)]);
+  });
+
   test('rejects malformed OPML without attempting partial import', () async {
     var attempts = 0;
 

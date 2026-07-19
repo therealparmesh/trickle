@@ -141,6 +141,38 @@ void main() {
   );
 
   test(
+    'media preflight accepts common multi-tracker redirect chains',
+    () async {
+      var requests = 0;
+      final adapter = _FakeAdapter((options, _) async {
+        requests++;
+        if (requests <= 7) {
+          return ResponseBody.fromString(
+            '',
+            302,
+            headers: {
+              'location': ['https://tracker$requests.example.test/audio.mp3'],
+            },
+          );
+        }
+        return ResponseBody.fromString('', 206);
+      });
+      final client = _client(adapter);
+
+      final resource = await client.resolveResource(
+        Uri.parse('https://publisher.example.test/audio.mp3'),
+      );
+
+      expect(requests, 8);
+      expect(
+        resource.url.toString(),
+        'https://tracker7.example.test/audio.mp3',
+      );
+      client.close();
+    },
+  );
+
+  test(
     'media preflight rejects an unsafe redirect before requesting it',
     () async {
       final requests = <RequestOptions>[];

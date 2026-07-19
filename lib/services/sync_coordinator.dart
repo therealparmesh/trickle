@@ -40,16 +40,21 @@ final class SyncCoordinator {
   Future<void> _refreshTail = Future<void>.value();
   _FullRefreshRun? _activeFullRefresh;
 
-  Future<SyncResult> refresh({bool notify = false}) {
+  Future<SyncResult> refresh({
+    bool notify = false,
+    void Function(int completed, int total)? onProgress,
+  }) {
     final active = _activeFullRefresh;
     if (active != null) {
       if (notify) active.notifyRequested = true;
+      active.addProgressListener(onProgress);
       return active.future;
     }
     final run = _FullRefreshRun(
       startedAt: DateTime.now().toUtc(),
       notifyRequested: notify,
     );
+    run.addProgressListener(onProgress);
     final future = _serialize(() => _runRefresh(run));
     run.future = future;
     _activeFullRefresh = run;
@@ -101,7 +106,9 @@ final class SyncCoordinator {
   }
 
   Future<SyncResult> _runRefresh(_FullRefreshRun run) async {
-    final refreshResult = await RefreshLock.run(_feeds.refreshAll);
+    final refreshResult = await RefreshLock.run(
+      () => _feeds.refreshAll(onProgress: run.reportProgress),
+    );
     await applyPodcastAutomation(
       database: _database,
       queueEpisode: _audio.addEpisodeToQueue,
@@ -234,4 +241,21 @@ final class _FullRefreshRun {
   final DateTime startedAt;
   bool notifyRequested;
   late final Future<SyncResult> future;
+  final List<void Function(int completed, int total)> _progressListeners = [];
+  int _completed = 0;
+  int _total = 0;
+
+  void addProgressListener(void Function(int completed, int total)? listener) {
+    if (listener == null) return;
+    _progressListeners.add(listener);
+    if (_total > 0) listener(_completed, _total);
+  }
+
+  void reportProgress(int completed, int total) {
+    _completed = completed;
+    _total = total;
+    for (final listener in _progressListeners) {
+      listener(completed, total);
+    }
+  }
 }

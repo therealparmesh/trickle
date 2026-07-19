@@ -106,7 +106,9 @@ final class OpmlService {
     );
   }
 
-  Future<OpmlImportResult?> pickAndImport() async {
+  Future<OpmlImportResult?> pickAndImport({
+    void Function(int completed, int total)? onProgress,
+  }) async {
     XFile? file;
     try {
       file = await openFile(
@@ -144,8 +146,8 @@ final class OpmlService {
       final text = decodeOpmlBytes(await file.readAsBytes());
       return await importOpmlSubscriptions(
         text,
-        subscribe: (url) =>
-            _feeds.subscribe(url, totalTimeout: const Duration(seconds: 45)),
+        subscribe: _subscribeIfMissing,
+        onProgress: onProgress,
       );
     } on FeedParseException {
       rethrow;
@@ -159,6 +161,26 @@ final class OpmlService {
     } on FileSystemException {
       throw const FeedParseException('Couldn’t read that OPML file.');
     }
+  }
+
+  Future<void> _subscribeIfMissing(String url) async {
+    final parsed = Uri.parse(url.trim());
+    if (!parsed.hasQuery) {
+      final normalized = parsed
+          .replace(
+            scheme: parsed.scheme.toLowerCase() == 'http'
+                ? 'https'
+                : parsed.scheme.toLowerCase(),
+            host: parsed.host.toLowerCase(),
+          )
+          .removeFragment()
+          .toString();
+      if (await _database.feedByUrl(normalized) != null) return;
+    }
+    await _feeds.subscribe(
+      url,
+      totalTimeout: AppConstants.opmlImportFeedTimeout,
+    );
   }
 }
 
@@ -313,10 +335,12 @@ String buildOpmlDocument({
 Future<OpmlImportResult> importOpmlSubscriptions(
   String source, {
   required Future<void> Function(String url) subscribe,
+  void Function(int completed, int total)? onProgress,
 }) async {
   final urls = await compute(extractOpmlUrls, source);
   var imported = 0;
   var failed = 0;
+  onProgress?.call(0, urls.length);
   for (var offset = 0; offset < urls.length; offset += 4) {
     final end = (offset + 4).clamp(0, urls.length);
     final outcomes = await Future.wait(
@@ -331,6 +355,7 @@ Future<OpmlImportResult> importOpmlSubscriptions(
     );
     imported += outcomes.where((success) => success).length;
     failed += outcomes.where((success) => !success).length;
+    onProgress?.call(end, urls.length);
   }
   return OpmlImportResult(imported: imported, failed: failed);
 }

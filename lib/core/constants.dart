@@ -7,8 +7,10 @@ abstract final class AppConstants {
   static const forward = Duration(seconds: 30);
   static const progressCheckpoint = Duration(seconds: 15);
   static const sleepFade = Duration(seconds: 4);
+  static const feedRefreshTimeout = Duration(seconds: 30);
+  static const opmlImportFeedTimeout = Duration(seconds: 30);
 
-  static const feedLimitBytes = 10 * 1024 * 1024;
+  static const feedLimitBytes = 32 * 1024 * 1024;
   static const discoveryLimitBytes = 2 * 1024 * 1024;
   static const articleLimitBytes = 5 * 1024 * 1024;
   static const imageLimitBytes = 10 * 1024 * 1024;

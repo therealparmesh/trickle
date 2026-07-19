@@ -180,6 +180,11 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   Widget _catalogResults() {
+    final subscribedUrls = {
+      for (final feed
+          in ref.watch(podcastFeedsProvider).value ?? const <Feed>[])
+        if (!feed.isPrivate) _feedUrlIdentity(feed.feedUrl),
+    };
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       itemCount: _catalog.length,
@@ -206,6 +211,9 @@ class _SearchPageState extends ConsumerState<SearchPage>
           trailing: _CatalogSubscribeButton(
             key: ValueKey(result.feedUrl),
             podcastName: result.name,
+            subscribed: subscribedUrls.contains(
+              _feedUrlIdentity(result.feedUrl.toString()),
+            ),
             onSubscribe: () => _subscribe(result),
           ),
         );
@@ -307,11 +315,13 @@ class _SearchPageState extends ConsumerState<SearchPage>
 final class _CatalogSubscribeButton extends StatefulWidget {
   const _CatalogSubscribeButton({
     required this.podcastName,
+    required this.subscribed,
     required this.onSubscribe,
     super.key,
   });
 
   final String podcastName;
+  final bool subscribed;
   final Future<bool> Function() onSubscribe;
 
   @override
@@ -325,18 +335,19 @@ class _CatalogSubscribeButtonState extends State<_CatalogSubscribeButton> {
 
   @override
   Widget build(BuildContext context) {
-    final label = _subscribed ? 'Subscribed' : 'Subscribe';
+    final subscribed = widget.subscribed || _subscribed;
+    final label = subscribed ? 'Subscribed' : 'Subscribe';
     return Semantics(
       button: true,
-      enabled: !_busy && !_subscribed,
-      liveRegion: _busy || _subscribed,
+      enabled: !_busy && !subscribed,
+      liveRegion: _busy || subscribed,
       label: _busy ? 'Subscribing to ${widget.podcastName}' : label,
       excludeSemantics: true,
       child: SizedBox(
         width: 108,
         height: 48,
         child: TextButton(
-          onPressed: _busy || _subscribed ? null : _subscribe,
+          onPressed: _busy || subscribed ? null : _subscribe,
           child: _busy
               ? const SizedBox.square(
                   dimension: 18,
@@ -357,4 +368,18 @@ class _CatalogSubscribeButtonState extends State<_CatalogSubscribeButton> {
       _subscribed = subscribed;
     });
   }
+}
+
+String _feedUrlIdentity(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null || uri.host.isEmpty) return value.trim();
+  return uri
+      .replace(
+        scheme: uri.scheme.toLowerCase() == 'http'
+            ? 'https'
+            : uri.scheme.toLowerCase(),
+        host: uri.host.toLowerCase(),
+      )
+      .removeFragment()
+      .toString();
 }

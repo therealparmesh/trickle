@@ -389,16 +389,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     String episodeId,
     Duration position,
   ) async {
-    final note = TextEditingController();
+    var note = '';
     try {
       final save = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text('Bookmark at ${formatDuration(position)}'),
           content: TextField(
-            controller: note,
             autofocus: true,
             maxLength: 500,
+            onChanged: (value) => note = value,
             decoration: const InputDecoration(labelText: 'Note (optional)'),
           ),
           actions: [
@@ -422,7 +422,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                 id: const Uuid().v4(),
                 episodeId: episodeId,
                 positionMs: position.inMilliseconds,
-                note: Value(note.text.trim().isEmpty ? null : note.text.trim()),
+                note: Value(note.trim().isEmpty ? null : note.trim()),
                 createdAt: DateTime.now().toUtc(),
               ),
             );
@@ -432,8 +432,6 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       }
     } on Object catch (error) {
       if (context.mounted) showErrorSnackBar(context, error);
-    } finally {
-      note.dispose();
     }
   }
 }
