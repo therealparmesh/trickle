@@ -102,14 +102,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             .toList(),
                         onChanged: (value) async {
                           if (value == null) return;
-                          await _runSilent(context, () async {
-                            await ref
+                          await _runSilent(
+                            context,
+                            () => ref
                                 .read(settingsRepositoryProvider)
-                                .setRefreshInterval(value);
-                            await ref
-                                .read(backgroundRefreshProvider)
-                                .schedule(value);
-                          });
+                                .setRefreshInterval(value),
+                          );
                         },
                       ),
                       const SizedBox(height: 8),
@@ -341,13 +339,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     );
                                     await audio.reloadQueueFromDatabase();
                                     await audio.reloadSettingsFromDatabase();
-                                    final interval = await ref
-                                        .read(settingsRepositoryProvider)
-                                        .watchRefreshInterval()
-                                        .first;
-                                    await ref
-                                        .read(backgroundRefreshProvider)
-                                        .schedule(interval);
                                   }
                                   if (context.mounted && result != null) {
                                     showMessageSnackBar(

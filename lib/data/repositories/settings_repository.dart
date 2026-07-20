@@ -10,7 +10,6 @@ final class SettingsRepository {
   static const _autoDeleteKey = 'auto_delete';
   static const _refreshKey = 'refresh_interval';
   static const _remoteImagesKey = 'remote_images';
-  static const _lastBackgroundRefreshKey = 'last_background_refresh';
 
   Stream<int> watchSpeed() => _watch(_speedKey).map(_parseSpeed);
 
@@ -64,21 +63,8 @@ final class SettingsRepository {
     );
   }
 
-  Future<RefreshInterval> _refreshInterval() async =>
+  Future<RefreshInterval> refreshInterval() async =>
       _parseRefreshInterval(await _read(_refreshKey));
-
-  Future<bool> isBackgroundRefreshDue(DateTime now) async {
-    final interval = await _refreshInterval();
-    final raw = await _read(_lastBackgroundRefreshKey);
-    final previous = raw == null ? null : DateTime.tryParse(raw);
-    return previous == null ||
-        previous.isAfter(now) ||
-        now.difference(previous) >= interval.duration;
-  }
-
-  Future<void> markBackgroundRefresh(DateTime at) {
-    return _write(_lastBackgroundRefreshKey, at.toUtc().toIso8601String());
-  }
 
   Stream<String?> _watch(String key) {
     return (_database.select(_database.appSettings)

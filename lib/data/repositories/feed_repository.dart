@@ -238,15 +238,30 @@ final class FeedRepository {
 
   Future<RefreshAllResult> refreshAll({
     Duration? budget,
+    DateTime? dueAt,
+    Duration? minimumAge,
     int maxConcurrent = 4,
     void Function(int completed, int total)? onProgress,
   }) async {
     if (maxConcurrent < 1 || maxConcurrent > 4) {
       throw ArgumentError.value(maxConcurrent, 'maxConcurrent');
     }
-    final feeds = await (_database.select(
-      _database.feeds,
-    )..orderBy([(row) => OrderingTerm.asc(row.lastRefresh)])).get();
+    if ((dueAt == null) != (minimumAge == null) ||
+        (minimumAge != null && minimumAge <= Duration.zero)) {
+      throw ArgumentError('dueAt and a positive minimumAge must be combined.');
+    }
+    final query = _database.select(_database.feeds);
+    if (dueAt != null) {
+      final refreshBefore = dueAt.subtract(minimumAge!);
+      query.where(
+        (row) =>
+            row.lastRefresh.isNull() |
+            row.lastRefresh.isSmallerOrEqualValue(refreshBefore) |
+            row.lastRefresh.isBiggerThanValue(dueAt),
+      );
+    }
+    query.orderBy([(row) => OrderingTerm.asc(row.lastRefresh)]);
+    final feeds = await query.get();
     final stopwatch = Stopwatch()..start();
     var failed = 0;
     onProgress?.call(0, feeds.length);

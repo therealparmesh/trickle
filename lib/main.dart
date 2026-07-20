@@ -140,7 +140,6 @@ final class _TrickleRuntime {
     required this.extras,
     required this.settings,
     required this.backup,
-    required this.background,
     required this.notifications,
     required this.opml,
     required this.sync,
@@ -158,7 +157,6 @@ final class _TrickleRuntime {
   final EpisodeExtrasRepository extras;
   final SettingsRepository settings;
   final BackupService backup;
-  final BackgroundRefreshService background;
   final NotificationService notifications;
   final OpmlService opml;
   final SyncCoordinator sync;
@@ -178,7 +176,6 @@ final class _TrickleRuntime {
         audioHandlerProvider.overrideWithValue(audio),
         downloadCoordinatorProvider.overrideWithValue(downloads),
         backupServiceProvider.overrideWithValue(backup),
-        backgroundRefreshProvider.overrideWithValue(background),
         notificationServiceProvider.overrideWithValue(notifications),
         opmlServiceProvider.overrideWithValue(opml),
         syncCoordinatorProvider.overrideWithValue(sync),
@@ -233,7 +230,6 @@ Future<_TrickleRuntime> _createRuntime() async {
       }
     });
     final notifications = NotificationService();
-    final background = BackgroundRefreshService();
     final search = PodcastSearchRepository(database, network);
     final articles = ArticleRepository(database, network, privateFeeds);
     final extras = EpisodeExtrasRepository(database, network, privateFeeds);
@@ -249,7 +245,9 @@ Future<_TrickleRuntime> _createRuntime() async {
 
     unawaited(downloads.initialize().catchError((Object _) {}));
     unawaited(notifications.initialize().catchError((Object _) {}));
-    unawaited(_initializeBackground(background, settings));
+    unawaited(
+      BackgroundRefreshService().initialize().catchError((Object _) {}),
+    );
     await audio.reloadQueueFromDatabase();
     return _TrickleRuntime(
       database: database,
@@ -264,7 +262,6 @@ Future<_TrickleRuntime> _createRuntime() async {
       extras: extras,
       settings: settings,
       backup: backup,
-      background: background,
       notifications: notifications,
       opml: opml,
       sync: sync,
@@ -289,16 +286,4 @@ Future<void> _prepareSecureStoreForInstall(PrivateFeedStore store) async {
   await store.clearStaleInstallData();
   await sentinel.create(recursive: true);
   await sentinel.writeAsString('1', flush: true);
-}
-
-Future<void> _initializeBackground(
-  BackgroundRefreshService background,
-  SettingsRepository settings,
-) async {
-  try {
-    await background.initialize();
-    await background.schedule(await settings.watchRefreshInterval().first);
-  } on Object {
-    // Foreground refresh remains available if OS scheduling is unavailable.
-  }
 }

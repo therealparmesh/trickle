@@ -10,6 +10,7 @@ Please test the combined podcast and feed-reader flow:
 - Download an episode, use it offline, and test automatic cleanup after playback
 - Verify played-download cleanup offers only Immediately, 1 day, and 1 week
 - Verify background refresh offers 1, 2, 4, 8, and 12 hours, 1 day, and 1 week
+- With several subscriptions due, confirm background refresh does not postpone unprocessed feeds by resetting the whole refresh interval
 - Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
 - Add a public RSS feed and test unread, read, and saved states
 - Pull to refresh from Home, Podcasts, and Reader; failed feeds should produce one clear result while the existing lists remain usable

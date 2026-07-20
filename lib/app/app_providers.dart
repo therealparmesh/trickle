@@ -19,7 +19,6 @@ import '../data/repositories/settings_repository.dart';
 import '../data/security/private_feed_store.dart';
 import '../features/downloads/download_coordinator.dart';
 import '../features/player/trickle_audio_handler.dart';
-import '../services/background_refresh_service.dart';
 import '../services/backup_service.dart';
 import '../services/notification_service.dart';
 import '../services/opml_service.dart';
@@ -60,9 +59,6 @@ final downloadCoordinatorProvider = Provider<DownloadCoordinator>(
 );
 final backupServiceProvider = Provider<BackupService>(
   (ref) => _uninitialized('backupService'),
-);
-final backgroundRefreshProvider = Provider<BackgroundRefreshService>(
-  (ref) => _uninitialized('backgroundRefresh'),
 );
 final notificationServiceProvider = Provider<NotificationService>(
   (ref) => _uninitialized('notificationService'),

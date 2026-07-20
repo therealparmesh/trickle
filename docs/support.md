@@ -39,7 +39,7 @@ If a completed download is missing or unusable, trickle falls back to the publis
 
 ### Background refresh or downloads
 
-Allow background activity for trickle in system settings. Android battery restrictions and iOS Low Power Mode can delay operating-system scheduled work.
+Allow background activity for trickle in system settings. The selected interval applies to each subscription from its last refresh. Work is time-bounded; subscriptions that do not fit remain eligible for the next opportunity. Android battery restrictions and iOS Low Power Mode can delay operating-system scheduled work.
 
 ### Notifications
 

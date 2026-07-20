@@ -102,11 +102,7 @@ void main() {
           value: '999',
           updatedAt: now,
         ).toJson(),
-        AppSetting(
-          key: 'last_background_refresh',
-          value: DateTime.utc(2099).toIso8601String(),
-          updatedAt: now,
-        ).toJson(),
+        AppSetting(key: 'unknown', value: 'ignored', updatedAt: now).toJson(),
       ],
     };
     final archive = Archive()

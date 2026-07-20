@@ -25,23 +25,20 @@ void main() {
     },
   );
 
-  test('background due calculation respects the selected interval', () async {
-    final now = DateTime.utc(2026, 7, 14, 12);
+  test('refresh interval defaults and persists', () async {
+    expect(await settings.refreshInterval(), RefreshInterval.every4Hours);
     await settings.setRefreshInterval(RefreshInterval.every8Hours);
-    expect(await settings.isBackgroundRefreshDue(now), isTrue);
-    await settings.markBackgroundRefresh(now);
-    expect(
-      await settings.isBackgroundRefreshDue(
-        now.add(const Duration(hours: 7, minutes: 59)),
-      ),
-      isFalse,
-    );
-    expect(
-      await settings.isBackgroundRefreshDue(now.add(const Duration(hours: 8))),
-      isTrue,
-    );
-    await settings.markBackgroundRefresh(now.add(const Duration(days: 1)));
-    expect(await settings.isBackgroundRefreshDue(now), isTrue);
+    expect(await settings.refreshInterval(), RefreshInterval.every8Hours);
+    await database
+        .into(database.appSettings)
+        .insertOnConflictUpdate(
+          AppSettingsCompanion.insert(
+            key: 'refresh_interval',
+            value: 'invalid',
+            updatedAt: DateTime.utc(2026, 7, 19),
+          ),
+        );
+    expect(await settings.refreshInterval(), RefreshInterval.every4Hours);
   });
 
   test(

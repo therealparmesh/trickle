@@ -5,7 +5,6 @@ import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 import 'package:workmanager/workmanager.dart';
 
-import '../core/constants.dart';
 import '../data/database/app_database.dart';
 import '../data/network/safe_network_client.dart';
 import '../data/repositories/feed_repository.dart';
@@ -18,6 +17,8 @@ import 'refresh_lock.dart';
 import 'sync_coordinator.dart';
 
 const backgroundRefreshTask = 'com.parmscript.trickle.feed-refresh';
+const _backgroundRefreshBudget = Duration(seconds: 15);
+const _backgroundRefreshCadence = Duration(hours: 1);
 
 @pragma('vm:entry-point')
 void backgroundCallbackDispatcher() {
@@ -36,16 +37,16 @@ void backgroundCallbackDispatcher() {
       );
       final settings = SettingsRepository(database);
       final now = DateTime.now().toUtc();
-      if (!await settings.isBackgroundRefreshDue(now)) return true;
       final startedAt = now;
+      final interval = await settings.refreshInterval();
       // Keep all network work inside the OS task lifetime so the database is
       // never closed under an in-flight refresh.
       await RefreshLock.run(
         () => repository.refreshAll(
-          // Keep the network phase bounded and leave time for automation,
-          // notifications, and database cleanup within the OS task window.
-          budget: const Duration(seconds: 20),
-          maxConcurrent: 1,
+          budget: _backgroundRefreshBudget,
+          dueAt: now,
+          minimumAge: interval.duration,
+          maxConcurrent: 2,
         ),
       );
       final sources = PlaybackSourceResolver(database, privateFeeds, network);
@@ -98,9 +99,6 @@ void backgroundCallbackDispatcher() {
           // A denied notification permission must not fail feed refresh.
         }
       }
-      // A bounded partial pass is valid work. Feeds are ordered by their last
-      // refresh time, so skipped feeds naturally move to the front next run.
-      await settings.markBackgroundRefresh(now);
       return true;
     } on Object {
       return false;
@@ -138,15 +136,12 @@ Future<void> _addEpisodeToQueue(AppDatabase database, String episodeId) async {
 }
 
 final class BackgroundRefreshService {
-  Future<void> initialize() =>
-      Workmanager().initialize(backgroundCallbackDispatcher);
-
-  Future<void> schedule(RefreshInterval interval) async {
-    await Workmanager().cancelByUniqueName(backgroundRefreshTask);
+  Future<void> initialize() async {
+    await Workmanager().initialize(backgroundCallbackDispatcher);
     await Workmanager().registerPeriodicTask(
       backgroundRefreshTask,
       backgroundRefreshTask,
-      frequency: interval.duration,
+      frequency: _backgroundRefreshCadence,
       constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
       backoffPolicy: BackoffPolicy.exponential,

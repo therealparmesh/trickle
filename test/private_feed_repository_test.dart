@@ -95,6 +95,39 @@ void main() {
     );
   });
 
+  test('bounded refresh selects only feeds due before the cutoff', () async {
+    final cutoff = DateTime.utc(2026, 7, 19, 12);
+    Future<void> insertFeed(String id, DateTime? lastRefresh) {
+      return database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: id,
+              title: id,
+              feedUrl: 'https://$id.example.test/feed.xml',
+              lastRefresh: Value(lastRefresh),
+              createdAt: cutoff,
+              updatedAt: cutoff,
+            ),
+          );
+    }
+
+    await insertFeed('never-refreshed', null);
+    await insertFeed('due', cutoff);
+    await insertFeed('not-due', cutoff.add(const Duration(seconds: 1)));
+    await insertFeed('future-clock', cutoff.add(const Duration(days: 1)));
+    final progress = <(int, int)>[];
+
+    await repository.refreshAll(
+      budget: Duration.zero,
+      dueAt: cutoff.add(const Duration(hours: 1)),
+      minimumAge: const Duration(hours: 1),
+      onProgress: (completed, total) => progress.add((completed, total)),
+    );
+
+    expect(progress, [(0, 3)]);
+  });
+
   test('a signed redirect is not persisted as the refresh address', () async {
     network.close();
     await database.close();
