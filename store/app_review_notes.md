@@ -18,7 +18,7 @@ Network access is required for catalog search, feed refresh, article extraction,
 
 ## Background audio and downloads
 
-Background audio is active while podcast audio is playing. An embedded video may continue through its web player when the operating system permits it. App-private episode downloads may continue through the operating system's download scheduler. trickle does not access the user's Photos or media library.
+Background audio is active while podcast audio is playing. Web video pauses when the app leaves the foreground. App-private episode downloads may continue through the operating system's download scheduler. trickle does not access the user's Photos or media library.
 
 ## Private feeds
 
