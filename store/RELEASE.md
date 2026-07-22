@@ -91,8 +91,9 @@ In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, a
 - Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, removal, and every cleanup policy
 - Queue and extras: reorder, remove, persistence, sleep timers, intro/outro skip, repeat-one, chapters, transcripts, and bookmarks
 - Subscriptions: concurrent row-level catalog subscriptions, public/private direct URLs, query/path credentials, website discovery, malformed feeds, redirects, UTF-8/UTF-16 OPML import, podcast/reading/combined OPML exports, backup/restore, and unsubscribe cleanup
-- Reader: RSS, Atom, JSON Feed, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
-- Loading and failures: initial, inline, row-level, and pull-to-refresh progress; repeated-tap prevention; partial refresh results; actionable retry controls; safe malformed-file messages; and replacement rather than stacking of transient messages
+- Reader: RSS, Atom, JSON Feed, YouTube channel and playlist discovery, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
+- Video: persistent in-app playback, minimize/expand/close/reopen, yout-ube-first loading, official YouTube fallback only after failure, unmodified official-player ads, background continuation where permitted, network loss, and no reload while navigating
+- Loading and failures: initial, inline, row-level, and pull-to-refresh progress; repeated-tap prevention; coalesced duplicate refreshes; stale-response rejection; 10-second video-source attempts; 15-second background work; 30-second document and per-feed deadlines; partial refresh results; actionable retry controls; safe malformed-file messages; and replacement rather than stacking of transient messages
 - System behavior: notification denied/granted, per-feed notifications, background refresh, airplane mode, DNS failure, and server errors
 - Accessibility and layout: VoiceOver, TalkBack, dynamic text, small/large phones, portrait/landscape, contrast, and smooth long-list scrolling
 - Packaging: signed store artifact, privacy report, no cleartext traffic, no committed secret material, and production signing

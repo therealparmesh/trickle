@@ -13,8 +13,15 @@ Please test the combined podcast and feed-reader flow:
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds by resetting the whole refresh interval
 - Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
 - Add a public RSS feed and test unread, read, and saved states
+- Confirm Add Feed and Add YouTube use focused copy, while both create normal feed subscriptions
 - Pull to refresh from Home, Podcasts, and Reader; failed feeds should produce one clear result while the existing lists remain usable
 - Open an article in reader mode, share it, and open it in the browser
+- Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
+- Confirm video updates use uncropped 16:9 thumbnails, a play affordance, and watched/unwatched actions while ordinary articles retain square previews and read/unread actions
+- Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
+- Lock the screen during video playback and verify it continues when the operating system and loaded web player permit it
+- Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
+- Block both playback sources or go offline and verify the player offers Try again and Open original without obscuring the rest of the app
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
 - During Refresh now or OPML import, confirm the row reports item progress, other settings remain usable, and Back works immediately while the operation continues

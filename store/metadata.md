@@ -29,7 +29,7 @@ Podcasts and feeds in one fast, focused cyberpunk interface.
 
 trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
 
-Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, stream or download episodes, build a persistent queue, and read clean extracted articles without creating an account. Playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent in-app player without creating an account. Video playback tries yout-ube first and uses the official YouTube link only if that attempt fails. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
 trickle does not collect your information. Import standard OPML, export podcasts, reading feeds, or both, and create a local backup whenever you want.
 
@@ -63,7 +63,7 @@ Upload the five iPhone screenshots from `store/apple/screenshots/` in filename o
 1. Home
 2. Podcast
 3. Episode and playback actions
-4. Unread articles
+4. Unread feed items
 5. Reader mode
 
 ## Pricing and availability
@@ -75,7 +75,7 @@ Upload the five iPhone screenshots from `store/apple/screenshots/` in filename o
 
 ## Version 1.0.0 release notes
 
-Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, stream or download episodes, build a queue, import standard OPML, export podcasts, reading feeds, or both, and read articles in a clean reader view.
+Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, follow public YouTube channels and playlists as feeds, stream or download episodes, build a queue, import standard OPML, export podcasts, reading feeds, or both, and read articles in a clean reader view.
 
 Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
