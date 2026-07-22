@@ -288,6 +288,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
     }
   }
 
+  /// Activates the app's playback session before WebKit starts video audio.
+  Future<void> activateWebVideoAudioSession() async {
+    await initialize();
+    await _session?.setActive(true);
+  }
+
   Future<void> playEpisode(String episodeId) async {
     final generation = ++_episodeSelectionGeneration;
     _pendingEpisodeSelectionId = episodeId;

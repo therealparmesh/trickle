@@ -22,8 +22,7 @@ final class VideoPlayerHost extends ConsumerStatefulWidget {
   ConsumerState<VideoPlayerHost> createState() => _VideoPlayerHostState();
 }
 
-class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
-    with WidgetsBindingObserver {
+class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
   WebViewController? _controller;
   Future<WebViewController>? _controllerInitialization;
   Uri? _androidPlaybackRequest;
@@ -39,24 +38,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       _source == VideoPlaybackSource.officialYouTube;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _loadTimeout?.cancel();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused) {
-      unawaited(_pauseWebPlayback());
-    }
   }
 
   @override
@@ -393,25 +377,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     return controller;
   }
 
-  Future<void> _pauseWebPlayback() async {
-    final controller = _controller;
-    if (controller == null) return;
-    try {
-      await controller.runJavaScript('''
-        document.querySelectorAll('video, audio').forEach((media) => media.pause());
-        document.querySelectorAll('iframe').forEach((frame) => {
-          frame.contentWindow?.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'pauseVideo',
-            args: []
-          }), '*');
-        });
-      ''');
-    } on Object {
-      // Web playback may already have been suspended or torn down by the OS.
-    }
-  }
-
   Future<void> _load(
     VideoSession session, {
     VideoPlaybackSource source = VideoPlaybackSource.privacyWrapper,
@@ -450,6 +415,16 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _controller = controller;
     setState(() {});
+    try {
+      await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
+    } on Object {
+      // Foreground video remains usable if the audio session cannot activate.
+    }
+    if (!mounted ||
+        ref.read(videoSessionProvider)?.playbackUri != sessionUri ||
+        _activeRequestUri != requestUri) {
+      return;
+    }
     _loadTimeout = Timer(AppConstants.videoSourceLoadTimeout, () {
       if (mounted && !_ready && ref.read(videoSessionProvider) != null) {
         _fallbackOrShowError(timedOut: true);

@@ -41,7 +41,7 @@ If a completed download is missing or unusable, trickle falls back to the publis
 
 Use Add YouTube for focused channel and playlist guidance, or paste a public YouTube channel, playlist, or YouTube Atom feed into Add Feed. A video shared from inside a public playlist follows that playlist. Private, members-only, and account-specific lists are not supported by public feeds.
 
-Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. The mini-player remains available while navigating trickle, and video pauses when the app leaves the foreground. Podcast audio continues to use native background playback.
+Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. The mini-player remains available while navigating trickle. Audio continues when the app is backgrounded, and the system can show Picture in Picture when the active web player supports it. Podcast audio continues to use native background playback.
 
 ### Background refresh or downloads
 
