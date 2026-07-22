@@ -129,7 +129,7 @@ final class HomePage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SectionHeader('Reading')),
+              const SliverToBoxAdapter(child: SectionHeader('Feeds')),
               SliverToBoxAdapter(
                 child: HorizontalShortcutStrip(
                   children: [

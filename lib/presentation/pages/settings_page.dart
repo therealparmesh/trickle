@@ -155,33 +155,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             _refreshProgress ??
                             'Checks every subscription for new items.',
                         busy: _busyActions.contains(_SettingsAction.refresh),
-                        onTap: () async {
-                          setState(
-                            () => _refreshProgress = 'Starting refresh…',
-                          );
-                          try {
-                            await _runTracked(
-                              _SettingsAction.refresh,
-                              () => refreshAllFeeds(
-                                context,
-                                ref,
-                                announceSuccess: true,
-                                onProgress: (completed, total) {
-                                  if (!mounted) return;
-                                  setState(
-                                    () => _refreshProgress = total == 0
-                                        ? 'No subscriptions to refresh'
-                                        : 'Refreshing $completed of $total',
-                                  );
-                                },
-                              ),
-                            );
-                          } finally {
-                            if (mounted) {
-                              setState(() => _refreshProgress = null);
-                            }
-                          }
-                        },
+                        onTap: () =>
+                            _runTracked(_SettingsAction.refresh, () async {
+                              setState(
+                                () => _refreshProgress = 'Starting refresh…',
+                              );
+                              try {
+                                await refreshAllFeeds(
+                                  context,
+                                  ref,
+                                  announceSuccess: true,
+                                  onProgress: (completed, total) {
+                                    if (!mounted) return;
+                                    setState(
+                                      () => _refreshProgress = total == 0
+                                          ? 'No subscriptions to refresh'
+                                          : 'Refreshing $completed of $total',
+                                    );
+                                  },
+                                );
+                              } finally {
+                                if (mounted) {
+                                  setState(() => _refreshProgress = null);
+                                }
+                              }
+                            }),
                       ),
                       _ActionTile(
                         icon: Icons.notifications_outlined,
@@ -229,9 +227,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                       _ActionTile(
                         icon: Icons.rss_feed_rounded,
-                        title: 'Export reading feeds as OPML',
+                        title: 'Export feeds as OPML',
                         subtitle:
-                            'Exports reading subscriptions. Private feeds that require sign-in headers are skipped.',
+                            'Exports RSS and YouTube subscriptions. Private feeds that require sign-in headers are skipped.',
                         busy: _busyActions.contains(
                           _SettingsAction.readerExport,
                         ),
@@ -242,9 +240,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                       _ActionTile(
                         icon: Icons.dynamic_feed_rounded,
-                        title: 'Export all feeds as OPML',
+                        title: 'Export all subscriptions as OPML',
                         subtitle:
-                            'Exports podcast and reading subscriptions. Private feeds that require sign-in headers are skipped.',
+                            'Exports podcasts, RSS feeds, and YouTube feeds. Private feeds that require sign-in headers are skipped.',
                         busy: _busyActions.contains(_SettingsAction.feedExport),
                         onTap: () => _runTracked(
                           _SettingsAction.feedExport,
@@ -256,39 +254,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         title: 'Import OPML',
                         subtitle:
                             _opmlProgress ??
-                            'Imports podcast and reading subscriptions from standard OPML files.',
+                            'Imports podcast, RSS, and YouTube subscriptions from standard OPML files.',
                         busy: _busyActions.contains(_SettingsAction.opmlImport),
-                        onTap: () async {
-                          try {
-                            await _runTracked(
-                              _SettingsAction.opmlImport,
-                              () async {
-                                final result = await ref
-                                    .read(opmlServiceProvider)
-                                    .pickAndImport(
-                                      onProgress: (completed, total) {
-                                        if (!mounted) return;
-                                        setState(
-                                          () => _opmlProgress = total == 0
-                                              ? 'No subscriptions found'
-                                              : 'Importing $completed of $total',
-                                        );
-                                      },
-                                    );
-                                if (context.mounted && result != null) {
-                                  showMessageSnackBar(
-                                    context,
-                                    '${result.imported} ${result.imported == 1 ? 'feed' : 'feeds'} imported · ${result.failed} failed',
+                        onTap: () => _runTracked(
+                          _SettingsAction.opmlImport,
+                          () async {
+                            try {
+                              final result = await ref
+                                  .read(opmlServiceProvider)
+                                  .pickAndImport(
+                                    onProgress: (completed, total) {
+                                      if (!mounted) return;
+                                      setState(
+                                        () => _opmlProgress = total == 0
+                                            ? 'No subscriptions found'
+                                            : 'Importing $completed of $total',
+                                      );
+                                    },
                                   );
-                                }
-                              },
-                            );
-                          } finally {
-                            if (mounted) {
-                              setState(() => _opmlProgress = null);
+                              if (context.mounted && result != null) {
+                                showMessageSnackBar(
+                                  context,
+                                  '${result.imported} ${result.imported == 1 ? 'feed' : 'feeds'} imported · ${result.failed} failed',
+                                );
+                              }
+                            } finally {
+                              if (mounted) {
+                                setState(() => _opmlProgress = null);
+                              }
                             }
-                          }
-                        },
+                          },
+                        ),
                       ),
                       _ActionTile(
                         icon: Icons.archive_outlined,

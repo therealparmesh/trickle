@@ -247,6 +247,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     final url = _url.text.trim();
     final username = _username.text.trim();
     final password = _password.text;

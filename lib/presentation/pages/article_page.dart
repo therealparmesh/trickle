@@ -28,6 +28,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
   String? _contentSignature;
   Future<ExtractedArticle>? _content;
   String? _presentedVideoArticleId;
+  Future<void> _readStateWrite = Future<void>.value();
 
   @override
   Widget build(BuildContext context) {
@@ -302,7 +303,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                     icon: const Icon(Icons.play_arrow_rounded),
                     label: Text(
                       activeVideo?.articleId == article.id
-                          ? 'Return to video'
+                          ? 'Open video player'
                           : 'Play video',
                     ),
                   ),
@@ -454,6 +455,9 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
 
   Future<void> _runAction(Future<void> Function() action) async {
     try {
+      // Preserve an explicit user choice made immediately after opening the
+      // page. It must run after the automatic mark-read write, not race it.
+      await _readStateWrite;
       await action();
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
@@ -476,7 +480,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
 
   void _markCurrentItemRead() {
     final articleId = widget.articleId;
-    Future<void>.microtask(() async {
+    _readStateWrite = Future<void>.microtask(() async {
       try {
         await ref
             .read(feedRepositoryProvider)

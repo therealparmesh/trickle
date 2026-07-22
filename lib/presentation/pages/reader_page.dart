@@ -242,7 +242,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 children: [
                   EmptyState(
                     icon: Icons.rss_feed_rounded,
-                    title: 'No reading feeds',
+                    title: 'No feeds yet',
                     message:
                         'Add a website, RSS feed, YouTube channel, or playlist.',
                     action: 'Add feed',
@@ -281,6 +281,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   Future<void> _markAllRead() async {
+    if (_markingAllRead) return;
+    setState(() => _markingAllRead = true);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -300,8 +302,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    setState(() => _markingAllRead = true);
+    if (!mounted) return;
+    if (confirmed != true) {
+      setState(() => _markingAllRead = false);
+      return;
+    }
     try {
       await ref.read(feedRepositoryProvider).markAllArticlesRead();
     } on Object catch (error) {

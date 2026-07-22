@@ -13,7 +13,7 @@ import '../subscription_actions.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 
-/// Detail surface shared by podcast and reading feeds.
+/// Detail surface shared by podcast and non-podcast feeds.
 final class FeedDetailPage extends ConsumerStatefulWidget {
   const FeedDetailPage({required String this.feedId, super.key})
     : podcast = null;
@@ -845,6 +845,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
   }
 
   Future<void> _save() async {
+    if (_busy) return;
     final intro = int.tryParse(_intro.text.trim().isEmpty ? '0' : _intro.text);
     final outro = int.tryParse(_outro.text.trim().isEmpty ? '0' : _outro.text);
     if (intro == null || outro == null || intro > 600 || outro > 600) {
@@ -879,6 +880,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
   }
 
   Future<void> _setNotifications(bool value) async {
+    if (_busy) return;
     if (!value) {
       setState(() => _notifications = false);
       return;

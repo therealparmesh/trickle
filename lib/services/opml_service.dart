@@ -82,10 +82,7 @@ final class OpmlService {
   }) async {
     final (title, filename) = switch (scope) {
       OpmlExportScope.podcasts => ('trickle podcasts', 'trickle-podcasts.opml'),
-      OpmlExportScope.reading => (
-        'trickle reading feeds',
-        'trickle-reading-feeds.opml',
-      ),
+      OpmlExportScope.reading => ('trickle feeds', 'trickle-feeds.opml'),
       OpmlExportScope.allSubscriptions => (
         'trickle subscriptions',
         'trickle-subscriptions.opml',
@@ -331,7 +328,7 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
     xml: buildOpmlDocument(
       title: switch (scope) {
         OpmlExportScope.podcasts => 'trickle podcasts',
-        OpmlExportScope.reading => 'trickle reading feeds',
+        OpmlExportScope.reading => 'trickle feeds',
         OpmlExportScope.allSubscriptions => 'trickle subscriptions',
       },
       subscriptions: subscriptions,

@@ -6,7 +6,7 @@ import 'package:trickle/data/parsing/feed_parser.dart';
 void main() {
   const parser = FeedParser();
 
-  test('keeps a podcast with a non-audio item out of reading feeds', () {
+  test('keeps non-audio announcements inside a podcast subscription', () {
     final parsed = parser.parse('''
       <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
         <channel>
