@@ -15,10 +15,6 @@ final class LibraryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final queueState = ref.watch(queueProvider);
     final queue = queueState.value ?? const [];
-    final completeDownloads =
-        ref.watch(completedDownloadCountProvider).value ?? 0;
-    final starredEpisodes = ref.watch(starredEpisodeCountProvider).value ?? 0;
-    final starredArticles = ref.watch(starredArticleCountProvider).value ?? 0;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Library'),
@@ -39,26 +35,22 @@ final class LibraryPage extends ConsumerWidget {
                   LibraryShortcut(
                     icon: Icons.queue_music_rounded,
                     label: 'Up Next',
-                    badge: queue.length,
                     onTap: () => context.push('/queue'),
                   ),
                   LibraryShortcut(
                     icon: Icons.arrow_downward_rounded,
                     label: 'Downloads',
-                    badge: completeDownloads,
                     onTap: () => context.push('/downloads'),
                   ),
                   LibraryShortcut(
                     icon: Icons.bookmark_outline_rounded,
                     label: 'Episodes',
-                    badge: starredEpisodes,
                     color: AppConstants.magenta,
                     onTap: () => context.push('/saved'),
                   ),
                   LibraryShortcut(
                     icon: Icons.bookmark_outline_rounded,
                     label: 'Articles',
-                    badge: starredArticles,
                     color: AppConstants.magenta,
                     onTap: () => context.push('/saved?tab=articles'),
                   ),
@@ -157,7 +149,7 @@ final class LibraryPage extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '$completeDownloads download${completeDownloads == 1 ? '' : 's'} on this device',
+                              'Downloaded episodes on this device',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                               ),

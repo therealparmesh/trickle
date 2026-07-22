@@ -18,6 +18,7 @@ import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/podcast_search_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/presentation/pages/podcasts_page.dart';
+import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/search_page.dart';
 
 void main() {
@@ -66,6 +67,10 @@ void main() {
             path: '/podcast/:id',
             builder: (_, _) => const Scaffold(body: Text('Podcast detail')),
           ),
+          GoRoute(
+            path: '/podcast-preview',
+            builder: (_, _) => const Scaffold(body: Text('Podcast preview')),
+          ),
         ],
       );
       await tester.pumpWidget(
@@ -107,9 +112,15 @@ void main() {
         matching: find.byType(ListTile),
       );
       expect(
-        find.descendant(of: existingRow, matching: find.text('Subscribed')),
+        find.descendant(of: existingRow, matching: find.text('Unsubscribe')),
         findsOneWidget,
       );
+      await tester.tap(find.text('Second Signal'));
+      await tester.pumpAndSettle();
+      expect(find.text('Podcast preview'), findsOneWidget);
+      router.pop();
+      await tester.pumpAndSettle();
+
       await tester.tap(
         find.descendant(of: firstRow, matching: find.text('Subscribe')),
       );
@@ -126,6 +137,14 @@ void main() {
           of: firstRow,
           matching: find.byType(CircularProgressIndicator),
         ),
+        findsNothing,
+      );
+      final firstButton = tester.widget<TextButton>(
+        find.descendant(of: firstRow, matching: find.byType(TextButton)),
+      );
+      expect(firstButton.onPressed, isNull);
+      expect(
+        find.descendant(of: firstRow, matching: find.text('Subscribe')),
         findsOneWidget,
       );
       final secondButton = tester.widget<TextButton>(
@@ -142,7 +161,7 @@ void main() {
         var attempt = 0;
         attempt < 30 &&
             find
-                .descendant(of: firstRow, matching: find.text('Subscribed'))
+                .descendant(of: firstRow, matching: find.text('Unsubscribe'))
                 .evaluate()
                 .isEmpty;
         attempt++
@@ -154,7 +173,7 @@ void main() {
       }
 
       expect(
-        find.descendant(of: firstRow, matching: find.text('Subscribed')),
+        find.descendant(of: firstRow, matching: find.text('Unsubscribe')),
         findsOneWidget,
       );
       expect(find.text('Search'), findsOneWidget);
@@ -221,7 +240,12 @@ void main() {
     expect(
       tester
           .getSize(
-            find.byKey(ValueKey(Uri.parse('https://example.test/feed.xml'))),
+            find.descendant(
+              of: find.byKey(
+                ValueKey(Uri.parse('https://example.test/feed.xml')),
+              ),
+              matching: find.byType(TextButton),
+            ),
           )
           .width,
       224,
@@ -234,6 +258,85 @@ void main() {
     network.close();
     await database.close();
     await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('podcast detail can unsubscribe and resubscribe in place', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _ImmediateFeedAdapter(),
+      addressValidator: (_) async {},
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: PrivateFeedStore(storage: const FlutterSecureStorage()),
+    );
+    final now = DateTime.utc(2026, 7, 22);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'podcast',
+            title: 'Signal Podcast',
+            feedUrl: 'https://resubscribe.test/feed.xml',
+            kind: Value(FeedKind.podcast.index),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const FeedDetailPage(feedId: 'podcast'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Subscribed'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Unsubscribe'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Subscribe'), findsOneWidget);
+    expect(find.text('Subscribe to load episodes'), findsOneWidget);
+
+    await tester.tap(find.text('Subscribe'));
+    for (
+      var attempt = 0;
+      attempt < 30 && find.text('Subscribed').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    expect(find.text('Subscribed'), findsOneWidget);
+    for (
+      var attempt = 0;
+      attempt < 10 && find.text('First episode').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(find.text('First episode'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    network.close();
+    await database.close();
   });
 
   testWidgets('add feed rejects malformed addresses before subscribing', (
@@ -443,6 +546,40 @@ final class _BlockingFeedAdapter implements HttpClientAdapter {
             <title>First episode</title>
             <enclosure
               url="https://example.test/audio.mp3"
+              type="audio/mpeg"
+            />
+          </item>
+        </channel>
+      </rss>
+      ''',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/rss+xml'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _ImmediateFeedAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      '''
+      <rss version="2.0">
+        <channel>
+          <title>Signal Podcast</title>
+          <item>
+            <guid>episode-1</guid>
+            <title>First episode</title>
+            <enclosure
+              url="https://resubscribe.test/audio.mp3"
               type="audio/mpeg"
             />
           </item>

@@ -22,7 +22,8 @@ final class VideoPlayerHost extends ConsumerStatefulWidget {
   ConsumerState<VideoPlayerHost> createState() => _VideoPlayerHostState();
 }
 
-class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
+class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
+    with WidgetsBindingObserver {
   WebViewController? _controller;
   Future<WebViewController>? _controllerInitialization;
   Uri? _androidPlaybackRequest;
@@ -38,9 +39,24 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
       _source == VideoPlaybackSource.officialYouTube;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _loadTimeout?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused) {
+      unawaited(_pauseWebPlayback());
+    }
   }
 
   @override
@@ -375,6 +391,25 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
       await android.setMediaPlaybackRequiresUserGesture(false);
     }
     return controller;
+  }
+
+  Future<void> _pauseWebPlayback() async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.runJavaScript('''
+        document.querySelectorAll('video, audio').forEach((media) => media.pause());
+        document.querySelectorAll('iframe').forEach((frame) => {
+          frame.contentWindow?.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'pauseVideo',
+            args: []
+          }), '*');
+        });
+      ''');
+    } on Object {
+      // Web playback may already have been suspended or torn down by the OS.
+    }
   }
 
   Future<void> _load(

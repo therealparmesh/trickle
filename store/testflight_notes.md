@@ -3,7 +3,8 @@
 Please test the combined podcast and feed-reader flow:
 
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
-- Confirm an already subscribed podcast is labeled Subscribed in search without affecting other results
+- Open podcast search results to preview their podcast detail screen, then subscribe, unsubscribe, and resubscribe without leaving that screen
+- Confirm an already subscribed podcast offers Unsubscribe in search without affecting other results
 - Stream, seek, pause, resume, and change the global playback speed
 - Stream an episode whose audio passes through several publisher or measurement redirects
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
@@ -19,7 +20,7 @@ Please test the combined podcast and feed-reader flow:
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
 - Confirm video updates use uncropped 16:9 thumbnails, a play affordance, and watched/unwatched actions while ordinary articles retain square previews and read/unread actions
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
-- Lock the screen during video playback and verify it continues when the operating system and loaded web player permit it
+- Background the app or lock the screen during video playback and verify web video pauses cleanly
 - Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
 - Block both playback sources or go offline and verify the player offers Try again and Open original without obscuring the rest of the app
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists

@@ -16,6 +16,7 @@ import 'package:trickle/data/repositories/article_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/presentation/pages/episode_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
+import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
@@ -134,7 +135,6 @@ void main() {
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
                       label: 'Up Next',
-                      badge: 12,
                       onTap: _noop,
                     ),
                     LibraryShortcut(
@@ -165,7 +165,6 @@ void main() {
     expect(find.text('Downloads'), findsOneWidget);
     expect(find.text('Saved'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('12'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('See all')).dy,
       greaterThan(tester.getBottomLeft(find.text('Podcasts')).dy),
@@ -670,7 +669,6 @@ void main() {
               const LibraryShortcut(
                 icon: Icons.download_rounded,
                 label: 'Downloads',
-                badge: 1,
                 onTap: _noop,
               ),
               const LoadingView(),
@@ -686,11 +684,9 @@ void main() {
       tester.getSemantics(find.bySemanticsLabel('Search')).label,
       'Search',
     );
-    expect(find.bySemanticsLabel('Downloads, 1 item'), findsOneWidget);
+    expect(find.bySemanticsLabel('Downloads'), findsOneWidget);
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
-    final shortcut = tester.getSemantics(
-      find.bySemanticsLabel('Downloads, 1 item'),
-    );
+    final shortcut = tester.getSemantics(find.bySemanticsLabel('Downloads'));
     expect(shortcut.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byType(GlassIconButton));
     expect(pressed, isTrue);

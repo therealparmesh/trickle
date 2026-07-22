@@ -565,7 +565,6 @@ final class LibraryShortcut extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.color = AppConstants.cyan,
-    this.badge,
     super.key,
   });
 
@@ -573,7 +572,6 @@ final class LibraryShortcut extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color color;
-  final int? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -582,9 +580,7 @@ final class LibraryShortcut extends StatelessWidget {
     ).scale(1).clamp(1.0, 3.2).toDouble();
     return Semantics(
       button: true,
-      label: badge == null
-          ? label
-          : '$label, $badge ${badge == 1 ? 'item' : 'items'}',
+      label: label,
       excludeSemantics: true,
       onTap: onTap,
       child: InkWell(
@@ -619,33 +615,6 @@ final class LibraryShortcut extends StatelessWidget {
                         ),
                         child: Icon(icon, color: color, size: 28),
                       ),
-                      if (badge != null && badge! > 0)
-                        Positioned(
-                          right: 1,
-                          top: 1,
-                          child: Container(
-                            constraints: const BoxConstraints(minWidth: 20),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppConstants.magenta,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              badge! > 99 ? '99+' : '$badge',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: AppConstants.background,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0,
-                                  ),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ),

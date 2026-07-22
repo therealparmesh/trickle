@@ -2,101 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:drift/drift.dart' hide Column;
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
+import '../../domain/feed_models.dart';
+import '../subscription_actions.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 
-Future<void> deleteSubscriptionThenCleanup({
-  required Future<void> Function() deleteSubscription,
-  required Iterable<Future<void> Function()> cleanupOperations,
-}) async {
-  await deleteSubscription();
-  for (final cleanup in cleanupOperations) {
-    try {
-      await cleanup();
-    } on Object {
-      // The database commit is authoritative. Continue best-effort cleanup
-      // without presenting a failed deletion for a subscription that is gone.
-    }
-  }
-}
-
-Future<bool> _confirmUnsubscribe(BuildContext context, Feed feed) async {
-  final kind = FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
-  final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
-  final noun = switch ((kind, youtubeKind)) {
-    (FeedKind.podcast, _) => 'podcast',
-    (FeedKind.reader, YouTubeFeedKind.channel) => 'YouTube channel',
-    (FeedKind.reader, YouTubeFeedKind.playlist) => 'YouTube playlist',
-    (FeedKind.reader, null) => 'feed',
-  };
-  return await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Unsubscribe from this $noun?'),
-          content: const Text(
-            'This removes its episodes, articles, playback and reading progress, Up Next items, downloads, and private credentials from this device.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppConstants.danger,
-                foregroundColor: AppConstants.background,
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Unsubscribe'),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-}
-
-Future<void> _removeSubscription(WidgetRef ref, Feed feed) async {
-  final database = ref.read(databaseProvider);
-  final episodeIds =
-      await (database.selectOnly(database.episodes)
-            ..addColumns([database.episodes.id])
-            ..where(database.episodes.feedId.equals(feed.id)))
-          .map((row) => row.read(database.episodes.id)!)
-          .get();
-  final downloadRows =
-      await (database.select(database.mediaDownloads).join([
-            innerJoin(
-              database.episodes,
-              database.episodes.id.equalsExp(database.mediaDownloads.episodeId),
-            ),
-          ])..where(database.episodes.feedId.equals(feed.id)))
-          .map((row) => row.readTable(database.mediaDownloads))
-          .get();
-  await deleteSubscriptionThenCleanup(
-    deleteSubscription: () =>
-        ref.read(feedRepositoryProvider).deleteFeed(feed.id),
-    cleanupOperations: [
-      () =>
-          ref.read(audioHandlerProvider).removeEpisodesFromLibrary(episodeIds),
-      () => ref
-          .read(downloadCoordinatorProvider)
-          .discardTasksForDeletedEpisodes(downloadRows),
-    ],
-  );
-}
-
 /// Detail surface shared by podcast and reading feeds.
 final class FeedDetailPage extends ConsumerStatefulWidget {
-  const FeedDetailPage({required this.feedId, super.key});
+  const FeedDetailPage({required String this.feedId, super.key})
+    : podcast = null;
 
-  final String feedId;
+  const FeedDetailPage.catalog({this.podcast, super.key}) : feedId = null;
+
+  final String? feedId;
+  final PodcastSearchResult? podcast;
 
   @override
   ConsumerState<FeedDetailPage> createState() => _FeedDetailPageState();
@@ -104,15 +29,21 @@ final class FeedDetailPage extends ConsumerStatefulWidget {
 
 class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   static const _pageSize = 100;
+  late String? _feedId = widget.feedId;
+  late PodcastSearchResult? _podcast = widget.podcast;
   int _limit = _pageSize;
+  bool _subscribing = false;
   bool _unsubscribing = false;
   bool _refreshing = false;
+  bool _forcePrivateResubscribe = false;
 
   @override
   Widget build(BuildContext context) {
+    final feedId = _feedId;
+    if (feedId == null) return _catalogPodcast(context);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
-    final feed = ref.watch(feedProvider(widget.feedId));
-    final page = (feedId: widget.feedId, limit: _limit);
+    final feed = ref.watch(feedProvider(feedId));
+    final page = (feedId: feedId, limit: _limit);
     final kind = feed.value == null
         ? null
         : FeedKind.values[feed.value!.kind.clamp(
@@ -131,10 +62,10 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
         ? ref.watch(articlesForFeedProvider(page))
         : const AsyncData([]);
     final episodeTotal = canShowEpisodes
-        ? ref.watch(episodeCountForFeedProvider(widget.feedId)).value ?? 0
+        ? ref.watch(episodeCountForFeedProvider(feedId)).value ?? 0
         : 0;
     final articleTotal = canShowArticles
-        ? ref.watch(articleCountForFeedProvider(widget.feedId)).value ?? 0
+        ? ref.watch(articleCountForFeedProvider(feedId)).value ?? 0
         : 0;
     final showEpisodes =
         canShowEpisodes &&
@@ -157,7 +88,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
           if (!largeText && feed.value != null)
             _SubscriptionControl(
               feedTitle: feed.value!.title,
-              unsubscribing: _unsubscribing,
+              busy: _unsubscribing,
               onPressed: () => _unsubscribe(feed.value!),
             ),
           IconButton(
@@ -209,7 +140,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                               maxScaleFactor: 2,
                               child: _SubscriptionControl(
                                 feedTitle: value.title,
-                                unsubscribing: _unsubscribing,
+                                busy: _unsubscribing,
                                 onPressed: () => _unsubscribe(value),
                               ),
                             )
@@ -290,7 +221,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
           loading: () => const LoadingView(),
           error: (error, _) => ErrorView(
             friendlyError(error),
-            onRetry: () => ref.invalidate(feedProvider(widget.feedId)),
+            onRetry: () => ref.invalidate(feedProvider(feedId)),
           ),
         ),
       ),
@@ -298,12 +229,43 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   }
 
   Future<void> _unsubscribe(Feed feed) async {
-    if (_unsubscribing || !await _confirmUnsubscribe(context, feed)) return;
+    if (_unsubscribing) return;
     setState(() => _unsubscribing = true);
+    final confirmed = await confirmUnsubscribe(context, feed);
+    if (!confirmed || !mounted) {
+      if (mounted) setState(() => _unsubscribing = false);
+      return;
+    }
     try {
-      await _removeSubscription(ref, feed);
+      final kind =
+          FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
+      final secret = feed.isPrivate && feed.credentialRef != null
+          ? await ref.read(privateFeedStoreProvider).read(feed.credentialRef!)
+          : null;
+      final address = secret?.url ?? Uri.tryParse(feed.feedUrl);
+      final podcast = kind == FeedKind.podcast && address != null
+          ? PodcastSearchResult(
+              name: feed.title,
+              author: feed.author ?? '',
+              feedUrl: address,
+              artworkUrl: feed.imageUrl == null
+                  ? null
+                  : Uri.tryParse(feed.imageUrl!),
+              genre: null,
+              episodeCount: null,
+              explicit: false,
+            )
+          : null;
+      await removeSubscription(ref, feed);
       if (!mounted) return;
-      if (context.canPop()) {
+      if (podcast != null) {
+        setState(() {
+          _feedId = null;
+          _podcast = podcast;
+          _forcePrivateResubscribe = feed.isPrivate;
+          _unsubscribing = false;
+        });
+      } else if (context.canPop()) {
         context.pop();
       } else {
         context.go('/');
@@ -312,6 +274,93 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
       if (mounted) setState(() => _unsubscribing = false);
+    }
+  }
+
+  Widget _catalogPodcast(BuildContext context) {
+    final podcast = _podcast;
+    if (podcast == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Podcast')),
+        body: const AppBackdrop(
+          child: EmptyState(
+            icon: Icons.podcasts_rounded,
+            title: 'Podcast unavailable',
+            message: 'Return to search and choose this podcast again.',
+          ),
+        ),
+      );
+    }
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
+    final preview = _previewFeed(podcast);
+    final control = _SubscriptionControl(
+      feedTitle: podcast.name,
+      subscribed: false,
+      busy: _subscribing,
+      onPressed: _subscribe,
+    );
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Podcast'),
+        actions: [if (!largeText) control],
+      ),
+      body: AppBackdrop(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _FeedHero(
+                feed: preview,
+                refreshing: false,
+                subscriptionControl: largeText
+                    ? MediaQuery.withClampedTextScaling(
+                        maxScaleFactor: 2,
+                        child: control,
+                      )
+                    : null,
+              ),
+            ),
+            const SliverToBoxAdapter(child: SectionHeader('Episodes')),
+            const SliverToBoxAdapter(
+              child: SizedBox(
+                height: 220,
+                child: EmptyState(
+                  icon: Icons.podcasts_rounded,
+                  title: 'Subscribe to load episodes',
+                  message:
+                      'Episodes will appear here after this podcast is added.',
+                  compact: true,
+                ),
+              ),
+            ),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _subscribe() async {
+    final podcast = _podcast;
+    if (_subscribing || podcast == null) return;
+    setState(() => _subscribing = true);
+    try {
+      final feed = await ref
+          .read(feedRepositoryProvider)
+          .subscribe(
+            podcast.feedUrl.toString(),
+            forcePrivate: _forcePrivateResubscribe,
+          );
+      if (!mounted) return;
+      setState(() {
+        _feedId = feed.id;
+        _forcePrivateResubscribe = false;
+        _subscribing = false;
+      });
+      showMessageSnackBar(context, 'Subscribed to ${feed.title}');
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _subscribing = false);
     }
   }
 
@@ -338,13 +387,13 @@ final class _FeedHero extends StatelessWidget {
   const _FeedHero({
     required this.feed,
     required this.refreshing,
-    required this.onRefresh,
+    this.onRefresh,
     this.subscriptionControl,
   });
 
   final Feed feed;
   final bool refreshing;
-  final VoidCallback onRefresh;
+  final VoidCallback? onRefresh;
   final Widget? subscriptionControl;
 
   @override
@@ -442,6 +491,28 @@ final class _FeedHero extends StatelessWidget {
   }
 }
 
+Feed _previewFeed(PodcastSearchResult podcast) {
+  final timestamp = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  return Feed(
+    id: 'catalog-preview',
+    title: podcast.name,
+    description: podcast.genre,
+    feedUrl: podcast.feedUrl.toString(),
+    imageUrl: podcast.artworkUrl?.toString(),
+    author: podcast.author,
+    kind: FeedKind.podcast.index,
+    isPrivate: false,
+    autoDownload: false,
+    autoDownloadLimit: 3,
+    notifications: false,
+    introSkipMs: 0,
+    outroSkipMs: 0,
+    autoQueue: false,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  );
+}
+
 final class _FeedIdentity extends StatelessWidget {
   const _FeedIdentity({required this.feed});
 
@@ -485,32 +556,39 @@ final class _FeedIdentity extends StatelessWidget {
 final class _SubscriptionControl extends StatelessWidget {
   const _SubscriptionControl({
     required this.feedTitle,
-    required this.unsubscribing,
+    required this.busy,
     required this.onPressed,
+    this.subscribed = true,
   });
 
   final String feedTitle;
-  final bool unsubscribing;
+  final bool subscribed;
+  final bool busy;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final color = unsubscribing
-        ? AppConstants.secondaryText
-        : AppConstants.cyan;
+    final color = busy ? AppConstants.secondaryText : AppConstants.cyan;
+    final label = subscribed ? 'Subscribed' : 'Subscribe';
     return Semantics(
       button: true,
-      enabled: !unsubscribing,
-      label: unsubscribing
-          ? 'Unsubscribing from $feedTitle'
-          : 'Subscribed to $feedTitle. Unsubscribe',
+      enabled: !busy,
+      label: busy
+          ? '${subscribed ? 'Unsubscribing from' : 'Subscribing to'} $feedTitle'
+          : subscribed
+          ? 'Subscribed to $feedTitle. Unsubscribe'
+          : 'Subscribe to $feedTitle',
       excludeSemantics: true,
       child: Tooltip(
-        message: unsubscribing ? 'Unsubscribing' : 'Unsubscribe',
+        message: busy
+            ? label
+            : subscribed
+            ? 'Unsubscribe'
+            : label,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: unsubscribing ? null : onPressed,
+            onTap: busy ? null : onPressed,
             borderRadius: BorderRadius.circular(10),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -529,16 +607,15 @@ final class _SubscriptionControl extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (unsubscribing)
-                            const SizedBox.square(
-                              dimension: 13,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            const Icon(Icons.check_rounded, size: 14),
+                          Icon(
+                            subscribed
+                                ? Icons.check_rounded
+                                : Icons.add_rounded,
+                            size: 14,
+                          ),
                           const SizedBox(width: 5),
                           Text(
-                            unsubscribing ? 'Unsubscribing…' : 'Subscribed',
+                            label,
                             style: Theme.of(
                               context,
                             ).textTheme.labelSmall?.copyWith(color: color),
@@ -568,10 +645,14 @@ final class _FeedDescription extends StatelessWidget {
     return Text(
       feed.description?.trim().isNotEmpty == true
           ? feed.description!
-          : switch (youtubeKind) {
-              YouTubeFeedKind.channel => 'YouTube channel',
-              YouTubeFeedKind.playlist => 'YouTube playlist',
-              null => 'RSS feed',
+          : switch ((
+              FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)],
+              youtubeKind,
+            )) {
+              (FeedKind.reader, YouTubeFeedKind.channel) => 'YouTube channel',
+              (FeedKind.reader, YouTubeFeedKind.playlist) => 'YouTube playlist',
+              (FeedKind.reader, null) => 'RSS feed',
+              (FeedKind.podcast, _) => 'Podcast',
             },
       maxLines: 5,
       overflow: TextOverflow.ellipsis,
@@ -856,10 +937,14 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
   }
 
   Future<void> _unsubscribe() async {
-    if (!await _confirmUnsubscribe(context, widget.feed) || !mounted) return;
+    if (_busy) return;
     setState(() => _operation = _FeedSettingsOperation.unsubscribe);
+    if (!await confirmUnsubscribe(context, widget.feed) || !mounted) {
+      _finishOperation(_FeedSettingsOperation.unsubscribe);
+      return;
+    }
     try {
-      await _removeSubscription(ref, widget.feed);
+      await removeSubscription(ref, widget.feed);
       if (!mounted) return;
       setState(() => _operation = null);
       Navigator.pop(context, true);

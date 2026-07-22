@@ -10,7 +10,20 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../data/database/app_database.dart';
 import '../../domain/feed_models.dart';
+import '../subscription_actions.dart';
 import '../widgets/common.dart';
+
+final _catalogSubscriptionProvider = Provider.autoDispose.family<Feed?, String>(
+  (ref, identity) {
+    final feeds = ref.watch(podcastFeedsProvider).value ?? const <Feed>[];
+    for (final feed in feeds) {
+      if (!feed.isPrivate && _feedUrlIdentity(feed.feedUrl) == identity) {
+        return feed;
+      }
+    }
+    return null;
+  },
+);
 
 final class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({this.initialCatalog = false, super.key});
@@ -172,11 +185,6 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Widget _catalogResults() {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
-    final subscribedUrls = {
-      for (final feed
-          in ref.watch(podcastFeedsProvider).value ?? const <Feed>[])
-        if (!feed.isPrivate) _feedUrlIdentity(feed.feedUrl),
-    };
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       itemCount: _catalog.length,
@@ -184,59 +192,10 @@ class _SearchPageState extends ConsumerState<SearchPage>
           const Divider(height: 1, indent: 86, endIndent: 16),
       itemBuilder: (context, index) {
         final result = _catalog[index];
-        final title = EpisodeTitle(
-          title: result.name,
-          explicit: result.explicit,
-          maxLines: largeText ? 4 : 2,
-        );
-        final subtitle = Text(
-          [
-            result.author,
-            if (result.genre != null) result.genre!,
-            if (result.episodeCount case final count?)
-              '$count ${count == 1 ? 'episode' : 'episodes'}',
-          ].where((part) => part.isNotEmpty).join(' · '),
-          maxLines: largeText ? 3 : 2,
-          overflow: TextOverflow.ellipsis,
-        );
-        final subscribe = _CatalogSubscribeButton(
+        return _CatalogResultRow(
           key: ValueKey(result.feedUrl),
-          podcastName: result.name,
-          subscribed: subscribedUrls.contains(
-            _feedUrlIdentity(result.feedUrl.toString()),
-          ),
-          onSubscribe: () => _subscribe(result),
-        );
-        if (largeText) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Artwork(url: result.artworkUrl?.toString(), size: 54),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [title, const SizedBox(height: 4), subtitle],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Align(alignment: Alignment.centerRight, child: subscribe),
-              ],
-            ),
-          );
-        }
-        return ListTile(
-          leading: Artwork(url: result.artworkUrl?.toString(), size: 54),
-          title: title,
-          subtitle: subtitle,
-          trailing: subscribe,
+          result: result,
+          largeText: largeText,
         );
       },
     );
@@ -320,87 +279,202 @@ class _SearchPageState extends ConsumerState<SearchPage>
       }
     }
   }
+}
 
-  Future<bool> _subscribe(PodcastSearchResult result) async {
-    final feedUrl = result.feedUrl.toString();
-    try {
-      await ref.read(feedRepositoryProvider).subscribe(feedUrl);
-      if (mounted) {
-        showMessageSnackBar(context, 'Subscribed to ${result.name}');
+final class _CatalogResultRow extends ConsumerStatefulWidget {
+  const _CatalogResultRow({
+    required this.result,
+    required this.largeText,
+    super.key,
+  });
+
+  final PodcastSearchResult result;
+  final bool largeText;
+
+  @override
+  ConsumerState<_CatalogResultRow> createState() => _CatalogResultRowState();
+}
+
+class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
+  bool _busy = false;
+  Feed? _optimisticFeed;
+  String? _removedFeedId;
+
+  @override
+  Widget build(BuildContext context) {
+    final identity = _feedUrlIdentity(widget.result.feedUrl.toString());
+    final provider = _catalogSubscriptionProvider(identity);
+    ref.listen(provider, (_, feed) {
+      if (!mounted) return;
+      final confirmedSubscription =
+          _optimisticFeed != null && _optimisticFeed!.id == feed?.id;
+      final confirmedRemoval = _removedFeedId != null && feed == null;
+      if (confirmedSubscription || confirmedRemoval) {
+        setState(() {
+          if (confirmedSubscription) _optimisticFeed = null;
+          if (confirmedRemoval) _removedFeedId = null;
+        });
       }
-      return true;
+    });
+    final storedFeed = ref.watch(provider);
+    final feed = storedFeed?.id == _removedFeedId
+        ? null
+        : storedFeed ?? _optimisticFeed;
+    final title = EpisodeTitle(
+      title: widget.result.name,
+      explicit: widget.result.explicit,
+      maxLines: widget.largeText ? 4 : 2,
+    );
+    final subtitle = Text(
+      [
+        widget.result.author,
+        if (widget.result.genre != null) widget.result.genre!,
+        if (widget.result.episodeCount case final count?)
+          '$count ${count == 1 ? 'episode' : 'episodes'}',
+      ].where((part) => part.isNotEmpty).join(' · '),
+      maxLines: widget.largeText ? 3 : 2,
+      overflow: TextOverflow.ellipsis,
+    );
+    final action = _CatalogSubscriptionButton(
+      podcastName: widget.result.name,
+      subscribed: feed != null,
+      busy: _busy,
+      largeText: widget.largeText,
+      onPressed: () => _toggleSubscription(feed),
+    );
+    if (widget.largeText) {
+      return Semantics(
+        button: true,
+        label: 'Open ${widget.result.name}',
+        onTap: _busy ? null : () => _open(feed),
+        child: InkWell(
+          onTap: _busy ? null : () => _open(feed),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Artwork(
+                      url: widget.result.artworkUrl?.toString(),
+                      size: 54,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [title, const SizedBox(height: 4), subtitle],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: action),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return ListTile(
+      leading: Artwork(url: widget.result.artworkUrl?.toString(), size: 54),
+      title: title,
+      subtitle: subtitle,
+      trailing: action,
+      onTap: _busy ? null : () => _open(feed),
+    );
+  }
+
+  void _open(Feed? feed) {
+    if (feed != null) {
+      context.push('/podcast/${feed.id}');
+    } else {
+      context.push('/podcast-preview', extra: widget.result);
+    }
+  }
+
+  Future<void> _toggleSubscription(Feed? feed) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    if (feed != null) {
+      final confirmed = await confirmUnsubscribe(context, feed);
+      if (!confirmed || !mounted) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+    }
+    try {
+      if (feed == null) {
+        final subscribed = await ref
+            .read(feedRepositoryProvider)
+            .subscribe(widget.result.feedUrl.toString());
+        if (!mounted) return;
+        final provider = _catalogSubscriptionProvider(
+          _feedUrlIdentity(widget.result.feedUrl.toString()),
+        );
+        setState(() {
+          _optimisticFeed = ref.read(provider)?.id == subscribed.id
+              ? null
+              : subscribed;
+        });
+        showMessageSnackBar(context, 'Subscribed to ${widget.result.name}');
+      } else {
+        await removeSubscription(ref, feed);
+        if (!mounted) return;
+        final provider = _catalogSubscriptionProvider(
+          _feedUrlIdentity(widget.result.feedUrl.toString()),
+        );
+        setState(() {
+          _optimisticFeed = null;
+          _removedFeedId = ref.read(provider) == null ? null : feed.id;
+        });
+        showMessageSnackBar(context, 'Unsubscribed from ${widget.result.name}');
+      }
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
-      return false;
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }
 
-final class _CatalogSubscribeButton extends StatefulWidget {
-  const _CatalogSubscribeButton({
+final class _CatalogSubscriptionButton extends StatelessWidget {
+  const _CatalogSubscriptionButton({
     required this.podcastName,
     required this.subscribed,
-    required this.onSubscribe,
-    super.key,
+    required this.busy,
+    required this.largeText,
+    required this.onPressed,
   });
 
   final String podcastName;
   final bool subscribed;
-  final Future<bool> Function() onSubscribe;
-
-  @override
-  State<_CatalogSubscribeButton> createState() =>
-      _CatalogSubscribeButtonState();
-}
-
-class _CatalogSubscribeButtonState extends State<_CatalogSubscribeButton> {
-  bool _busy = false;
-  bool _subscribed = false;
-
-  @override
-  void didUpdateWidget(covariant _CatalogSubscribeButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.subscribed && !widget.subscribed) _subscribed = false;
-  }
+  final bool busy;
+  final bool largeText;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final subscribed = widget.subscribed || _subscribed;
-    final label = subscribed ? 'Subscribed' : 'Subscribe';
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
+    final label = subscribed ? 'Unsubscribe' : 'Subscribe';
     final button = SizedBox(
       width: largeText ? 224 : 108,
       height: largeText ? 64 : 48,
-      child: TextButton(
-        onPressed: _busy || subscribed ? null : _subscribe,
-        child: _busy
-            ? const SizedBox.square(
-                dimension: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Text(label),
-      ),
+      child: TextButton(onPressed: busy ? null : onPressed, child: Text(label)),
     );
     return Semantics(
       button: true,
-      enabled: !_busy && !subscribed,
-      liveRegion: _busy || subscribed,
-      label: _busy ? 'Subscribing to ${widget.podcastName}' : label,
+      enabled: !busy,
+      liveRegion: true,
+      label: busy
+          ? '${subscribed ? 'Unsubscribing from' : 'Subscribing to'} $podcastName'
+          : '$label $podcastName',
       excludeSemantics: true,
       child: largeText
           ? MediaQuery.withClampedTextScaling(maxScaleFactor: 2, child: button)
           : button,
     );
-  }
-
-  Future<void> _subscribe() async {
-    setState(() => _busy = true);
-    final subscribed = await widget.onSubscribe();
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _subscribed = subscribed;
-    });
   }
 }
 

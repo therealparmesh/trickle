@@ -14,6 +14,7 @@ import '../presentation/pages/reader_page.dart';
 import '../presentation/pages/saved_page.dart';
 import '../presentation/pages/search_page.dart';
 import '../presentation/pages/settings_page.dart';
+import '../domain/feed_models.dart';
 
 GoRouter createRouter() {
   return GoRouter(
@@ -41,6 +42,15 @@ GoRouter createRouter() {
             path: '/podcast/:id',
             builder: (_, state) =>
                 FeedDetailPage(feedId: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/podcast-preview',
+            builder: (_, state) => switch (state.extra) {
+              final PodcastSearchResult podcast => FeedDetailPage.catalog(
+                podcast: podcast,
+              ),
+              _ => const FeedDetailPage.catalog(),
+            },
           ),
           GoRoute(
             path: '/feed/:id',

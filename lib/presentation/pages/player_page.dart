@@ -21,16 +21,27 @@ import '../widgets/episode_show_notes.dart';
 enum PlaybackUiPhase { loading, buffering, error, playing, paused }
 
 PlaybackUiPhase playbackUiPhaseFor(PlaybackState? state) {
-  if (state == null || state.processingState == AudioProcessingState.loading) {
+  return _playbackUiPhaseFor(
+    playing: state?.playing == true,
+    processingState: state?.processingState,
+  );
+}
+
+PlaybackUiPhase _playbackUiPhaseFor({
+  required bool playing,
+  required AudioProcessingState? processingState,
+}) {
+  if (processingState == null ||
+      processingState == AudioProcessingState.loading) {
     return PlaybackUiPhase.loading;
   }
-  if (state.processingState == AudioProcessingState.buffering) {
+  if (processingState == AudioProcessingState.buffering) {
     return PlaybackUiPhase.buffering;
   }
-  if (state.processingState == AudioProcessingState.error) {
+  if (processingState == AudioProcessingState.error) {
     return PlaybackUiPhase.error;
   }
-  return state.playing ? PlaybackUiPhase.playing : PlaybackUiPhase.paused;
+  return playing ? PlaybackUiPhase.playing : PlaybackUiPhase.paused;
 }
 
 extension PlaybackUiPhasePresentation on PlaybackUiPhase {
@@ -94,8 +105,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   @override
   Widget build(BuildContext context) {
     final item = ref.watch(currentMediaProvider).value;
-    final state = ref.watch(playbackStateProvider).value;
-    final phase = playbackUiPhaseFor(state);
+    final playback = ref.watch(
+      playbackStateProvider.select(
+        (state) => (
+          playing: state.value?.playing == true,
+          processingState: state.value?.processingState,
+        ),
+      ),
+    );
+    final phase = _playbackUiPhaseFor(
+      playing: playback.playing,
+      processingState: playback.processingState,
+    );
     if (item == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Now Playing')),
@@ -240,7 +261,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                   ),
                             backwards: true,
                           ),
-                          _PrimaryPlaybackButton(state: state, phase: phase),
+                          _PrimaryPlaybackButton(
+                            playing: playback.playing,
+                            phase: phase,
+                          ),
                           _SkipButton(
                             label: '30',
                             tooltip: 'Forward 30 seconds',
@@ -539,14 +563,13 @@ class _PlaybackProgressState extends ConsumerState<_PlaybackProgress> {
 }
 
 final class _PrimaryPlaybackButton extends ConsumerWidget {
-  const _PrimaryPlaybackButton({required this.state, required this.phase});
+  const _PrimaryPlaybackButton({required this.playing, required this.phase});
 
-  final PlaybackState? state;
+  final bool playing;
   final PlaybackUiPhase phase;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final playing = state?.playing == true;
     final enabled = phase.canToggle(playing: playing);
     final actionLabel = phase.actionLabel(playing: playing);
     final VoidCallback? onPressed = enabled
@@ -676,9 +699,11 @@ final class _SkipButton extends StatelessWidget {
 final class _PlaybackOptions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(playbackStateProvider).value;
+    final repeatMode = ref.watch(
+      playbackStateProvider.select((state) => state.value?.repeatMode),
+    );
     return FilterChip(
-      selected: state?.repeatMode == AudioServiceRepeatMode.one,
+      selected: repeatMode == AudioServiceRepeatMode.one,
       label: const Text('Repeat episode'),
       onSelected: (enabled) => _run(
         context,

@@ -20,11 +20,6 @@ final class HomePage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
-    final readerFeeds = ref.watch(readerFeedsProvider);
-    final queueCount = ref.watch(queueProvider).value?.length ?? 0;
-    final downloadCount = ref.watch(completedDownloadCountProvider).value ?? 0;
-    final savedAudioCount = ref.watch(starredEpisodeCountProvider).value ?? 0;
-    final savedReadCount = ref.watch(starredArticleCountProvider).value ?? 0;
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
@@ -81,19 +76,16 @@ final class HomePage extends ConsumerWidget {
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
                       label: 'Up Next',
-                      badge: queueCount,
                       onTap: () => context.push('/queue'),
                     ),
                     LibraryShortcut(
                       icon: Icons.arrow_downward_rounded,
                       label: 'Downloads',
-                      badge: downloadCount,
                       onTap: () => context.push('/downloads'),
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
                       label: 'Saved',
-                      badge: savedAudioCount,
                       onTap: () => context.push('/saved'),
                     ),
                     LibraryShortcut(
@@ -144,14 +136,12 @@ final class HomePage extends ConsumerWidget {
                     LibraryShortcut(
                       icon: Icons.dynamic_feed_outlined,
                       label: 'Feeds',
-                      badge: readerFeeds.value?.length ?? 0,
                       color: AppConstants.magenta,
                       onTap: () => context.push('/reader?tab=feeds'),
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
                       label: 'Saved',
-                      badge: savedReadCount,
                       color: AppConstants.magenta,
                       onTap: () => context.push('/saved?tab=articles'),
                     ),

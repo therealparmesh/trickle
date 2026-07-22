@@ -420,15 +420,6 @@ class AppDatabase extends _$AppDatabase {
         .map((row) => row.read(count) ?? 0);
   }
 
-  Stream<int> watchCompletedDownloadCount() {
-    final count = mediaDownloads.episodeId.count();
-    return (selectOnly(mediaDownloads)
-          ..addColumns([count])
-          ..where(mediaDownloads.status.equals(DownloadState.complete.index)))
-        .watchSingle()
-        .map((row) => row.read(count) ?? 0);
-  }
-
   Stream<List<Episode>> watchStarredEpisodes({required int limit}) {
     final query = select(episodes)
       ..where((row) => row.starred.equals(true))

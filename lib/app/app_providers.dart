@@ -106,9 +106,6 @@ final starredArticleCountProvider = StreamProvider<int>(
 final starredEpisodeCountProvider = StreamProvider<int>(
   (ref) => ref.watch(databaseProvider).watchStarredEpisodeCount(),
 );
-final completedDownloadCountProvider = StreamProvider<int>(
-  (ref) => ref.watch(databaseProvider).watchCompletedDownloadCount(),
-);
 final starredEpisodesPageProvider = StreamProvider.autoDispose
     .family<List<Episode>, int>(
       (ref, limit) =>

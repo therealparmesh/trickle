@@ -11,7 +11,7 @@ trickle is a podcast player and RSS reader. No account, login, purchase, subscri
 5. From Home, tap Add Feed under Reading to enter a public RSS, Atom, JSON Feed, or website URL.
 6. Tap Add YouTube to enter a public YouTube channel or playlist URL. Both actions use the same feed subscription pipeline.
 7. Open an article to use the extracted reader view. Share and Open in Browser are available from the reader toolbar.
-8. Open a YouTube feed entry to use its persistent in-app web player. It can be minimized while navigating the app, closed, or opened at its original URL. The player first tries yout-ube.com; only if that load fails does the same player load the official YouTube URL from the feed, including any ads YouTube supplies.
+8. Open a YouTube feed entry to use its in-app web player. It can be minimized while navigating the foreground app, closed, or opened at its original URL. Web video pauses when the app leaves the foreground. The player first tries yout-ube.com; only if that load fails does the same player load the official YouTube URL from the feed, including any ads YouTube supplies.
 9. Settings contains global playback speed, download cleanup, standard OPML import, separate podcast/reading/combined OPML exports, and local backup controls.
 
 Network access is required for catalog search, feed refresh, article extraction, artwork, and streaming. Downloaded episodes and previously cached content remain available offline.
