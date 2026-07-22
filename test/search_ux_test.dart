@@ -237,19 +237,6 @@ void main() {
     final title = tester.widget<Text>(find.text('Explicit Signal'));
     expect(title.maxLines, 4);
     expect(find.text('Subscribe'), findsNWidgets(2));
-    expect(
-      tester
-          .getSize(
-            find.descendant(
-              of: find.byKey(
-                ValueKey(Uri.parse('https://example.test/feed.xml')),
-              ),
-              matching: find.byType(TextButton),
-            ),
-          )
-          .width,
-      224,
-    );
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

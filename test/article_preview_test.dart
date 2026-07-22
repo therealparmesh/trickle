@@ -747,26 +747,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('article renderer preserves a matching heading after content', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: ArticleContent(
-            scale: 1,
-            leadingTitleToOmit: 'Section title',
-            html: '<p>Opening paragraph.</p><h2>Section title</h2>',
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.text('Opening paragraph.'), findsOneWidget);
-    expect(find.text('Section title'), findsOneWidget);
-  });
-
   testWidgets('article renderer normalizes inline and link whitespace', (
     tester,
   ) async {

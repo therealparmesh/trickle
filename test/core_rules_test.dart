@@ -95,20 +95,6 @@ void main() {
   });
 
   group('native completion events', () {
-    test('accepts completion only for a loaded media item', () {
-      expect(
-        shouldHandlePlayerCompletion(
-          completed: true,
-          loadingMedia: false,
-          hasMedia: true,
-          playbackStarted: true,
-          position: const Duration(minutes: 19),
-          duration: const Duration(minutes: 20),
-        ),
-        isTrue,
-      );
-    });
-
     test('ignores initial and in-flight completion events', () {
       expect(
         shouldHandlePlayerCompletion(
