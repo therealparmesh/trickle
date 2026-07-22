@@ -18,6 +18,7 @@ final class VideoSession {
     required this.sourceUri,
     required this.playbackUri,
     required this.expanded,
+    required this.externalPresentation,
   });
 
   final String articleId;
@@ -25,6 +26,7 @@ final class VideoSession {
   final Uri sourceUri;
   final Uri playbackUri;
   final bool expanded;
+  final bool externalPresentation;
 
   Uri? playbackUriFor(VideoPlaybackSource source) => switch (source) {
     VideoPlaybackSource.privacyWrapper => playbackUri,
@@ -33,13 +35,15 @@ final class VideoSession {
     ),
   };
 
-  VideoSession copyWith({bool? expanded}) => VideoSession(
-    articleId: articleId,
-    title: title,
-    sourceUri: sourceUri,
-    playbackUri: playbackUri,
-    expanded: expanded ?? this.expanded,
-  );
+  VideoSession copyWith({bool? expanded, bool? externalPresentation}) =>
+      VideoSession(
+        articleId: articleId,
+        title: title,
+        sourceUri: sourceUri,
+        playbackUri: playbackUri,
+        expanded: expanded ?? this.expanded,
+        externalPresentation: externalPresentation ?? this.externalPresentation,
+      );
 }
 
 final videoSessionProvider =
@@ -63,6 +67,7 @@ final class VideoSessionNotifier extends Notifier<VideoSession?> {
       sourceUri: sourceUri,
       playbackUri: playbackUri,
       expanded: true,
+      externalPresentation: false,
     );
   }
 
@@ -78,6 +83,15 @@ final class VideoSessionNotifier extends Notifier<VideoSession?> {
     if (current != null && current.expanded) {
       state = current.copyWith(expanded: false);
     }
+  }
+
+  void setExternalPresentation(bool active) {
+    final current = state;
+    if (current == null || current.externalPresentation == active) return;
+    state = current.copyWith(
+      expanded: active ? false : current.expanded,
+      externalPresentation: active,
+    );
   }
 
   void close() => state = null;

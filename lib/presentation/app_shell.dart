@@ -22,7 +22,7 @@ final class AppShell extends ConsumerWidget {
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final playerInset = keyboardOpen
         ? 0.0
-        : video?.expanded == false
+        : video?.expanded == false && video?.externalPresentation == false
         ? videoMiniPlayerHeight(context) +
               16 +
               MediaQuery.viewPaddingOf(context).bottom

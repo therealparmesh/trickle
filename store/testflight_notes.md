@@ -17,7 +17,10 @@ Please test the combined podcast and feed-reader flow:
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
-- Background the app or lock the screen during video playback and verify audio continues; verify system Picture in Picture appears when the active web player offers it
+- On iPhone, tap Play; verify system presentation starts without another full-screen tap, then background or lock and check Picture in Picture
+- On Android 8 or later, leave with active video and verify Picture in Picture; repeat on Android 12 or later
+- With Picture in Picture visible, return Home and verify no black duplicate appears; close it and verify the minimized video returns and resumes if it was playing
+- Check square podcast art and landscape article and video previews from several feeds; every image should crop cleanly without stretching
 - Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
 - Block both playback sources or go offline and verify the player offers Try again and Open original without obscuring the rest of the app
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists

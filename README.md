@@ -11,7 +11,7 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
 - Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
-- YouTube video entries with a persistent web player and in-app mini-player; background audio and system Picture in Picture remain available when supported by the active web player, and playback tries yout-ube first, then the official YouTube link from the feed if that attempt fails
+- YouTube video entries with a persistent web player and in-app mini-player; iOS uses WebKit system presentation and Android uses activity Picture in Picture for supported background video, while playback tries yout-ube first and then the official YouTube link from the feed if that attempt fails
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information
@@ -68,7 +68,7 @@ The unsigned build commands verify compilation without requiring publisher crede
 - `lib/services`: refresh scheduling, feed automation, notifications, OPML, and local backup
 - `lib/presentation`: Riverpod-driven screens, reusable content components, and the floating player shell
 
-The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Potentially expensive feed and article parsing runs away from the UI isolate. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is memory-sized, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
+The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Potentially expensive feed and article parsing runs away from the UI isolate. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
 
 ## Project layout
 

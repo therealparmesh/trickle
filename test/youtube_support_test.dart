@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/core/youtube_support.dart';
 import 'package:trickle/features/video/video_session.dart';
@@ -178,6 +179,7 @@ void main() {
       sourceUri: source,
       playbackUri: privacyYouTubePlaybackUri(source)!,
       expanded: true,
+      externalPresentation: false,
     );
 
     expect(
@@ -193,5 +195,25 @@ void main() {
       Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
     );
     expect(VideoPlaybackSource.officialYouTube.fallbackAfterFailure, isNull);
+  });
+
+  test('system PiP suppresses the in-app player and returns it minimized', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(videoSessionProvider.notifier);
+    notifier.open(
+      articleId: 'video',
+      title: 'Video',
+      sourceUri: Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+      playbackUri: Uri.parse('https://www.yout-ube.com/watch?v=dQw4w9WgXcQ'),
+    );
+
+    notifier.setExternalPresentation(true);
+    expect(container.read(videoSessionProvider)?.externalPresentation, isTrue);
+    expect(container.read(videoSessionProvider)?.expanded, isFalse);
+
+    notifier.setExternalPresentation(false);
+    expect(container.read(videoSessionProvider)?.externalPresentation, isFalse);
+    expect(container.read(videoSessionProvider)?.expanded, isFalse);
   });
 }

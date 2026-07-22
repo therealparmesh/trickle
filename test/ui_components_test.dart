@@ -115,6 +115,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('wide artwork keeps its source ratio while decoding', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          remoteImagesProvider.overrideWith((_) => Stream.value(true)),
+          safeImageFileProvider.overrideWith(
+            (_, _) async =>
+                'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@2x.png',
+          ),
+        ],
+        child: const MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(devicePixelRatio: 3),
+            child: Scaffold(
+              body: Artwork(
+                url: 'https://example.test/wide.jpg',
+                size: 120,
+                aspectRatio: 16 / 9,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final image = tester.widget<Image>(find.byType(Image));
+    final provider = image.image as ResizeImage;
+    expect(provider.width, 360);
+    expect(provider.height, 360);
+    expect(provider.policy, ResizeImagePolicy.fit);
+    expect(image.fit, BoxFit.cover);
+  });
+
   testWidgets('home controls reflow into two columns at large text', (
     tester,
   ) async {

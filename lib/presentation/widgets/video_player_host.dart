@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -23,6 +25,8 @@ final class VideoPlayerHost extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
+  static const _platformChannel = MethodChannel('com.parmscript.trickle/video');
+
   WebViewController? _controller;
   Future<WebViewController>? _controllerInitialization;
   Uri? _androidPlaybackRequest;
@@ -31,6 +35,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
   Timer? _loadTimeout;
   int _progress = 0;
   bool _ready = false;
+  bool _androidPictureInPicture = false;
+  bool _webPictureInPicture = false;
   VideoPlaybackSource _source = VideoPlaybackSource.privacyWrapper;
   String? _error;
 
@@ -38,7 +44,19 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
       _source == VideoPlaybackSource.officialYouTube;
 
   @override
+  void initState() {
+    super.initState();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      _platformChannel.setMethodCallHandler(_handlePlatformCall);
+    }
+  }
+
+  @override
   void dispose() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      _platformChannel.setMethodCallHandler(null);
+      unawaited(_setAndroidVideoActive(false));
+    }
     _loadTimeout?.cancel();
     super.dispose();
   }
@@ -66,17 +84,19 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
     return Stack(
       fit: StackFit.expand,
       children: [
+        if (session != null && _webPictureInPicture) _player(context, session),
         ExcludeSemantics(
           excluding: session?.expanded == true,
           child: widget.child,
         ),
-        if (session != null) _player(context, session),
+        if (session != null && !_webPictureInPicture) _player(context, session),
       ],
     );
   }
 
   Widget _player(BuildContext context, VideoSession session) {
-    final expanded = session.expanded;
+    final systemPresentation = _androidPictureInPicture || _webPictureInPicture;
+    final expanded = session.expanded || systemPresentation;
     final miniHeight = videoMiniPlayerHeight(context);
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final bottom = keyboardOpen
@@ -84,6 +104,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
         : MediaQuery.viewPaddingOf(context).bottom + 8;
 
     return Positioned(
+      key: const ValueKey('persistent-video-player-layer'),
       left: expanded ? 0 : 12,
       top: expanded ? 0 : null,
       right: expanded ? 0 : 12,
@@ -104,8 +125,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
                   side: const BorderSide(color: AppConstants.hairline),
                 ),
           child: SafeArea(
-            top: expanded,
-            bottom: expanded,
+            top: expanded && !systemPresentation,
+            bottom: expanded && !systemPresentation,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final toolbarHeight = expanded
@@ -130,7 +151,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
                         ),
                       ),
                     ),
-                    if (expanded)
+                    if (systemPresentation)
+                      const SizedBox.shrink()
+                    else if (expanded)
                       _expandedToolbar(context, session, toolbarHeight)
                     else
                       _miniControls(context, session, previewWidth),
@@ -287,7 +310,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
     late final PlatformWebViewControllerCreationParams params;
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
-        allowsInlineMediaPlayback: true,
+        // Inline WebKit video is suspended when iOS backgrounds the app.
+        // System presentation provides the supported fullscreen/PiP path.
+        allowsInlineMediaPlayback: false,
         mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
       );
     } else {
@@ -295,6 +320,13 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
     }
     final controller = WebViewController.fromPlatformCreationParams(params);
     await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    await controller.addJavaScriptChannel(
+      'TrickleVideoState',
+      onMessageReceived: _handleWebVideoState,
+    );
+    if (controller.platform case final WebKitWebViewController webKit) {
+      await _installWebKitPresentationObserver(webKit);
+    }
     await controller.setBackgroundColor(AppConstants.background);
     await controller.setNavigationDelegate(
       NavigationDelegate(
@@ -309,6 +341,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
               ref.read(videoSessionProvider) != null &&
               _isActivePlaybackUri(uri)) {
             _loadTimeout?.cancel();
+            unawaited(_setAndroidVideoActive(true));
             setState(() {
               _progress = 100;
               _ready = true;
@@ -390,6 +423,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
     _activeRequestUri = requestUri;
     _source = source;
     _androidPlaybackRequest = null;
+    _resetSystemPresentation();
+    unawaited(_setAndroidVideoActive(false));
     _loadTimeout?.cancel();
     if (mounted) {
       setState(() {
@@ -482,6 +517,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
   void _showLoadError(String message) {
     if (!mounted) return;
     _loadTimeout?.cancel();
+    unawaited(_setAndroidVideoActive(false));
     setState(() {
       _ready = false;
       _error = message;
@@ -490,6 +526,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
 
   Future<void> _close() async {
     ref.read(videoSessionProvider.notifier).close();
+    _resetSystemPresentation(updateSession: false);
+    await _setAndroidVideoActive(false);
     _loadTimeout?.cancel();
     _loadedUri = null;
     _activeRequestUri = null;
@@ -518,7 +556,136 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost> {
       showMessageSnackBar(context, 'Couldn’t open this video in your browser.');
     }
   }
+
+  Future<Object?> _handlePlatformCall(MethodCall call) async {
+    if (call.method != 'pictureInPictureChanged') return null;
+    if (!mounted) return null;
+    final active = call.arguments == true;
+    if (_androidPictureInPicture != active) {
+      setState(() => _androidPictureInPicture = active);
+      ref.read(videoSessionProvider.notifier).setExternalPresentation(active);
+    }
+    return null;
+  }
+
+  void _handleWebVideoState(JavaScriptMessage message) {
+    if (!mounted || ref.read(videoSessionProvider) == null) return;
+    final active = switch (message.message) {
+      'pip-start' => true,
+      'pip-stop' => false,
+      _ => null,
+    };
+    if (active == null || _webPictureInPicture == active) return;
+    setState(() => _webPictureInPicture = active);
+    ref.read(videoSessionProvider.notifier).setExternalPresentation(active);
+  }
+
+  Future<void> _installWebKitPresentationObserver(
+    WebKitWebViewController controller,
+  ) async {
+    try {
+      await _platformChannel.invokeMethod<void>(
+        'installWebKitPresentationObserver',
+        <String, Object>{
+          'webViewIdentifier': controller.webViewIdentifier,
+          'source': _webKitPresentationObserver,
+        },
+      );
+    } on MissingPluginException {
+      // Unsupported hosts keep normal foreground video playback.
+    } on PlatformException {
+      // Unsupported hosts keep normal foreground video playback.
+    }
+  }
+
+  void _resetSystemPresentation({bool updateSession = true}) {
+    _androidPictureInPicture = false;
+    _webPictureInPicture = false;
+    if (updateSession) {
+      ref.read(videoSessionProvider.notifier).setExternalPresentation(false);
+    }
+  }
+
+  Future<void> _setAndroidVideoActive(bool active) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _platformChannel.invokeMethod<void>('setVideoActive', active);
+    } on MissingPluginException {
+      // Widget tests and unsupported Android devices have no host channel.
+    } on PlatformException {
+      // Foreground video remains usable if PiP is unavailable.
+    }
+  }
 }
+
+const _webKitPresentationObserver = r'''
+(() => {
+  if (window.__tricklePresentationObserver) return;
+  window.__tricklePresentationObserver = true;
+
+  const notify = (active) => {
+    try {
+      window.TrickleVideoState.postMessage(active ? 'pip-start' : 'pip-stop');
+    } catch (_) {}
+  };
+  const mode = (video) => {
+    if (video.webkitPresentationMode) return video.webkitPresentationMode;
+    return document.pictureInPictureElement === video
+        ? 'picture-in-picture'
+        : 'inline';
+  };
+  const observe = (video) => {
+    if (video.__trickleObserved) return;
+    video.__trickleObserved = true;
+    let inPictureInPicture = false;
+    let resumeAfterPictureInPicture = false;
+    let pauseTimer;
+
+    const update = () => {
+      const active = mode(video) === 'picture-in-picture';
+      if (active && !inPictureInPicture) {
+        clearTimeout(pauseTimer);
+        resumeAfterPictureInPicture = !video.paused;
+        inPictureInPicture = true;
+        notify(true);
+        return;
+      }
+      if (!active && inPictureInPicture) {
+        clearTimeout(pauseTimer);
+        const shouldResume = resumeAfterPictureInPicture;
+        inPictureInPicture = false;
+        notify(false);
+        if (shouldResume && video.paused) {
+          setTimeout(() => video.play().catch(() => {}), 0);
+        }
+      }
+    };
+    video.addEventListener('webkitpresentationmodechanged', update);
+    video.addEventListener('enterpictureinpicture', update);
+    video.addEventListener('leavepictureinpicture', update);
+    video.addEventListener('play', () => {
+      if (inPictureInPicture) resumeAfterPictureInPicture = true;
+    });
+    video.addEventListener('pause', () => {
+      if (!inPictureInPicture) return;
+      clearTimeout(pauseTimer);
+      pauseTimer = setTimeout(() => {
+        if (inPictureInPicture && mode(video) === 'picture-in-picture') {
+          resumeAfterPictureInPicture = false;
+        }
+      }, 300);
+    });
+  };
+  const scan = (root) => {
+    if (root instanceof HTMLVideoElement) observe(root);
+    if (root.querySelectorAll) root.querySelectorAll('video').forEach(observe);
+  };
+  scan(document);
+  new MutationObserver((changes) => {
+    changes.forEach((change) => change.addedNodes.forEach(scan));
+  }).observe(document, {childList: true, subtree: true});
+})();
+''';
 
 final class _VideoError extends StatelessWidget {
   const _VideoError({

@@ -668,6 +668,7 @@ final class Artwork extends ConsumerWidget {
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final pixelWidth = (size * pixelRatio).round();
     final pixelHeight = (height * pixelRatio).round();
+    final decodeSize = pixelWidth > pixelHeight ? pixelWidth : pixelHeight;
     return ExcludeSemantics(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
@@ -676,11 +677,14 @@ final class Artwork extends ConsumerWidget {
           height: height,
           child: localPath == null
               ? _placeholder()
-              : Image.file(
-                  File(localPath),
+              : Image(
                   key: ValueKey(localPath),
-                  cacheHeight: pixelHeight,
-                  cacheWidth: pixelWidth,
+                  image: ResizeImage(
+                    FileImage(File(localPath)),
+                    width: decodeSize,
+                    height: decodeSize,
+                    policy: ResizeImagePolicy.fit,
+                  ),
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
                   errorBuilder: (_, _, _) => _placeholder(),
