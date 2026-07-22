@@ -197,7 +197,7 @@ void main() {
     expect(VideoPlaybackSource.officialYouTube.fallbackAfterFailure, isNull);
   });
 
-  test('system PiP suppresses the in-app player and returns it minimized', () {
+  test('video stays in one session across mini-player and system PiP', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final notifier = container.read(videoSessionProvider.notifier);
@@ -207,6 +207,12 @@ void main() {
       sourceUri: Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
       playbackUri: Uri.parse('https://www.yout-ube.com/watch?v=dQw4w9WgXcQ'),
     );
+
+    expect(container.read(videoSessionProvider)?.expanded, isTrue);
+    notifier.minimize();
+    expect(container.read(videoSessionProvider)?.expanded, isFalse);
+    notifier.expand();
+    expect(container.read(videoSessionProvider)?.expanded, isTrue);
 
     notifier.setExternalPresentation(true);
     expect(container.read(videoSessionProvider)?.externalPresentation, isTrue);
