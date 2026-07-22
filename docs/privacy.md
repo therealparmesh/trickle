@@ -4,7 +4,7 @@ title: trickle Privacy Policy
 
 # trickle privacy policy
 
-Effective date: July 17, 2026
+Effective date: July 21, 2026
 
 ## Summary
 
@@ -24,6 +24,7 @@ trickle makes direct requests to third parties only to perform actions requested
 
 - Apple receives podcast discovery search terms and standard network metadata when catalog search is used.
 - Feed publishers and their hosting providers receive feed, article, artwork, transcript, chapter, and media requests, plus standard network metadata such as the device IP address.
+- When the user adds a YouTube channel or playlist, YouTube receives the page or feed request. Opening one of its video entries first loads yout-ube.com, which redirects the in-app player to YouTube's privacy-enhanced embed. If that attempt fails, the same player loads the official YouTube link from the feed, where YouTube may show ads. Those services receive the request and standard network metadata under their own policies.
 - The operating system and the destination selected by the user handle data when the user imports, exports, shares, or opens a link.
 
 ## Private feeds

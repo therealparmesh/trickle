@@ -4,13 +4,14 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 
 ## Features
 
-- Apple podcast catalog search, direct feed subscription, website feed discovery, standard OPML import, and podcast-only, reading-only, or combined OPML export
+- Apple podcast catalog search, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, standard OPML import, and podcast-only, reading-only, or combined OPML export
 - RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or reading-feed classification
 - Streaming, resumable app-private downloads, persistent Up Next, automatic download cleanup, and per-feed automation
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
 - Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
+- YouTube video entries with a persistent in-app web player and mini-player; playback tries yout-ube first, then the official YouTube link from the feed if that attempt fails
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information
@@ -63,11 +64,11 @@ The unsigned build commands verify compilation without requiring publisher crede
 
 - `lib/core`: product rules, constants, formatting, URL identity, and user-safe errors
 - `lib/data`: Drift/SQLite persistence, hardened HTTPS networking, feed parsing, private-feed storage, and repositories
-- `lib/features`: background downloads and the long-lived audio handler
+- `lib/features`: background downloads, long-lived audio handling, and the active video session
 - `lib/services`: refresh scheduling, feed automation, notifications, OPML, and local backup
 - `lib/presentation`: Riverpod-driven screens, reusable content components, and the floating player shell
 
-The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Potentially expensive feed and article parsing runs away from the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, artwork is memory-sized, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
+The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Potentially expensive feed and article parsing runs away from the UI isolate. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is memory-sized, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
 
 ## Project layout
 

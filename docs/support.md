@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: July 19, 2026_
+_Last updated: July 21, 2026_
 
 ## Contact
 
@@ -36,6 +36,12 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
 If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
+
+### Video feeds
+
+Use Add YouTube for focused channel and playlist guidance, or paste a public YouTube channel, playlist, or YouTube Atom feed into Add Feed. A video shared from inside a public playlist follows that playlist. Private, members-only, and account-specific lists are not supported by public feeds.
+
+Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. The mini-player remains available while navigating trickle. Background continuation depends on the operating system and the loaded web player.
 
 ### Background refresh or downloads
 
