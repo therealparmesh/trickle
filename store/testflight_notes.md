@@ -6,7 +6,6 @@ Please test the combined podcast and feed-reader flow:
 - Open podcast search results to preview their podcast detail screen, then subscribe, unsubscribe, and resubscribe without leaving that screen
 - Confirm an already subscribed podcast offers Unsubscribe in search without affecting other results
 - Stream, seek, pause, resume, and change the global playback speed
-- Stream an episode whose audio passes through several publisher or measurement redirects
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
 - Verify played-download cleanup offers only Immediately, 1 day, and 1 week
@@ -15,10 +14,8 @@ Please test the combined podcast and feed-reader flow:
 - Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
 - Add a public RSS feed and test unread, read, and saved states
 - Confirm Add Feed and Add YouTube use focused copy, while both create normal feed subscriptions
-- Pull to refresh from Home, Podcasts, and Reader; failed feeds should produce one clear result while the existing lists remain usable
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
-- Confirm video updates use uncropped 16:9 thumbnails, a play affordance, and watched/unwatched actions while ordinary articles retain square previews and read/unread actions
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
 - Background the app or lock the screen during video playback and verify web video pauses cleanly
 - Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
@@ -28,10 +25,7 @@ Please test the combined podcast and feed-reader flow:
 - During Refresh now or OPML import, confirm the row reports item progress, other settings remain usable, and Back works immediately while the operation continues
 - Reopen Settings during an active import and tap Import OPML again; it should rejoin the existing operation instead of opening another picker
 - Export podcast subscriptions, reading subscriptions, and all subscriptions separately; verify each file contains the expected feeds
-- Try restoring a file that is not a trickle ZIP; the app should identify it as an invalid backup and return the restore row to idle
-- In Settings, trigger refresh or notification permission and confirm only that row shows progress and cannot be triggered twice
 - Lock the screen during playback and verify system media controls
-- Add a bookmark with and without a note, then cancel the bookmark dialog and confirm playback remains usable
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views
 - Cold-launch the app and confirm the logo appears directly on the dark background without a light square
