@@ -169,6 +169,73 @@ void main() {
     },
   );
 
+  testWidgets('catalog rows preserve titles and actions at large text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _CatalogAdapter(),
+      addressValidator: (_) async {},
+    );
+    final router = GoRouter(
+      initialLocation: '/search',
+      routes: [
+        GoRoute(
+          path: '/search',
+          builder: (_, _) => const SearchPage(initialCatalog: true),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          podcastSearchProvider.overrideWithValue(
+            PodcastSearchRepository(database, network),
+          ),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp.router(
+          theme: TrickleTheme.dark,
+          routerConfig: router,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(3.2)),
+            child: child!,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(EditableText), 'signal');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    final title = tester.widget<Text>(find.text('Explicit Signal'));
+    expect(title.maxLines, 4);
+    expect(find.text('Subscribe'), findsNWidgets(2));
+    expect(
+      tester
+          .getSize(
+            find.byKey(ValueKey(Uri.parse('https://example.test/feed.xml'))),
+          )
+          .width,
+      224,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    router.dispose();
+    network.close();
+    await database.close();
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('add feed rejects malformed addresses before subscribing', (
     tester,
   ) async {
@@ -197,6 +264,114 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('add YouTube feed uses focused copy and rejects other hosts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: const Scaffold(body: AddFeedDialog.youtube()),
+      ),
+    );
+
+    expect(find.text('Add YouTube feed'), findsOneWidget);
+    expect(
+      find.text(
+        'Paste a public YouTube channel or playlist. trickle finds its feed automatically.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Private feed'), findsNothing);
+
+    await tester.enterText(
+      find.byType(EditableText),
+      'https://example.com/channel',
+    );
+    await tester.tap(find.text('Subscribe'));
+    await tester.pump();
+    expect(
+      find.text('Enter a YouTube channel, playlist, or YouTube Atom feed URL.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a feed subscription does not trap the add dialog', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final adapter = _BlockingFeedAdapter();
+    final network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: PrivateFeedStore(storage: const FlutterSecureStorage()),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [feedRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const AddFeedDialog(),
+                ),
+                child: const Text('Open add feed'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open add feed'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(EditableText),
+      'https://example.test/feed.xml',
+    );
+    await tester.tap(find.text('Subscribe'));
+    for (
+      var attempt = 0;
+      attempt < 10 && !adapter.started.isCompleted;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    expect(find.text('Subscribing…'), findsOneWidget);
+    final cancel = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Cancel'),
+    );
+    expect(cancel.onPressed, isNotNull);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AddFeedDialog), findsNothing);
+
+    adapter.release.complete();
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 10));
+      final subscribed = await tester.runAsync(
+        () => database.select(database.feeds).get(),
+      );
+      if (subscribed?.isNotEmpty == true) break;
+    }
+    expect(await database.select(database.feeds).get(), isNotEmpty);
+    expect(tester.takeException(), isNull);
+    network.close();
+    await database.close();
   });
 }
 

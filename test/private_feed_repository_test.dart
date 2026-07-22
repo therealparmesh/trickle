@@ -207,7 +207,7 @@ void main() {
   });
 
   test(
-    'a not-modified refresh preserves content and clears the prior error',
+    'not-modified refresh preserves content and coalesces duplicate requests',
     () async {
       network.close();
       await database.close();
@@ -264,6 +264,126 @@ void main() {
         adapter.requests.last.headers['If-Modified-Since'],
         'Wed, 01 Jan 2025 00:00:00 GMT',
       );
+
+      final requestsBeforeConcurrentRefresh = adapter.requests.length;
+      expect(
+        await Future.wait([
+          repository.refreshFeed(refreshedFeed!),
+          repository.refreshFeed(refreshedFeed),
+        ]),
+        everyElement(isTrue),
+      );
+      expect(adapter.requests, hasLength(requestsBeforeConcurrentRefresh + 1));
+    },
+  );
+
+  test('an older failed refresh cannot overwrite a newer success', () async {
+    final subscribed = await repository.subscribe(
+      'https://example.test/feed.xml',
+    );
+    final failureAdapter = _BlockingFailureFeedAdapter();
+    final failureNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = failureAdapter,
+      addressValidator: (_) async {},
+    );
+    final successNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _AlwaysNotModifiedFeedAdapter(),
+      addressValidator: (_) async {},
+    );
+    addTearDown(failureNetwork.close);
+    addTearDown(successNetwork.close);
+    final failureRepository = FeedRepository(
+      database: database,
+      network: failureNetwork,
+      privateFeeds: privateFeeds,
+    );
+    final successRepository = FeedRepository(
+      database: database,
+      network: successNetwork,
+      privateFeeds: privateFeeds,
+    );
+
+    final olderFailure = failureRepository.refreshFeed(subscribed);
+    await failureAdapter.started.future;
+    expect(await successRepository.refreshFeed(subscribed), isTrue);
+    failureAdapter.release.complete();
+    expect(await olderFailure, isFalse);
+
+    final refreshed = await database.feedById(subscribed.id);
+    expect(refreshed?.refreshError, isNull);
+  });
+
+  test('an older successful refresh cannot overwrite newer content', () async {
+    final subscribed = await repository.subscribe(
+      'https://example.test/feed.xml',
+    );
+    final olderAdapter = _BlockingSuccessfulFeedAdapter('Older response');
+    final olderNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = olderAdapter,
+      addressValidator: (_) async {},
+    );
+    final newerNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _FeedTitleAdapter('Newer response'),
+      addressValidator: (_) async {},
+    );
+    addTearDown(olderNetwork.close);
+    addTearDown(newerNetwork.close);
+    final olderRepository = FeedRepository(
+      database: database,
+      network: olderNetwork,
+      privateFeeds: privateFeeds,
+    );
+    final newerRepository = FeedRepository(
+      database: database,
+      network: newerNetwork,
+      privateFeeds: privateFeeds,
+    );
+
+    final olderRefresh = olderRepository.refreshFeed(subscribed);
+    await olderAdapter.started.future;
+    expect(await newerRepository.refreshFeed(subscribed), isTrue);
+    olderAdapter.release.complete();
+    expect(await olderRefresh, isTrue);
+
+    expect((await database.feedById(subscribed.id))?.title, 'Newer response');
+  });
+
+  test(
+    'refresh uses current feed state when its caller has a stale row',
+    () async {
+      final subscribed = await repository.subscribe(
+        'https://example.test/feed.xml',
+      );
+      await repository.updateFeedSettings(
+        subscribed.id,
+        autoDownload: true,
+        autoDownloadLimit: 4,
+        notifications: true,
+        introSkipMs: 1000,
+        outroSkipMs: 2000,
+        autoQueue: true,
+      );
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _FeedTitleAdapter('Current response'),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+
+      expect(await repository.refreshFeed(subscribed), isTrue);
+
+      final refreshed = await database.feedById(subscribed.id);
+      expect(refreshed?.title, 'Current response');
+      expect(refreshed?.autoDownload, isTrue);
+      expect(refreshed?.autoDownloadLimit, 4);
+      expect(refreshed?.notifications, isTrue);
+      expect(refreshed?.introSkipMs, 1000);
+      expect(refreshed?.outroSkipMs, 2000);
+      expect(refreshed?.autoQueue, isTrue);
     },
   );
 
@@ -635,6 +755,55 @@ void main() {
     expect(await privateFeeds.read(feed.credentialRef!), isNull);
     expect(await privateFeeds.readMediaUrl(episode.id), isNull);
   });
+
+  test('YouTube channel and playlist URLs resolve to public Atom feeds', () async {
+    network.close();
+    await database.close();
+    database = AppDatabase.forTesting(NativeDatabase.memory());
+    final adapter = _YouTubeFeedAdapter();
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    privateFeeds = PrivateFeedStore(storage: const FlutterSecureStorage());
+    repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+
+    final channel = await repository.subscribe(
+      'https://www.youtube.com/@GoogleDevelopers',
+    );
+    final duplicate = await repository.subscribe(
+      'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw',
+    );
+    final playlist = await repository.subscribe(
+      'https://www.youtube.com/playlist?list=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs',
+    );
+
+    expect(channel.id, duplicate.id);
+    expect(channel.isPrivate, isFalse);
+    expect(playlist.isPrivate, isFalse);
+    expect(channel.feedUrl, contains('channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw'));
+    expect(
+      playlist.feedUrl,
+      contains('playlist_id=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs'),
+    );
+    expect(await database.select(database.feeds).get(), hasLength(2));
+    expect(await database.select(database.episodes).get(), isEmpty);
+    final articles = await database.select(database.articles).get();
+    expect(articles, hasLength(2));
+    expect(articles.every((article) => article.imageUrl != null), isTrue);
+    expect(
+      adapter.requests.map((uri) => uri.toString()),
+      containsAll([
+        'https://www.youtube.com/@GoogleDevelopers',
+        'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw',
+        'https://www.youtube.com/feeds/videos.xml?playlist_id=PL590L5WQmH8fJ54F369BLDSqIwcs-TCfs',
+      ]),
+    );
+  });
 }
 
 final class _FeedAdapter implements HttpClientAdapter {
@@ -663,6 +832,59 @@ final class _FeedAdapter implements HttpClientAdapter {
       200,
       headers: {
         Headers.contentTypeHeader: ['application/rss+xml'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _YouTubeFeedAdapter implements HttpClientAdapter {
+  final List<Uri> requests = [];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options.uri);
+    if (options.uri.path.startsWith('/@')) {
+      return ResponseBody.fromString(
+        '''
+        <html><head>
+          <meta itemprop="channelId" content="UC_x5XG1OV2P6uZZ5FSM9Ttw">
+        </head></html>
+        ''',
+        200,
+        headers: {
+          Headers.contentTypeHeader: ['text/html'],
+        },
+      );
+    }
+    final itemId = options.uri.queryParameters.containsKey('playlist_id')
+        ? 'playlist'
+        : 'channel';
+    return ResponseBody.fromString(
+      '''
+      <feed xmlns="http://www.w3.org/2005/Atom"
+        xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Signal Channel</title>
+        <entry>
+          <id>yt:video:$itemId</id>
+          <title>New transmission</title>
+          <link rel="alternate" href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" />
+          <media:group>
+            <media:description>Details and links</media:description>
+            <media:thumbnail url="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" />
+          </media:group>
+        </entry>
+      </feed>
+      ''',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/atom+xml'],
       },
     );
   }
@@ -743,6 +965,95 @@ final class _NotModifiedFeedAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 }
+
+final class _AlwaysNotModifiedFeedAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString('', 304);
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _BlockingFailureFeedAdapter implements HttpClientAdapter {
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return ResponseBody.fromString('Not found', 404);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _FeedTitleAdapter implements HttpClientAdapter {
+  _FeedTitleAdapter(this.title);
+
+  final String title;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => _podcastFeedResponse(title);
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _BlockingSuccessfulFeedAdapter implements HttpClientAdapter {
+  _BlockingSuccessfulFeedAdapter(this.title);
+
+  final String title;
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return _podcastFeedResponse(title);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+ResponseBody _podcastFeedResponse(String title) => ResponseBody.fromString(
+  '''
+  <rss version="2.0">
+    <channel>
+      <title>$title</title>
+      <item>
+        <guid>episode-1</guid>
+        <title>Dispatch</title>
+        <enclosure url="https://cdn.example.test/audio.mp3"
+          type="audio/mpeg" />
+      </item>
+    </channel>
+  </rss>
+  ''',
+  200,
+  headers: {
+    Headers.contentTypeHeader: ['application/rss+xml'],
+  },
+);
 
 final class _PodcastWithTextItemAdapter implements HttpClientAdapter {
   @override

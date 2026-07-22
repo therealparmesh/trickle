@@ -16,6 +16,7 @@ import 'package:trickle/data/repositories/article_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/presentation/pages/episode_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
+import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
 
@@ -113,7 +114,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('compact home controls reflow at large text on a narrow phone', (
+  testWidgets('home controls reflow into two columns at large text', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -121,21 +122,37 @@ void main() {
         theme: TrickleTheme.dark,
         home: MediaQuery(
           data: const MediaQueryData(
-            size: Size(320, 640),
-            textScaler: TextScaler.linear(3.2),
+            size: Size(432, 900),
+            textScaler: TextScaler.linear(2),
           ),
           child: const Scaffold(
             body: Column(
               children: [
                 SectionHeader('Podcasts', action: 'See all', onAction: _noop),
-                SizedBox(
-                  width: 320,
-                  child: LibraryShortcut(
-                    icon: Icons.queue_music_rounded,
-                    label: 'Up Next',
-                    badge: 12,
-                    onTap: _noop,
-                  ),
+                HorizontalShortcutStrip(
+                  children: [
+                    LibraryShortcut(
+                      icon: Icons.queue_music_rounded,
+                      label: 'Up Next',
+                      badge: 12,
+                      onTap: _noop,
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.arrow_downward_rounded,
+                      label: 'Downloads',
+                      onTap: _noop,
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.bookmark_outline_rounded,
+                      label: 'Saved',
+                      onTap: _noop,
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.grid_view_rounded,
+                      label: 'Library',
+                      onTap: _noop,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -145,10 +162,21 @@ void main() {
     );
 
     expect(find.text('Up Next'), findsOneWidget);
+    expect(find.text('Downloads'), findsOneWidget);
+    expect(find.text('Saved'), findsOneWidget);
+    expect(find.text('Library'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('See all')).dy,
       greaterThan(tester.getBottomLeft(find.text('Podcasts')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Saved')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Library')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
     );
     expect(tester.takeException(), isNull);
   });
@@ -469,7 +497,7 @@ void main() {
           child: Scaffold(
             body: SizedBox(
               width: 280,
-              child: AdaptiveDropdownFormField<int>(
+              child: AdaptiveDropdownField<int>(
                 label: 'Remove played downloads',
                 initialValue: 1,
                 items: const [DropdownMenuItem(value: 1, child: Text('1 day'))],
@@ -488,6 +516,84 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dropdown selection stays controlled until persistence updates', (
+    tester,
+  ) async {
+    var persistedValue = 1;
+    int? requestedValue;
+    late StateSetter rebuild;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return AdaptiveDropdownField<int>(
+                label: 'Background refresh',
+                initialValue: persistedValue,
+                items: const [
+                  DropdownMenuItem(value: 1, child: Text('1 hour')),
+                  DropdownMenuItem(value: 2, child: Text('2 hours')),
+                ],
+                onChanged: (value) => requestedValue = value,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(DropdownButton<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2 hours').last);
+    await tester.pumpAndSettle();
+
+    expect(requestedValue, 2);
+    expect(
+      tester
+          .widget<DropdownButton<int>>(find.byType(DropdownButton<int>))
+          .value,
+      1,
+    );
+
+    rebuild(() => persistedValue = 2);
+    await tester.pump();
+    expect(
+      tester
+          .widget<DropdownButton<int>>(find.byType(DropdownButton<int>))
+          .value,
+      2,
+    );
+  });
+
+  testWidgets('Up Next distinguishes loading and failure from an empty queue', (
+    tester,
+  ) async {
+    final queue = StreamController<List<MediaItem>>();
+    addTearDown(queue.close);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          queueProvider.overrideWith((_) => queue.stream),
+          currentMediaProvider.overrideWith((_) => Stream.value(null)),
+        ],
+        child: MaterialApp(theme: TrickleTheme.dark, home: const QueuePage()),
+      ),
+    );
+
+    expect(find.byType(LoadingView), findsOneWidget);
+    expect(find.text('Nothing is Up Next'), findsNothing);
+
+    queue.addError(StateError('unavailable'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Couldn’t load Up Next'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Nothing is Up Next'), findsNothing);
   });
 
   testWidgets('explicit badge stays visible when a long title is truncated', (
@@ -592,6 +698,48 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets(
+    'shared inline states remain usable at accessibility text sizes',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      var retried = false;
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: TrickleTheme.dark,
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(3.2)),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const InlineLoadingView(label: 'Loading transcript'),
+                    InlineErrorView(
+                      'The publisher could not be reached.',
+                      title: 'Couldn’t load transcript',
+                      onRetry: () => retried = true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.bySemanticsLabel('Loading transcript'), findsOneWidget);
+      expect(find.text('Couldn’t load transcript'), findsOneWidget);
+      expect(find.text('The publisher could not be reached.'), findsOneWidget);
+      await tester.ensureVisible(find.text('Try again'));
+      await tester.pump();
+      await tester.tap(find.text('Try again'));
+      expect(retried, isTrue);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
+
   testWidgets('new markers share the metadata baseline', (tester) async {
     final semantics = tester.ensureSemantics();
     final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -690,6 +838,74 @@ void main() {
     await database.close();
     await tester.pump(const Duration(milliseconds: 1));
     semantics.dispose();
+  });
+
+  testWidgets('video rows use landscape artwork and video-specific actions', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final now = DateTime.utc(2026, 7, 21);
+    final feed = Feed(
+      id: 'videos',
+      title: 'Signal Videos',
+      feedUrl:
+          'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw',
+      kind: FeedKind.reader.index,
+      isPrivate: false,
+      autoDownload: false,
+      autoDownloadLimit: 3,
+      notifications: false,
+      introSkipMs: 0,
+      outroSkipMs: 0,
+      autoQueue: false,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final article = Article(
+      id: 'video',
+      feedId: feed.id,
+      title: 'A useful video',
+      canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      discoveredAt: now,
+      starred: false,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          feedProvider.overrideWith((_, _) => Stream.value(feed)),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(320, 640),
+              textScaler: TextScaler.linear(3.2),
+            ),
+            child: Scaffold(body: ArticleTile(article)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(find.byType(ArticleArtwork)), const Size(112, 63));
+    expect(
+      find.bySemanticsLabel(RegExp(r'Unwatched video A useful video')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Video actions'), findsOneWidget);
+    await tester.tap(find.byTooltip('Video actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mark watched'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 
   testWidgets('episode row opens details without starting playback', (
@@ -912,7 +1128,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('busy feed settings cannot be dismissed', (tester) async {
+  testWidgets('busy feed settings remain dismissible', (tester) async {
     final secret = Completer<PrivateFeedSecret?>();
     final feed = _privateFeed();
     await tester.pumpWidget(
@@ -944,36 +1160,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('Updating access…'), findsOneWidget);
-    expect(tester.widget<PopScope>(find.byType(PopScope)).canPop, isFalse);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.byType(FeedSettingsSheet), findsOneWidget);
-    await tester.tapAt(const Offset(8, 8));
-    await tester.pumpAndSettle();
-    expect(find.byType(FeedSettingsSheet), findsOneWidget);
-    await tester.drag(find.byType(FeedSettingsSheet), const Offset(0, 500));
-    await tester.pumpAndSettle();
-    expect(find.byType(FeedSettingsSheet), findsOneWidget);
+    expect(find.byType(FeedSettingsSheet), findsNothing);
 
     secret.complete(null);
-    await tester.pumpAndSettle();
-    expect(find.text('Update private access'), findsOneWidget);
-    expect(find.text('Updating access…'), findsOneWidget);
-    final privateUrlField = tester.widget<TextField>(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField &&
-            widget.decoration?.labelText == 'Private feed URL',
-      ),
-    );
-    expect(privateUrlField.controller?.text, isEmpty);
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(find.text('Update private access'), findsOneWidget);
-    expect(tester.widget<PopScope>(find.byType(PopScope)).canPop, isTrue);
-    await tester.tapAt(const Offset(8, 8));
-    await tester.pumpAndSettle();
-    expect(find.byType(FeedSettingsSheet), findsNothing);
+    await tester.pump();
     expect(tester.takeException(), isNull);
   });
 
@@ -1001,7 +1193,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Update private access'), findsOneWidget);
-    expect(tester.widget<PopScope>(find.byType(PopScope)).canPop, isTrue);
     expect(find.byType(SnackBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

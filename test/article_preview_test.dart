@@ -542,6 +542,67 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('reader marks a new item read when its route is reused', (
+    tester,
+  ) async {
+    final network = _client(
+      _StaticAdapter(
+        body:
+            '<html><body><article>Readable story body.</article></body></html>',
+        contentType: 'text/html',
+      ),
+    );
+    final first = await _seedArticle(
+      database,
+      summary: 'First story summary.',
+      canonicalUrl: null,
+    );
+    final secondId = 'article-2';
+    await database
+        .into(database.articles)
+        .insert(
+          ArticlesCompanion.insert(
+            id: secondId,
+            feedId: first.feedId,
+            title: 'Second story',
+            summary: const Value('Second story summary.'),
+            canonicalUrl: const Value(null),
+            discoveredAt: DateTime.utc(2026, 7, 18),
+          ),
+        );
+    final articles = ArticleRepository(database, network, privateFeeds);
+    final feeds = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+    Widget app(String articleId) => ProviderScope(
+      overrides: [
+        databaseProvider.overrideWithValue(database),
+        articleRepositoryProvider.overrideWithValue(articles),
+        feedRepositoryProvider.overrideWithValue(feeds),
+      ],
+      child: MaterialApp(home: ArticlePage(articleId: articleId)),
+    );
+
+    await tester.pumpWidget(app(first.id));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump();
+    expect((await database.articleById(first.id))?.readAt, isA<DateTime>());
+
+    await tester.pumpWidget(app(secondId));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump();
+    expect((await database.articleById(secondId))?.readAt, isA<DateTime>());
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   test(
     'feed refresh preserves a preview discovered outside the feed',
     () async {

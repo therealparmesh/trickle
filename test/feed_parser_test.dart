@@ -360,6 +360,48 @@ void main() {
     );
   });
 
+  test('parses YouTube Atom entries as illustrated reading items', () {
+    final parsed = parser.parse(
+      '''
+      <feed xmlns="http://www.w3.org/2005/Atom"
+        xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+        xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Signal Channel</title>
+        <link rel="alternate" href="https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw" />
+        <author><name>Signal Creator</name></author>
+        <entry>
+          <id>yt:video:dQw4w9WgXcQ</id>
+          <yt:videoId>dQw4w9WgXcQ</yt:videoId>
+          <title>New transmission</title>
+          <link rel="alternate" href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" />
+          <published>2026-07-20T14:30:00+00:00</published>
+          <media:group>
+            <media:description>Details &amp; links</media:description>
+            <media:thumbnail url="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" />
+          </media:group>
+        </entry>
+      </feed>
+    ''',
+      Uri.parse(
+        'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw',
+      ),
+    );
+
+    expect(parsed.kind, FeedKind.reader);
+    expect(parsed.episodes, isEmpty);
+    expect(parsed.articles, hasLength(1));
+    expect(parsed.articles.single.summary, 'Details & links');
+    expect(parsed.articles.single.contentHtml, 'Details &amp; links');
+    expect(
+      parsed.articles.single.imageUrl.toString(),
+      'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+    );
+    expect(
+      parsed.articles.single.canonicalUrl.toString(),
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    );
+  });
+
   test('uses Atom entry media and image enclosures for reading artwork', () {
     final parsed = parser.parse('''
       <feed xmlns="http://www.w3.org/2005/Atom"

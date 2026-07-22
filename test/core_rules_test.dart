@@ -5,6 +5,10 @@ import 'package:trickle/core/playback_rules.dart';
 import 'package:trickle/core/url_identity.dart';
 
 void main() {
+  test('metadata lines omit blank and repeated values', () {
+    expect(metadataLine(['Signal', ' signal ', '', null, '2h']), 'Signal · 2h');
+  });
+
   group('played threshold', () {
     test('handles short, long, and unknown-duration episodes', () {
       const duration = Duration(minutes: 20);
@@ -272,11 +276,39 @@ void main() {
     });
   });
 
-  test('skip and checkpoint timings are exact', () {
+  test('network and refresh deadlines use the standard timing tiers', () {
+    expect(AppConstants.shortOperationTimeout, const Duration(seconds: 3));
+    expect(AppConstants.networkConnectionTimeout, const Duration(seconds: 10));
+    expect(AppConstants.interactiveRequestTimeout, const Duration(seconds: 15));
+    expect(AppConstants.contentRequestTimeout, const Duration(seconds: 30));
+    expect(
+      AppConstants.videoSourceLoadTimeout,
+      AppConstants.networkConnectionTimeout,
+    );
+    expect(
+      AppConstants.backgroundRefreshBudget,
+      AppConstants.interactiveRequestTimeout,
+    );
+    expect(AppConstants.feedRefreshTimeout, AppConstants.contentRequestTimeout);
+    expect(
+      AppConstants.opmlImportFeedTimeout,
+      AppConstants.contentRequestTimeout,
+    );
+  });
+
+  test('playback and persistence timings are exact product rules', () {
     expect(AppConstants.rewind, const Duration(seconds: 15));
     expect(AppConstants.forward, const Duration(seconds: 30));
     expect(AppConstants.progressCheckpoint, const Duration(seconds: 15));
+    expect(AppConstants.playbackPositionThreshold, const Duration(seconds: 10));
+    expect(AppConstants.playbackCompletionWindow, const Duration(minutes: 1));
     expect(AppConstants.sleepFade, const Duration(seconds: 4));
+    expect(AppConstants.sleepStatusUpdate, const Duration(seconds: 30));
+    expect(
+      AppConstants.downloadProgressWriteInterval,
+      const Duration(seconds: 2),
+    );
+    expect(AppConstants.databaseLockTimeout, const Duration(seconds: 5));
   });
 
   test('compact durations never describe positive audio as zero minutes', () {
