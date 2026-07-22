@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
+import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../widgets/common.dart';
 
@@ -12,7 +13,8 @@ final class LibraryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final queue = ref.watch(queueProvider).value ?? const [];
+    final queueState = ref.watch(queueProvider);
+    final queue = queueState.value ?? const [];
     final completeDownloads =
         ref.watch(completedDownloadCountProvider).value ?? 0;
     final starredEpisodes = ref.watch(starredEpisodeCountProvider).value ?? 0;
@@ -70,7 +72,25 @@ final class LibraryPage extends ConsumerWidget {
                 onAction: queue.isEmpty ? null : () => context.push('/queue'),
               ),
             ),
-            if (queue.isEmpty)
+            if (queueState.isLoading)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 18),
+                  child: InlineLoadingView(label: 'Loading Up Next'),
+                ),
+              )
+            else if (queueState.hasError)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: InlineErrorView(
+                    friendlyError(queueState.error!),
+                    title: 'Couldn’t load Up Next',
+                    onRetry: () => ref.invalidate(queueProvider),
+                  ),
+                ),
+              )
+            else if (queue.isEmpty)
               const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(18, 4, 18, 12),

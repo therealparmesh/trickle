@@ -53,6 +53,24 @@ final class HorizontalShortcutStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.5) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          const horizontalPadding = 10.0;
+          final itemWidth = (constraints.maxWidth - horizontalPadding * 2) / 2;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
+            child: Wrap(
+              runSpacing: 4,
+              children: [
+                for (final child in children)
+                  SizedBox(width: itemWidth, child: child),
+              ],
+            ),
+          );
+        },
+      );
+    }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -339,8 +357,8 @@ final class PlaybackSpeedSelector extends StatelessWidget {
   }
 }
 
-final class AdaptiveDropdownFormField<T> extends StatelessWidget {
-  const AdaptiveDropdownFormField({
+final class AdaptiveDropdownField<T> extends StatelessWidget {
+  const AdaptiveDropdownField({
     required this.label,
     required this.initialValue,
     required this.items,
@@ -358,15 +376,21 @@ final class AdaptiveDropdownFormField<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final separateLabel = MediaQuery.textScalerOf(context).scale(1) > 1.8;
-    final field = DropdownButtonFormField<T>(
-      initialValue: initialValue,
-      isExpanded: true,
+    final field = InputDecorator(
       decoration: InputDecoration(
         labelText: separateLabel ? null : label,
         helperText: separateLabel ? null : helperText,
       ),
-      items: items,
-      onChanged: onChanged,
+      isEmpty: initialValue == null,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: initialValue,
+          isDense: true,
+          isExpanded: true,
+          items: items,
+          onChanged: onChanged,
+        ),
+      ),
     );
     if (!separateLabel) return field;
     return Column(
@@ -647,14 +671,16 @@ final class Artwork extends ConsumerWidget {
     this.url,
     this.headers = const {},
     this.size = 56,
+    this.aspectRatio = 1,
     this.radius = 9,
     this.icon = Icons.graphic_eq_rounded,
     super.key,
-  });
+  }) : assert(aspectRatio > 0);
 
   final String? url;
   final Map<String, String> headers;
   final double size;
+  final double aspectRatio;
   final double radius;
   final IconData icon;
 
@@ -669,19 +695,23 @@ final class Artwork extends ConsumerWidget {
               )
               .value
         : null;
-    final pixelSize = (size * MediaQuery.devicePixelRatioOf(context)).round();
+    final height = size / aspectRatio;
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final pixelWidth = (size * pixelRatio).round();
+    final pixelHeight = (height * pixelRatio).round();
     return ExcludeSemantics(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: SizedBox.square(
-          dimension: size,
+        child: SizedBox(
+          width: size,
+          height: height,
           child: localPath == null
               ? _placeholder()
               : Image.file(
                   File(localPath),
                   key: ValueKey(localPath),
-                  cacheHeight: pixelSize,
-                  cacheWidth: pixelSize,
+                  cacheHeight: pixelHeight,
+                  cacheWidth: pixelWidth,
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
                   errorBuilder: (_, _, _) => _placeholder(),
@@ -694,7 +724,11 @@ final class Artwork extends ConsumerWidget {
   Widget _placeholder() {
     return ColoredBox(
       color: AppConstants.elevated,
-      child: Icon(icon, color: AppConstants.cyan, size: size * 0.4),
+      child: Icon(
+        icon,
+        color: AppConstants.cyan,
+        size: (size / aspectRatio.clamp(1, double.infinity)) * 0.4,
+      ),
     );
   }
 }
@@ -790,12 +824,14 @@ final class ArticleArtwork extends ConsumerWidget {
   const ArticleArtwork({
     required this.article,
     this.size = 56,
+    this.aspectRatio = 1,
     this.radius = 9,
     super.key,
-  });
+  }) : assert(aspectRatio > 0);
 
   final Article article;
   final double size;
+  final double aspectRatio;
   final double radius;
 
   @override
@@ -809,6 +845,7 @@ final class ArticleArtwork extends ConsumerWidget {
     Widget placeholder() => Artwork(
       url: null,
       size: size,
+      aspectRatio: aspectRatio,
       radius: radius,
       icon: Icons.article_outlined,
     );
@@ -827,6 +864,7 @@ final class ArticleArtwork extends ConsumerWidget {
               return Artwork(
                 url: url,
                 size: size,
+                aspectRatio: aspectRatio,
                 radius: radius,
                 icon: Icons.article_outlined,
               );
@@ -845,6 +883,7 @@ final class ArticleArtwork extends ConsumerWidget {
                       url: url,
                       headers: headers,
                       size: size,
+                      aspectRatio: aspectRatio,
                       radius: radius,
                       icon: Icons.article_outlined,
                     );
@@ -909,6 +948,7 @@ final class EmptyState extends StatelessWidget {
     this.action,
     this.onAction,
     this.compact = false,
+    this.iconColor = AppConstants.cyan,
     super.key,
   }) : assert(
          (action == null) == (onAction == null),
@@ -921,6 +961,7 @@ final class EmptyState extends StatelessWidget {
   final String? action;
   final VoidCallback? onAction;
   final bool compact;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -937,11 +978,7 @@ final class EmptyState extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ExcludeSemantics(
-                  child: Icon(
-                    icon,
-                    size: compact ? 31 : 38,
-                    color: AppConstants.cyan,
-                  ),
+                  child: Icon(icon, size: compact ? 31 : 38, color: iconColor),
                 ),
                 SizedBox(height: compact ? 10 : 15),
                 Semantics(
@@ -981,11 +1018,13 @@ final class EmptyState extends StatelessWidget {
 }
 
 final class LoadingView extends StatelessWidget {
-  const LoadingView({super.key});
+  const LoadingView({this.label = 'Loading', super.key});
+
+  final String label;
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Loading',
+    label: label,
     liveRegion: true,
     child: ExcludeSemantics(
       child: Center(
@@ -999,19 +1038,117 @@ final class LoadingView extends StatelessWidget {
 }
 
 final class ErrorView extends StatelessWidget {
-  const ErrorView(this.message, {this.onRetry, super.key});
+  const ErrorView(
+    this.message, {
+    this.title = 'Couldn’t load',
+    this.onRetry,
+    super.key,
+  });
 
   final String message;
+  final String title;
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) => EmptyState(
     icon: Icons.warning_amber_rounded,
-    title: 'Couldn’t load this',
+    iconColor: AppConstants.danger,
+    title: title,
     message: message,
     action: onRetry == null ? null : 'Try again',
     onAction: onRetry,
   );
+}
+
+final class InlineLoadingView extends StatelessWidget {
+  const InlineLoadingView({
+    this.label = 'Loading',
+    this.padding = const EdgeInsets.symmetric(vertical: 18),
+    super.key,
+  });
+
+  final String label;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    liveRegion: true,
+    child: ExcludeSemantics(
+      child: Padding(
+        padding: padding,
+        child: const LinearProgressIndicator(minHeight: 2),
+      ),
+    ),
+  );
+}
+
+final class InlineErrorView extends StatelessWidget {
+  const InlineErrorView(
+    this.message, {
+    required this.title,
+    this.onRetry,
+    super.key,
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppConstants.danger,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        message,
+                        style: const TextStyle(
+                          color: AppConstants.secondaryText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (onRetry != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: onRetry,
+                  child: const Text('Try again'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 final class AppBackdrop extends StatelessWidget {

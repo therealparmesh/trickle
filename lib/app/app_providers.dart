@@ -290,7 +290,7 @@ final safeImageFileProvider = FutureProvider.autoDispose
           uri,
           headers: request.headers,
           maxBytes: AppConstants.imageLimitBytes,
-          totalTimeout: const Duration(seconds: 30),
+          totalTimeout: AppConstants.contentRequestTimeout,
         );
         if (document.bytes.isEmpty) return stalePath;
         final contentType = document

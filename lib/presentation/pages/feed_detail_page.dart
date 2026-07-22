@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' hide Column;
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
@@ -28,9 +29,12 @@ Future<void> deleteSubscriptionThenCleanup({
 
 Future<bool> _confirmUnsubscribe(BuildContext context, Feed feed) async {
   final kind = FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
-  final noun = switch (kind) {
-    FeedKind.podcast => 'podcast',
-    FeedKind.reader => 'feed',
+  final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
+  final noun = switch ((kind, youtubeKind)) {
+    (FeedKind.podcast, _) => 'podcast',
+    (FeedKind.reader, YouTubeFeedKind.channel) => 'YouTube channel',
+    (FeedKind.reader, YouTubeFeedKind.playlist) => 'YouTube playlist',
+    (FeedKind.reader, null) => 'feed',
   };
   return await showDialog<bool>(
         context: context,
@@ -102,6 +106,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   static const _pageSize = 100;
   int _limit = _pageSize;
   bool _unsubscribing = false;
+  bool _refreshing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +119,9 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
             0,
             FeedKind.values.length - 1,
           )];
+    final youtubeKind = youtubeFeedKind(
+      Uri.tryParse(feed.value?.feedUrl ?? ''),
+    );
     final canShowEpisodes = kind == FeedKind.podcast;
     final canShowArticles = kind == FeedKind.reader;
     final AsyncValue<List<Episode>> episodes = canShowEpisodes
@@ -194,6 +202,8 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                   SliverToBoxAdapter(
                     child: _FeedHero(
                       feed: value,
+                      refreshing: _refreshing,
+                      onRefresh: () => _refresh(value),
                       subscriptionControl: largeText
                           ? MediaQuery.withClampedTextScaling(
                               maxScaleFactor: 2,
@@ -227,7 +237,11 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                     ),
                   ],
                   if (showArticles) ...[
-                    const SliverToBoxAdapter(child: SectionHeader('Articles')),
+                    SliverToBoxAdapter(
+                      child: SectionHeader(
+                        youtubeKind == null ? 'Articles' : 'Videos',
+                      ),
+                    ),
                     articles.when(
                       data: (items) => SliverList.builder(
                         itemCount: items.length,
@@ -302,6 +316,8 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   }
 
   Future<void> _refresh(Feed feed) async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
     try {
       final result = await ref.read(syncCoordinatorProvider).refreshFeed(feed);
       if (result.failedFeeds > 0 && mounted) {
@@ -312,19 +328,32 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       }
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
     }
   }
 }
 
 final class _FeedHero extends StatelessWidget {
-  const _FeedHero({required this.feed, this.subscriptionControl});
+  const _FeedHero({
+    required this.feed,
+    required this.refreshing,
+    required this.onRefresh,
+    this.subscriptionControl,
+  });
 
   final Feed feed;
+  final bool refreshing;
+  final VoidCallback onRefresh;
   final Widget? subscriptionControl;
 
   @override
   Widget build(BuildContext context) {
     final stackIdentity = MediaQuery.textScalerOf(context).scale(1) > 1.8;
+    final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
+    final artworkIcon = youtubeKind == null
+        ? Icons.rss_feed_rounded
+        : Icons.ondemand_video_rounded;
     return LayoutBuilder(
       builder: (context, constraints) => Padding(
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
@@ -335,7 +364,12 @@ final class _FeedHero extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FeedArtwork(feed: feed, size: 88, radius: 8),
+                  FeedArtwork(
+                    feed: feed,
+                    size: 88,
+                    radius: 8,
+                    icon: artworkIcon,
+                  ),
                   if (subscriptionControl != null) ...[
                     const SizedBox(width: 14),
                     Expanded(
@@ -355,7 +389,12 @@ final class _FeedHero extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FeedArtwork(feed: feed, size: 88, radius: 8),
+                  FeedArtwork(
+                    feed: feed,
+                    size: 88,
+                    radius: 8,
+                    icon: artworkIcon,
+                  ),
                   const SizedBox(width: 14),
                   Expanded(child: _FeedIdentity(feed: feed)),
                 ],
@@ -366,7 +405,12 @@ final class _FeedHero extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FeedArtwork(feed: feed, size: 124, radius: 10),
+                  FeedArtwork(
+                    feed: feed,
+                    size: 124,
+                    radius: 10,
+                    icon: artworkIcon,
+                  ),
                   const SizedBox(width: 20),
                   Expanded(
                     child: Column(
@@ -380,28 +424,15 @@ final class _FeedHero extends StatelessWidget {
                   ),
                 ],
               ),
-            if (feed.refreshError != null) ...[
+            if (refreshing) ...[
               const SizedBox(height: 14),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppConstants.danger.withValues(alpha: 0.07),
-                  border: const Border(
-                    left: BorderSide(color: AppConstants.danger, width: 2),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      feed.refreshError!,
-                      style: const TextStyle(
-                        color: AppConstants.danger,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ),
+              const InlineLoadingView(label: 'Refreshing feed'),
+            ] else if (feed.refreshError != null) ...[
+              const SizedBox(height: 14),
+              InlineErrorView(
+                feed.refreshError!,
+                title: 'Couldn’t refresh feed',
+                onRetry: onRefresh,
               ),
             ],
           ],
@@ -431,7 +462,9 @@ final class _FeedIdentity extends StatelessWidget {
             ),
           ),
         ),
-        if (feed.author?.isNotEmpty == true) ...[
+        if (feed.author?.isNotEmpty == true &&
+            feed.author!.trim().toLowerCase() !=
+                feed.title.trim().toLowerCase()) ...[
           const SizedBox(height: 7),
           Text(
             feed.author!,
@@ -531,10 +564,15 @@ final class _FeedDescription extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
     return Text(
       feed.description?.trim().isNotEmpty == true
           ? feed.description!
-          : 'RSS subscription',
+          : switch (youtubeKind) {
+              YouTubeFeedKind.channel => 'YouTube channel',
+              YouTubeFeedKind.playlist => 'YouTube playlist',
+              null => 'RSS feed',
+            },
       maxLines: 5,
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(color: AppConstants.secondaryText, height: 1.45),
@@ -573,6 +611,9 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
 
   bool get _isReader => _kind == FeedKind.reader;
 
+  bool get _isYouTube =>
+      youtubeFeedKind(Uri.tryParse(widget.feed.feedUrl)) != null;
+
   @override
   void dispose() {
     _intro.dispose();
@@ -582,146 +623,140 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_busy,
-      child: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            20 + MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(switch (_kind) {
-                  FeedKind.reader => 'Feed settings',
-                  FeedKind.podcast => 'Podcast settings',
-                }, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 14),
-                if (!_isReader) ...[
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: _autoDownload,
-                    onChanged: _busy
-                        ? null
-                        : (value) => setState(() => _autoDownload = value),
-                    title: const Text('Automatically download new episodes'),
-                    subtitle: const Text('Wi-Fi only; stored by trickle.'),
-                  ),
-                  if (_autoDownload)
-                    AdaptiveDropdownFormField<int>(
-                      initialValue: _limit,
-                      label: 'Maximum new episodes per refresh',
-                      items: [1, 2, 3, 5, 10]
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(
-                                '$value ${value == 1 ? 'episode' : 'episodes'}',
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _busy
-                          ? null
-                          : (value) => setState(() => _limit = value ?? 3),
-                    ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: _autoQueue,
-                    onChanged: _busy
-                        ? null
-                        : (value) => setState(() => _autoQueue = value),
-                    title: const Text('Add new episodes to Up Next'),
-                  ),
-                ],
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(switch (_kind) {
+                FeedKind.reader => 'Feed settings',
+                FeedKind.podcast => 'Podcast settings',
+              }, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 14),
+              if (!_isReader) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  value: _notifications,
-                  onChanged: _busy ? null : _setNotifications,
-                  secondary: SizedBox.square(
-                    dimension: 24,
-                    child: _operation == _FeedSettingsOperation.notifications
-                        ? const CircularProgressIndicator(strokeWidth: 2)
-                        : const Icon(Icons.notifications_outlined),
-                  ),
-                  title: Text(switch (_kind) {
-                    FeedKind.reader => 'New article notifications',
-                    FeedKind.podcast => 'New episode notifications',
-                  }),
-                  subtitle: const Text(
-                    'Alerts depend on iOS or Android background scheduling.',
-                  ),
+                  value: _autoDownload,
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _autoDownload = value),
+                  title: const Text('Automatically download new episodes'),
+                  subtitle: const Text('Wi-Fi only; stored by trickle.'),
                 ),
-                if (!_isReader) ...[
-                  const SizedBox(height: 10),
-                  Column(
-                    children: [
-                      TextField(
-                        enabled: !_busy,
-                        controller: _intro,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Skip intro (seconds)',
-                          helperText: '0–600',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        enabled: !_busy,
-                        controller: _outro,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Skip outro (seconds)',
-                          helperText: '0–600',
-                        ),
-                      ),
-                    ],
+                if (_autoDownload)
+                  AdaptiveDropdownField<int>(
+                    initialValue: _limit,
+                    label: 'Maximum new episodes per refresh',
+                    items: [1, 2, 3, 5, 10]
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(
+                              '$value ${value == 1 ? 'episode' : 'episodes'}',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _busy
+                        ? null
+                        : (value) => setState(() => _limit = value ?? 3),
                   ),
-                ],
-                const SizedBox(height: 18),
-                if (widget.feed.isPrivate)
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _updatePrivateAccess,
-                    icon: const Icon(Icons.key_rounded),
-                    label: Text(
-                      _operation == _FeedSettingsOperation.privateAccess
-                          ? 'Updating access…'
-                          : 'Update private access',
-                    ),
-                  ),
-                if (widget.feed.isPrivate) const SizedBox(height: 10),
-                FilledButton(
-                  onPressed: _busy ? null : _save,
-                  child: Text(
-                    _operation == _FeedSettingsOperation.save
-                        ? 'Saving…'
-                        : 'Save settings',
-                  ),
-                ),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppConstants.danger,
-                  ),
-                  onPressed: _busy ? null : _unsubscribe,
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: Text(
-                    _operation == _FeedSettingsOperation.unsubscribe
-                        ? 'Unsubscribing…'
-                        : 'Unsubscribe and delete local data',
-                  ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _autoQueue,
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _autoQueue = value),
+                  title: const Text('Add new episodes to Up Next'),
                 ),
               ],
-            ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _notifications,
+                onChanged: _busy ? null : _setNotifications,
+                secondary: SizedBox.square(
+                  dimension: 24,
+                  child: _operation == _FeedSettingsOperation.notifications
+                      ? const CircularProgressIndicator(strokeWidth: 2)
+                      : const Icon(Icons.notifications_outlined),
+                ),
+                title: Text(switch (_kind) {
+                  FeedKind.reader when _isYouTube => 'New video notifications',
+                  FeedKind.reader => 'New article notifications',
+                  FeedKind.podcast => 'New episode notifications',
+                }),
+                subtitle: const Text(
+                  'Alerts depend on iOS or Android background scheduling.',
+                ),
+              ),
+              if (!_isReader) ...[
+                const SizedBox(height: 10),
+                Column(
+                  children: [
+                    TextField(
+                      enabled: !_busy,
+                      controller: _intro,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                        labelText: 'Skip intro (seconds)',
+                        helperText: '0–600',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      enabled: !_busy,
+                      controller: _outro,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: const InputDecoration(
+                        labelText: 'Skip outro (seconds)',
+                        helperText: '0–600',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 18),
+              if (widget.feed.isPrivate)
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _updatePrivateAccess,
+                  icon: const Icon(Icons.key_rounded),
+                  label: Text(
+                    _operation == _FeedSettingsOperation.privateAccess
+                        ? 'Updating access…'
+                        : 'Update private access',
+                  ),
+                ),
+              if (widget.feed.isPrivate) const SizedBox(height: 10),
+              FilledButton(
+                onPressed: _busy ? null : _save,
+                child: Text(
+                  _operation == _FeedSettingsOperation.save
+                      ? 'Saving…'
+                      : 'Save settings',
+                ),
+              ),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: AppConstants.danger,
+                ),
+                onPressed: _busy ? null : _unsubscribe,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: Text(
+                  _operation == _FeedSettingsOperation.unsubscribe
+                      ? 'Unsubscribing…'
+                      : 'Unsubscribe and delete local data',
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -811,7 +846,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
           );
       ref.invalidate(privateFeedSecretProvider(widget.feed.id));
       if (!mounted) return;
-      showMessageSnackBar(context, 'Private access updated.');
+      showMessageSnackBar(context, 'Private access updated');
     } on Object catch (error) {
       if (!mounted) return;
       showErrorSnackBar(context, error);
@@ -939,12 +974,9 @@ class _PrivateAccessDialogState extends State<_PrivateAccessDialog> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: AppConstants.danger),
-                  ),
+                InlineErrorView(
+                  _error!,
+                  title: 'Couldn’t update private access',
                 ),
               ],
             ],

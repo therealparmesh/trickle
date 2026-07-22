@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/url_identity.dart';
 
@@ -57,9 +58,9 @@ final class SafeNetworkClient {
     final package = await PackageInfo.fromPlatform();
     final dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 10),
+        connectTimeout: AppConstants.networkConnectionTimeout,
+        receiveTimeout: AppConstants.contentRequestTimeout,
+        sendTimeout: AppConstants.networkConnectionTimeout,
         headers: {
           'User-Agent':
               'trickle/${package.version} (${Platform.operatingSystem}; podcast and RSS reader)',
@@ -75,7 +76,7 @@ final class SafeNetworkClient {
     httpClient.connectionFactory = (uri, proxyHost, proxyPort) async {
       final addresses = await InternetAddress.lookup(
         uri.host,
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(AppConstants.networkConnectionTimeout);
       if (addresses.isEmpty || addresses.any(isPrivateOrReservedAddress)) {
         throw const SocketException('Unsafe server address');
       }
@@ -131,7 +132,7 @@ final class SafeNetworkClient {
     Uri requested, {
     int maxBytes = 10 * 1024 * 1024,
     Map<String, String> headers = const {},
-    Duration totalTimeout = const Duration(seconds: 120),
+    Duration totalTimeout = AppConstants.contentRequestTimeout,
   }) async {
     if (maxBytes <= 0 || totalTimeout <= Duration.zero) {
       throw ArgumentError('Limits and timeout must be positive.');
@@ -262,7 +263,7 @@ final class SafeNetworkClient {
   Future<NetworkResource> resolveResource(
     Uri requested, {
     Map<String, String> headers = const {},
-    Duration totalTimeout = const Duration(seconds: 15),
+    Duration totalTimeout = AppConstants.interactiveRequestTimeout,
   }) async {
     if (totalTimeout <= Duration.zero) {
       throw ArgumentError.value(totalTimeout, 'totalTimeout');
@@ -362,7 +363,7 @@ final class SafeNetworkClient {
 
   Future<Uri> validatePublicAddress(
     Uri input, {
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = AppConstants.networkConnectionTimeout,
   }) async {
     final uri = normalizeHttps(input);
     await _validatePublicHttps(uri, timeout);
@@ -391,14 +392,14 @@ final class SafeNetworkClient {
     }
     List<InternetAddress> addresses;
     try {
-      final timeout = remaining < const Duration(seconds: 10)
+      final timeout = remaining < AppConstants.networkConnectionTimeout
           ? remaining
-          : const Duration(seconds: 10);
+          : AppConstants.networkConnectionTimeout;
       addresses = await InternetAddress.lookup(host).timeout(timeout);
     } on TimeoutException {
       throw const NetworkException('The request timed out.');
     } on Object {
-      throw const NetworkException('The server address could not be resolved.');
+      throw const NetworkException('The server address couldn’t be resolved.');
     }
     if (addresses.isEmpty || addresses.any(isPrivateOrReservedAddress)) {
       throw const UnsafeAddressException(
@@ -412,7 +413,7 @@ final class SafeNetworkClient {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.receiveTimeout ||
       DioExceptionType.sendTimeout => 'The request timed out.',
-      DioExceptionType.connectionError => 'Could not connect to the server.',
+      DioExceptionType.connectionError => 'Couldn’t connect to the server.',
       DioExceptionType.badCertificate =>
         'The server certificate is not trusted.',
       _ => 'The network request failed.',

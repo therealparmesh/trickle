@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../core/constants.dart';
 import '../data/database/app_database.dart';
 import '../data/network/safe_network_client.dart';
 import '../data/repositories/feed_repository.dart';
@@ -17,7 +18,6 @@ import 'refresh_lock.dart';
 import 'sync_coordinator.dart';
 
 const backgroundRefreshTask = 'com.parmscript.trickle.feed-refresh';
-const _backgroundRefreshBudget = Duration(seconds: 15);
 const _backgroundRefreshCadence = Duration(hours: 1);
 
 @pragma('vm:entry-point')
@@ -43,7 +43,7 @@ void backgroundCallbackDispatcher() {
       // never closed under an in-flight refresh.
       await RefreshLock.run(
         () => repository.refreshAll(
-          budget: _backgroundRefreshBudget,
+          budget: AppConstants.backgroundRefreshBudget,
           dueAt: now,
           minimumAge: interval.duration,
           maxConcurrent: 2,
@@ -94,7 +94,7 @@ void backgroundCallbackDispatcher() {
                     )
                     .length,
               )
-              .timeout(const Duration(seconds: 3));
+              .timeout(AppConstants.shortOperationTimeout);
         } on Object {
           // A denied notification permission must not fail feed refresh.
         }

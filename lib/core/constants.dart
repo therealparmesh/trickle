@@ -1,14 +1,31 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppConstants {
+  // Time-bounded work uses one short auxiliary tier plus three network tiers.
+  // Callers select the smallest tier that can finish the whole operation,
+  // including redirects.
+  static const shortOperationTimeout = Duration(seconds: 3);
+  static const networkConnectionTimeout = Duration(seconds: 10);
+  static const interactiveRequestTimeout = Duration(seconds: 15);
+  static const contentRequestTimeout = Duration(seconds: 30);
+  static const videoSourceLoadTimeout = networkConnectionTimeout;
+  static const backgroundRefreshBudget = interactiveRequestTimeout;
+  static const feedRefreshTimeout = contentRequestTimeout;
+  static const opmlImportFeedTimeout = contentRequestTimeout;
+
   static const allowedSpeeds = <int>[100, 125, 150, 175, 200];
   static const defaultSpeed = 100;
   static const rewind = Duration(seconds: 15);
   static const forward = Duration(seconds: 30);
   static const progressCheckpoint = Duration(seconds: 15);
-  static const sleepFade = Duration(seconds: 4);
-  static const feedRefreshTimeout = Duration(seconds: 30);
-  static const opmlImportFeedTimeout = Duration(seconds: 30);
+  static const playbackPositionThreshold = Duration(seconds: 10);
+  static const playbackCompletionWindow = Duration(minutes: 1);
+  static const sleepFadeSteps = 4;
+  static const sleepFadeStepInterval = Duration(seconds: 1);
+  static const sleepFade = Duration(seconds: sleepFadeSteps);
+  static const sleepStatusUpdate = Duration(seconds: 30);
+  static const downloadProgressWriteInterval = Duration(seconds: 2);
+  static const databaseLockTimeout = Duration(seconds: 5);
 
   static const feedLimitBytes = 32 * 1024 * 1024;
   static const discoveryLimitBytes = 2 * 1024 * 1024;

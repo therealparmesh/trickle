@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
+import '../../core/errors.dart';
 import '../widgets/common.dart';
 
 final class QueuePage extends ConsumerWidget {
@@ -11,7 +12,8 @@ final class QueuePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final queue = ref.watch(queueProvider).value ?? const <MediaItem>[];
+    final queueState = ref.watch(queueProvider);
+    final queue = queueState.value ?? const <MediaItem>[];
     final current = ref.watch(currentMediaProvider).value;
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
@@ -38,97 +40,107 @@ final class QueuePage extends ConsumerWidget {
         ],
       ),
       body: AppBackdrop(
-        child: queue.isEmpty
-            ? const EmptyState(
-                icon: Icons.queue_music_rounded,
-                title: 'Nothing is Up Next',
-                message:
-                    'Choose Play next or Add to Up Next from an episode menu.',
-              )
-            : ReorderableListView.builder(
-                padding: const EdgeInsets.only(top: 8, bottom: 24),
-                itemCount: queue.length,
-                onReorderItem: (oldIndex, newIndex) {
-                  final items = [...queue];
-                  final item = items.removeAt(oldIndex);
-                  items.insert(newIndex, item);
-                  _run(
-                    context,
-                    () => ref.read(audioHandlerProvider).updateQueue(items),
-                  );
-                },
-                itemBuilder: (context, index) {
-                  final item = queue[index];
-                  final active = current?.id == item.id;
-                  return Dismissible(
-                    key: ValueKey(item.id),
-                    direction: DismissDirection.endToStart,
-                    background: const ColoredBox(
-                      color: AppConstants.danger,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Padding(
-                          padding: EdgeInsets.only(right: 22),
-                          child: Icon(Icons.delete_outline_rounded),
+        child: queueState.when(
+          loading: () => const LoadingView(label: 'Loading Up Next'),
+          error: (error, _) => ErrorView(
+            friendlyError(error),
+            title: 'Couldn’t load Up Next',
+            onRetry: () => ref.invalidate(queueProvider),
+          ),
+          data: (queue) => queue.isEmpty
+              ? const EmptyState(
+                  icon: Icons.queue_music_rounded,
+                  title: 'Nothing is Up Next',
+                  message:
+                      'Choose Play next or Add to Up Next from an episode menu.',
+                )
+              : ReorderableListView.builder(
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
+                  itemCount: queue.length,
+                  onReorderItem: (oldIndex, newIndex) {
+                    final items = [...queue];
+                    final item = items.removeAt(oldIndex);
+                    items.insert(newIndex, item);
+                    _run(
+                      context,
+                      () => ref.read(audioHandlerProvider).updateQueue(items),
+                    );
+                  },
+                  itemBuilder: (context, index) {
+                    final item = queue[index];
+                    final active = current?.id == item.id;
+                    return Dismissible(
+                      key: ValueKey(item.id),
+                      direction: DismissDirection.endToStart,
+                      background: const ColoredBox(
+                        color: AppConstants.danger,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: EdgeInsets.only(right: 22),
+                            child: Icon(Icons.delete_outline_rounded),
+                          ),
                         ),
                       ),
-                    ),
-                    confirmDismiss: (_) => _confirmRemove(context, item.title),
-                    onDismissed: (_) => _run(
-                      context,
-                      () =>
-                          ref.read(audioHandlerProvider).removeQueueItem(item),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListTile(
-                          key: ValueKey('tile-${item.id}'),
-                          selected: active,
-                          selectedTileColor: AppConstants.cyan.withValues(
-                            alpha: 0.05,
-                          ),
-                          onTap: () => _run(
-                            context,
-                            () => ref
-                                .read(audioHandlerProvider)
-                                .skipToQueueItem(index),
-                          ),
-                          leading: EpisodeArtworkById(
-                            episodeId: item.id,
-                            fallbackUrl: item.artUri?.toString(),
-                            size: 50,
-                          ),
-                          title: EpisodeTitle(
-                            title: item.title,
-                            explicit: item.extras?['explicit'] == true,
-                            maxLines: 2,
-                          ),
-                          subtitle: Text(
-                            [
-                              if (item.album?.isNotEmpty == true) item.album!,
-                              if (active) 'Playing',
-                            ].join(' · '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: ReorderableDragStartListener(
-                            index: index,
-                            child: const SizedBox.square(
-                              dimension: 48,
-                              child: Tooltip(
-                                message: 'Reorder episode',
-                                child: Icon(Icons.drag_indicator_rounded),
+                      confirmDismiss: (_) =>
+                          _confirmRemove(context, item.title),
+                      onDismissed: (_) => _run(
+                        context,
+                        () => ref
+                            .read(audioHandlerProvider)
+                            .removeQueueItem(item),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            key: ValueKey('tile-${item.id}'),
+                            selected: active,
+                            selectedTileColor: AppConstants.cyan.withValues(
+                              alpha: 0.05,
+                            ),
+                            onTap: () => _run(
+                              context,
+                              () => ref
+                                  .read(audioHandlerProvider)
+                                  .skipToQueueItem(index),
+                            ),
+                            leading: EpisodeArtworkById(
+                              episodeId: item.id,
+                              fallbackUrl: item.artUri?.toString(),
+                              size: 50,
+                            ),
+                            title: EpisodeTitle(
+                              title: item.title,
+                              explicit: item.extras?['explicit'] == true,
+                              maxLines: 2,
+                            ),
+                            subtitle: Text(
+                              [
+                                if (item.album?.isNotEmpty == true) item.album!,
+                                if (active) 'Playing',
+                              ].join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: ReorderableDragStartListener(
+                              index: index,
+                              child: const SizedBox.square(
+                                dimension: 48,
+                                child: Tooltip(
+                                  message: 'Reorder episode',
+                                  child: Icon(Icons.drag_indicator_rounded),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const Divider(height: 1, indent: 82, endIndent: 16),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                          const Divider(height: 1, indent: 82, endIndent: 16),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }

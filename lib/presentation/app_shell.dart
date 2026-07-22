@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../app/app_providers.dart';
 import '../core/constants.dart';
+import '../features/video/video_session.dart';
 import 'pages/player_page.dart';
 import 'widgets/common.dart';
+import 'widgets/video_player_host.dart';
 
 final class AppShell extends ConsumerWidget {
   const AppShell({required this.child, super.key});
@@ -14,21 +16,42 @@ final class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final hasPlayer = ref.watch(currentMediaProvider).value != null;
+    final video = ref.watch(videoSessionProvider);
+    final hasAudioPlayer =
+        video == null && ref.watch(currentMediaProvider).value != null;
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final playerInset = hasPlayer && !keyboardOpen
+    final playerInset = keyboardOpen
+        ? 0.0
+        : video?.expanded == false
+        ? videoMiniPlayerHeight(context) +
+              16 +
+              MediaQuery.viewPaddingOf(context).bottom
+        : hasAudioPlayer
         ? _miniPlayerHeight(context) +
               8 +
               MediaQuery.viewPaddingOf(context).bottom
         : 0.0;
-    return ColoredBox(
-      color: AppConstants.background,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned.fill(bottom: playerInset, child: child),
-          const Align(alignment: Alignment.bottomCenter, child: MiniPlayer()),
-        ],
+    return VideoPlayerHost(
+      child: BackButtonListener(
+        onBackButtonPressed: () async {
+          if (ref.read(videoSessionProvider)?.expanded != true) return false;
+          ref.read(videoSessionProvider.notifier).minimize();
+          return true;
+        },
+        child: ColoredBox(
+          color: AppConstants.background,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(bottom: playerInset, child: child),
+              if (video == null)
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: MiniPlayer(),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

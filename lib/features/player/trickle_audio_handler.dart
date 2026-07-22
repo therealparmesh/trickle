@@ -461,7 +461,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   @override
   Future<void> skipToPrevious() async {
     _episodeSelectionGeneration++;
-    if (_position > const Duration(seconds: 10)) {
+    if (_position > AppConstants.playbackPositionThreshold) {
       await seek(Duration.zero);
       return;
     }
@@ -741,7 +741,8 @@ final class TrickleAudioHandler extends BaseAudioHandler
           ? _effectiveDuration
           : Duration(milliseconds: progress?.durationMs ?? 0);
       if (progress != null &&
-          progress.positionMs >= const Duration(seconds: 10).inMilliseconds &&
+          progress.positionMs >=
+              AppConstants.playbackPositionThreshold.inMilliseconds &&
           !progress.completed &&
           !isPlaybackComplete(
             Duration(milliseconds: progress.positionMs),
@@ -848,10 +849,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
       return;
     }
     try {
-      for (var step = 4; step >= 0; step--) {
+      for (var step = AppConstants.sleepFadeSteps; step >= 0; step--) {
         if (generation != _sleepGeneration) return;
-        await player.setVolume(step * 0.2);
-        if (step > 0) await Future<void>.delayed(const Duration(seconds: 1));
+        await player.setVolume(step / AppConstants.sleepFadeSteps);
+        if (step > 0) {
+          await Future<void>.delayed(AppConstants.sleepFadeStepInterval);
+        }
       }
       await pause();
     } finally {
@@ -874,7 +877,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       _sleepStatusEvents.add(status);
     }
     if (status.mode == SleepTimerMode.timed) {
-      _sleepStatusTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+      _sleepStatusTicker = Timer.periodic(AppConstants.sleepStatusUpdate, (_) {
         if (_disposed || _sleepStatusEvents.isClosed) return;
         _sleepStatusEvents.add(_sleepStatus);
       });

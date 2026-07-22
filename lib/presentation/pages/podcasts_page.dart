@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/youtube_support.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 
@@ -109,7 +110,11 @@ final class PodcastsPage extends ConsumerWidget {
 }
 
 final class AddFeedDialog extends ConsumerStatefulWidget {
-  const AddFeedDialog({super.key});
+  const AddFeedDialog({this.youtubeOnly = false, super.key});
+
+  const AddFeedDialog.youtube({super.key}) : youtubeOnly = true;
+
+  final bool youtubeOnly;
 
   @override
   ConsumerState<AddFeedDialog> createState() => _AddFeedDialogState();
@@ -135,28 +140,37 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_busy,
-      child: AlertDialog(
-        title: const Text('Add feed'),
-        content: SingleChildScrollView(
-          child: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _url,
-                  enabled: !_busy,
-                  onChanged: (_) => _clearError(),
-                  autofocus: true,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'RSS or website URL',
-                    hintText: 'https://example.com/feed.xml',
-                  ),
+    return AlertDialog(
+      title: Text(widget.youtubeOnly ? 'Add YouTube feed' : 'Add feed'),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 440,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.youtubeOnly) ...[
+                const Text(
+                  'Paste a public YouTube channel or playlist. trickle finds its feed automatically.',
                 ),
+                const SizedBox(height: 14),
+              ],
+              TextField(
+                controller: _url,
+                enabled: !_busy,
+                onChanged: (_) => _clearError(),
+                autofocus: true,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: widget.youtubeOnly
+                      ? 'YouTube channel or playlist URL'
+                      : 'Feed or website URL',
+                  hintText: widget.youtubeOnly
+                      ? 'youtube.com/@channel or playlist URL'
+                      : 'RSS, Atom, JSON Feed, or website',
+                ),
+              ),
+              if (!widget.youtubeOnly)
                 SwitchListTile(
                   value: _private,
                   onChanged: _busy
@@ -171,73 +185,64 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                   ),
                   contentPadding: EdgeInsets.zero,
                 ),
-                if (_private) ...[
-                  TextField(
-                    controller: _username,
-                    enabled: !_busy,
-                    onChanged: (_) => _clearError(),
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Username (Basic auth)',
+              if (_private) ...[
+                TextField(
+                  controller: _username,
+                  enabled: !_busy,
+                  onChanged: (_) => _clearError(),
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Username (Basic auth)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _password,
+                  enabled: !_busy,
+                  onChanged: (_) => _clearError(),
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    'OR',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppConstants.secondaryText,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _password,
-                    enabled: !_busy,
-                    onChanged: (_) => _clearError(),
-                    obscureText: true,
-                    enableSuggestions: false,
-                    autocorrect: false,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Text(
-                      'OR',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppConstants.secondaryText,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  TextField(
-                    controller: _bearer,
-                    enabled: !_busy,
-                    onChanged: (_) => _clearError(),
-                    obscureText: true,
-                    enableSuggestions: false,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Bearer token',
-                    ),
-                  ),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: AppConstants.danger),
-                    ),
-                  ),
-                ],
+                ),
+                TextField(
+                  controller: _bearer,
+                  enabled: !_busy,
+                  onChanged: (_) => _clearError(),
+                  obscureText: true,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'Bearer token'),
+                ),
               ],
-            ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                InlineErrorView(_error!, title: 'Couldn’t subscribe'),
+              ],
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: _busy ? null : () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: _busy ? null : _submit,
-            child: Text(_busy ? 'Subscribing…' : 'Subscribe'),
-          ),
-        ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _submit,
+          child: Text(_busy ? 'Subscribing…' : 'Subscribe'),
+        ),
+      ],
     );
   }
 
@@ -247,7 +252,11 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
     final password = _password.text;
     final bearer = _bearer.text.trim();
     if (url.isEmpty) {
-      setState(() => _error = 'Enter an RSS feed or website address.');
+      setState(
+        () => _error = widget.youtubeOnly
+            ? 'Enter a public YouTube channel or playlist URL.'
+            : 'Enter an RSS feed or website.',
+      );
       return;
     }
     final candidate = Uri.tryParse(
@@ -259,6 +268,13 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
     }
     if (!const {'http', 'https'}.contains(candidate.scheme.toLowerCase())) {
       setState(() => _error = 'Use an HTTP or HTTPS address.');
+      return;
+    }
+    if (widget.youtubeOnly && youtubeFeedKind(candidate) == null) {
+      setState(
+        () => _error =
+            'Enter a YouTube channel, playlist, or YouTube Atom feed URL.',
+      );
       return;
     }
     if (candidate.userInfo.isNotEmpty) {
@@ -289,7 +305,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
       final feed = await ref
           .read(feedRepositoryProvider)
           .subscribe(
-            url,
+            candidate.toString(),
             username: _private ? username : null,
             password: _private ? password : null,
             bearerToken: _private ? bearer : null,

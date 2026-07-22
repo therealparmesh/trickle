@@ -5,6 +5,7 @@ import '../../core/errors.dart';
 import '../../data/repositories/article_repository.dart';
 import '../../data/security/private_feed_store.dart';
 import 'article_content.dart';
+import 'common.dart';
 
 final class EpisodeShowNotes extends StatelessWidget {
   const EpisodeShowNotes({
@@ -29,23 +30,11 @@ final class EpisodeShowNotes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return value.when(
-      loading: () => Semantics(
-        label: 'Loading show notes',
-        child: const ExcludeSemantics(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 18),
-            child: LinearProgressIndicator(),
-          ),
-        ),
-      ),
-      error: (error, _) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Couldn’t load show notes'),
-        subtitle: Text(friendlyError(error)),
-        trailing: TextButton(
-          onPressed: onRetry,
-          child: const Text('Try again'),
-        ),
+      loading: () => const InlineLoadingView(label: 'Loading show notes'),
+      error: (error, _) => InlineErrorView(
+        friendlyError(error),
+        title: 'Couldn’t load show notes',
+        onRetry: onRetry,
       ),
       data: (notes) {
         if (notes == null || notes.text.trim().isEmpty) {

@@ -73,21 +73,14 @@ final class SyncCoordinator {
       _serialize(() => _runFeedRefresh(feed));
 
   Future<SyncResult> _serialize(Future<SyncResult> Function() operation) {
-    final completer = Completer<SyncResult>();
-    final previous = _refreshTail;
-    _refreshTail = () async {
-      try {
-        await previous;
-      } on Object {
-        // The next requested refresh still runs after an earlier failure.
-      }
-      try {
-        completer.complete(await operation());
-      } on Object catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      }
-    }();
-    return completer.future;
+    final result = _refreshTail.then((_) => operation());
+    _refreshTail = result.then<void>(
+      (_) {},
+      // Callers still receive the error through [result], while the internal
+      // tail recovers so the next requested refresh can run.
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
   }
 
   Future<SyncResult> _runFeedRefresh(Feed feed) async {

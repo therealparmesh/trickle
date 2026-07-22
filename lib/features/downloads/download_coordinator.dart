@@ -458,7 +458,8 @@ final class DownloadCoordinator {
       case TaskProgressUpdate():
         final now = DateTime.now().toUtc();
         final last = _lastProgressWrite[episodeId];
-        if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+        if (last != null &&
+            now.difference(last) < AppConstants.downloadProgressWriteInterval) {
           return;
         }
         _lastProgressWrite[episodeId] = now;

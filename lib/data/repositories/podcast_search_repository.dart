@@ -8,6 +8,9 @@ import '../../domain/feed_models.dart';
 import '../database/app_database.dart';
 import '../network/safe_network_client.dart';
 
+const _catalogRequestSpacing = Duration(seconds: 1);
+const _catalogRateWindow = Duration(minutes: 1);
+
 final class PodcastSearchRepository {
   PodcastSearchRepository(this._database, this._network);
 
@@ -56,7 +59,7 @@ final class PodcastSearchRepository {
     final document = await _network.get(
       uri,
       maxBytes: AppConstants.discoveryLimitBytes,
-      totalTimeout: const Duration(seconds: 15),
+      totalTimeout: AppConstants.interactiveRequestTimeout,
     );
     final data = (jsonDecode(document.text) as Map).cast<String, Object?>();
     final results = _parseResults(data['results']);
@@ -78,18 +81,18 @@ final class PodcastSearchRepository {
     while (true) {
       final now = DateTime.now().toUtc();
       _requestTimes.removeWhere(
-        (time) => now.difference(time) >= const Duration(seconds: 60),
+        (time) => now.difference(time) >= _catalogRateWindow,
       );
       final sinceLast = _requestTimes.isEmpty
           ? null
           : now.difference(_requestTimes.last);
       final oneSecondWait =
-          sinceLast == null || sinceLast >= const Duration(seconds: 1)
+          sinceLast == null || sinceLast >= _catalogRequestSpacing
           ? Duration.zero
-          : const Duration(seconds: 1) - sinceLast;
+          : _catalogRequestSpacing - sinceLast;
       final rollingWait = _requestTimes.length < 20
           ? Duration.zero
-          : const Duration(seconds: 60) - now.difference(_requestTimes.first);
+          : _catalogRateWindow - now.difference(_requestTimes.first);
       final wait = oneSecondWait > rollingWait ? oneSecondWait : rollingWait;
       if (wait <= Duration.zero) {
         _requestTimes.add(now);

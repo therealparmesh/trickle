@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
@@ -32,6 +33,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   late final TabController _tabs;
   late _ReaderFilter _filter;
   int _limit = _pageSize;
+  bool _markingAllRead = false;
 
   @override
   void initState() {
@@ -76,9 +78,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             icon: const Icon(Icons.add_rounded),
           ),
           IconButton(
-            tooltip: 'Search',
-            onPressed: () => context.push('/search'),
-            icon: const Icon(Icons.search_rounded),
+            tooltip: 'Add YouTube feed',
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const AddFeedDialog.youtube(),
+            ),
+            icon: const Icon(Icons.video_call_outlined),
           ),
         ],
       ),
@@ -116,9 +121,18 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: _markAllRead,
-                        icon: const Icon(Icons.done_all_rounded),
-                        label: const Text('Mark all read'),
+                        onPressed: _markingAllRead ? null : _markAllRead,
+                        icon: _markingAllRead
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.done_all_rounded),
+                        label: Text(
+                          _markingAllRead ? 'Marking read…' : 'Mark all read',
+                        ),
                       ),
                     ),
                 ],
@@ -132,15 +146,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       icon: Icons.auto_stories_outlined,
                       title: switch (_filter) {
                         _ReaderFilter.unread => 'All caught up',
-                        _ReaderFilter.all => 'No articles yet',
-                        _ReaderFilter.starred => 'No saved articles',
+                        _ReaderFilter.all => 'No feed items yet',
+                        _ReaderFilter.starred => 'No saved articles or videos',
                       },
                       message: switch (_filter) {
-                        _ReaderFilter.unread => 'There are no unread articles.',
+                        _ReaderFilter.unread =>
+                          'There are no unread feed items.',
                         _ReaderFilter.all =>
-                          'Add a reading feed to see articles here.',
+                          'Add a feed to see articles and videos here.',
                         _ReaderFilter.starred =>
-                          'Save an article to keep it here.',
+                          'Save an article or video to keep it here.',
                       },
                     ),
                   )
@@ -182,15 +197,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     });
 
     if (MediaQuery.textScalerOf(context).scale(1) > 1.8) {
-      return AdaptiveDropdownFormField<_ReaderFilter>(
+      return AdaptiveDropdownField<_ReaderFilter>(
         label: 'Show',
         initialValue: _filter,
         items: const [
           DropdownMenuItem(value: _ReaderFilter.unread, child: Text('Unread')),
-          DropdownMenuItem(
-            value: _ReaderFilter.all,
-            child: Text('All articles'),
-          ),
+          DropdownMenuItem(value: _ReaderFilter.all, child: Text('All')),
           DropdownMenuItem(value: _ReaderFilter.starred, child: Text('Saved')),
         ],
         onChanged: (value) {
@@ -231,7 +243,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   EmptyState(
                     icon: Icons.rss_feed_rounded,
                     title: 'No reading feeds',
-                    message: 'Add a news site, blog, RSS, Atom, or JSON Feed.',
+                    message:
+                        'Add a website, RSS feed, YouTube channel, or playlist.',
                     action: 'Add feed',
                     onAction: () => showDialog<void>(
                       context: context,
@@ -271,9 +284,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Mark all articles read?'),
+        title: const Text('Mark everything read?'),
         content: const Text(
-          'Every unread article will move out of the Unread view.',
+          'Every unread article and unwatched video will leave the Unread view.',
         ),
         actions: [
           TextButton(
@@ -288,11 +301,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       ),
     );
     if (confirmed != true || !mounted) return;
+    setState(() => _markingAllRead = true);
     try {
       await ref.read(feedRepositoryProvider).markAllArticlesRead();
     } on Object catch (error) {
       if (!mounted) return;
       showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _markingAllRead = false);
     }
   }
 }
@@ -304,16 +320,31 @@ final class _FeedRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
+    final author = feed.author?.trim();
+    final subtitle =
+        feed.refreshError ??
+        (youtubeKind != null
+            ? switch (youtubeKind) {
+                YouTubeFeedKind.channel => 'YouTube channel',
+                YouTubeFeedKind.playlist => 'YouTube playlist',
+              }
+            : author?.isNotEmpty == true &&
+                  author!.toLowerCase() != feed.title.trim().toLowerCase()
+            ? author
+            : 'RSS feed');
     return AppCard(
       padding: EdgeInsets.zero,
-      onTap: () => context.push('/feed/${feed.id}'),
       child: ListTile(
+        onTap: () => context.push('/feed/${feed.id}'),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         leading: FeedArtwork(
           feed: feed,
           size: 54,
           radius: 12,
-          icon: Icons.article_outlined,
+          icon: youtubeKind == null
+              ? Icons.article_outlined
+              : Icons.ondemand_video_rounded,
         ),
         title: Text(
           feed.title,
@@ -322,7 +353,7 @@ final class _FeedRow extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
-          feed.refreshError ?? feed.author ?? 'RSS subscription',
+          subtitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(

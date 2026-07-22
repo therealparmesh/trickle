@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
+import 'constants.dart';
+
 /// An episode is complete inside the smaller of its final 60 seconds or 5%.
 bool isPlaybackComplete(Duration position, Duration duration) {
   if (duration <= Duration.zero) return false;
   final fivePercent = (duration.inMilliseconds * 0.05).round();
   final remainingWindow = math.min(
-    const Duration(seconds: 60).inMilliseconds,
+    AppConstants.playbackCompletionWindow.inMilliseconds,
     fivePercent,
   );
   return position.inMilliseconds >= duration.inMilliseconds - remainingWindow;

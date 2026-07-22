@@ -797,9 +797,10 @@ class _ExtrasState extends ConsumerState<_Extras> {
                   ],
                 ),
           loading: () => const SizedBox.shrink(),
-          error: (error, _) => ListTile(
-            title: const Text('Bookmarks unavailable'),
-            subtitle: Text(friendlyError(error)),
+          error: (error, _) => InlineErrorView(
+            friendlyError(error),
+            title: 'Couldn’t load bookmarks',
+            onRetry: () => ref.invalidate(bookmarksProvider(widget.episodeId)),
           ),
         ),
         ExpansionTile(
@@ -861,21 +862,13 @@ class _ExtrasState extends ConsumerState<_Extras> {
 
   Widget _chaptersBody(AsyncValue<List<Chapter>>? chapters) {
     if (chapters == null || chapters.isLoading) {
-      return Semantics(
-        label: 'Loading chapters',
-        child: ExcludeSemantics(
-          child: ListTile(title: LinearProgressIndicator()),
-        ),
-      );
+      return const InlineLoadingView(label: 'Loading chapters');
     }
     if (chapters.hasError) {
-      return ListTile(
-        title: const Text('Couldn’t load chapters'),
-        subtitle: Text(friendlyError(chapters.error!)),
-        trailing: TextButton(
-          onPressed: () => ref.invalidate(chaptersProvider(widget.episodeId)),
-          child: const Text('Try again'),
-        ),
+      return InlineErrorView(
+        friendlyError(chapters.error!),
+        title: 'Couldn’t load chapters',
+        onRetry: () => ref.invalidate(chaptersProvider(widget.episodeId)),
       );
     }
     final items = chapters.value ?? const [];
@@ -902,21 +895,13 @@ class _ExtrasState extends ConsumerState<_Extras> {
 
   Widget _transcriptBody(AsyncValue<String?>? transcript) {
     if (transcript == null || transcript.isLoading) {
-      return Semantics(
-        label: 'Loading transcript',
-        child: ExcludeSemantics(
-          child: ListTile(title: LinearProgressIndicator()),
-        ),
-      );
+      return const InlineLoadingView(label: 'Loading transcript');
     }
     if (transcript.hasError) {
-      return ListTile(
-        title: const Text('Couldn’t load transcript'),
-        subtitle: Text(friendlyError(transcript.error!)),
-        trailing: TextButton(
-          onPressed: () => ref.invalidate(transcriptProvider(widget.episodeId)),
-          child: const Text('Try again'),
-        ),
+      return InlineErrorView(
+        friendlyError(transcript.error!),
+        title: 'Couldn’t load transcript',
+        onRetry: () => ref.invalidate(transcriptProvider(widget.episodeId)),
       );
     }
     final text = transcript.value;

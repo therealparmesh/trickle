@@ -220,7 +220,10 @@ class AppDatabase extends _$AppDatabase {
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
-      await customStatement('PRAGMA busy_timeout = 5000');
+      await customStatement(
+        'PRAGMA busy_timeout = '
+        '${AppConstants.databaseLockTimeout.inMilliseconds}',
+      );
       if (details.wasCreated) return;
       await _createIndexes();
       await _createSearchIndex();

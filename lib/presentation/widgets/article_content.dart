@@ -111,16 +111,14 @@ class _ArticleContentState extends State<ArticleContent> {
       });
     }
     if (_preparationFailed) {
-      return const Text('This article couldn’t be prepared.');
+      return InlineErrorView(
+        'The article content couldn’t be rendered.',
+        title: 'Couldn’t prepare article',
+        onRetry: () => setState(_prepareHtml),
+      );
     }
     if (_fragments == null) {
-      return Semantics(
-        label: 'Preparing article',
-        liveRegion: true,
-        child: const ExcludeSemantics(
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      );
+      return const LoadingView(label: 'Preparing article');
     }
     final blocks = <Widget>[];
     final visibleFragmentCount = _visibleFragmentCount();

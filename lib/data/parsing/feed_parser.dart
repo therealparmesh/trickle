@@ -170,7 +170,9 @@ final class FeedParser {
                 element.getAttribute('rel')?.toLowerCase() == 'alternate'),
         orElse: () => XmlElement(const XmlName.parts('missing')),
       );
-      final summary = _atomHtml(entry, 'summary');
+      final summary =
+          _atomHtml(entry, 'summary') ??
+          _escapedText(_qualifiedDescendantText(entry, 'media:description'));
       final content = _atomHtml(entry, 'content') ?? summary;
       final title = _plainText(_atomHtml(entry, 'title'));
       final entryImage = _atomEntryImage(entry, sourceUrl);
@@ -548,6 +550,15 @@ final class FeedParser {
     final child = _qualifiedChild(parent, qualifiedName);
     final value = child?.innerText.trim();
     return value == null || value.isEmpty ? null : value;
+  }
+
+  String? _qualifiedDescendantText(XmlElement parent, String qualifiedName) {
+    for (final child in parent.descendants.whereType<XmlElement>()) {
+      if (!_isQualified(child, qualifiedName)) continue;
+      final value = child.innerText.trim();
+      return value.isEmpty ? null : value;
+    }
+    return null;
   }
 
   XmlElement? _qualifiedChild(XmlElement parent, String qualifiedName) {

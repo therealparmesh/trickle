@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
+import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../episode_actions.dart';
 import 'common.dart';
@@ -29,12 +30,12 @@ final class EpisodeTile extends ConsumerWidget {
             DownloadState.values.length - 1,
           )];
     final downloadMenu = episodeDownloadAction(download);
-    final metadata = [
+    final metadata = metadataLine([
       if (sourceTitle?.isNotEmpty == true) sourceTitle!,
       relativeDate(episode.publishedAt),
       compactDuration(episode.durationMs),
       if (downloadState == DownloadState.complete) 'Downloaded',
-    ].where((part) => part.isNotEmpty).join(' · ');
+    ]);
     return _InsetListFrame(
       indent: 86,
       child: Row(
@@ -167,16 +168,18 @@ final class ArticleTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isVideo =
+        youtubeVideoId(Uri.tryParse(article.canonicalUrl ?? '')) != null;
     final sourceTitle = showSource
         ? ref.watch(feedProvider(article.feedId)).value?.title
         : null;
-    final metadata = [
+    final metadata = metadataLine([
       if (sourceTitle?.isNotEmpty == true) sourceTitle!,
       if (article.author?.isNotEmpty == true) article.author!,
       relativeDate(article.publishedAt),
-    ].where((part) => part.isNotEmpty).join(' · ');
+    ]);
     return _InsetListFrame(
-      indent: 100,
+      indent: isVideo ? 140 : 100,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -187,7 +190,10 @@ final class ArticleTile extends ConsumerWidget {
               excludeSemantics: true,
               onTap: () => context.push('/article/${article.id}'),
               label: [
-                '${article.readAt == null ? 'Unread' : 'Read'} article ${article.title}',
+                if (isVideo)
+                  '${article.readAt == null ? 'Unwatched' : 'Watched'} video ${article.title}'
+                else
+                  '${article.readAt == null ? 'Unread' : 'Read'} article ${article.title}',
                 if (article.starred) 'Saved',
                 if (metadata.isNotEmpty) metadata,
               ].join('. '),
@@ -198,7 +204,7 @@ final class ArticleTile extends ConsumerWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ArticleArtwork(article: article, size: 72, radius: 10),
+                      _ArticleThumbnail(article: article, isVideo: isVideo),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -227,9 +233,13 @@ final class ArticleTile extends ConsumerWidget {
                                 Expanded(
                                   child: Text(
                                     metadata.isEmpty
-                                        ? (article.readAt == null
-                                              ? 'New'
-                                              : 'Read')
+                                        ? isVideo
+                                              ? (article.readAt == null
+                                                    ? 'New'
+                                                    : 'Watched')
+                                              : (article.readAt == null
+                                                    ? 'New'
+                                                    : 'Read')
                                         : metadata,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -262,7 +272,7 @@ final class ArticleTile extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(right: 8, top: 8),
             child: PopupMenuButton<String>(
-              tooltip: 'Article actions',
+              tooltip: isVideo ? 'Video actions' : 'Article actions',
               icon: const Icon(Icons.more_horiz_rounded),
               onSelected: (action) => _action(context, ref, action),
               itemBuilder: (_) => [
@@ -273,7 +283,13 @@ final class ArticleTile extends ConsumerWidget {
                 PopupMenuItem(
                   value: 'read',
                   child: Text(
-                    article.readAt == null ? 'Mark read' : 'Mark unread',
+                    isVideo
+                        ? (article.readAt == null
+                              ? 'Mark watched'
+                              : 'Mark unwatched')
+                        : (article.readAt == null
+                              ? 'Mark read'
+                              : 'Mark unread'),
                   ),
                 ),
               ],
@@ -305,6 +321,45 @@ final class ArticleTile extends ConsumerWidget {
   }
 }
 
+final class _ArticleThumbnail extends StatelessWidget {
+  const _ArticleThumbnail({required this.article, required this.isVideo});
+
+  final Article article;
+  final bool isVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isVideo) {
+      return ArticleArtwork(article: article, size: 72, radius: 10);
+    }
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        ArticleArtwork(
+          article: article,
+          size: 112,
+          aspectRatio: 16 / 9,
+          radius: 10,
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.66),
+            shape: BoxShape.circle,
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(5),
+            child: Icon(
+              Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 final class _NewDot extends StatelessWidget {
   const _NewDot({required this.color});
 
@@ -327,7 +382,13 @@ final class PodcastTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final detail = feed.refreshError ?? feed.author;
+    final author = feed.author?.trim();
+    final detail =
+        feed.refreshError ??
+        (author?.isNotEmpty == true &&
+                author!.toLowerCase() != feed.title.trim().toLowerCase()
+            ? author
+            : 'Podcast');
     return _InsetListFrame(
       indent: 102,
       child: Semantics(
@@ -335,10 +396,7 @@ final class PodcastTile extends StatelessWidget {
         button: true,
         excludeSemantics: true,
         onTap: () => context.push('/podcast/${feed.id}'),
-        label: [
-          'Podcast ${feed.title}',
-          if (detail?.trim().isNotEmpty == true) detail!.trim(),
-        ].join('. '),
+        label: ['Podcast ${feed.title}', detail].join('. '),
         child: InkWell(
           onTap: () => context.push('/podcast/${feed.id}'),
           child: Padding(
@@ -363,7 +421,7 @@ final class PodcastTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        feed.refreshError ?? feed.author ?? 'Podcast',
+                        detail,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(

@@ -10,6 +10,7 @@ import '../episode_actions.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/episode_playback_button.dart';
+import 'podcasts_page.dart';
 
 final class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -24,7 +25,6 @@ final class HomePage extends ConsumerWidget {
     final downloadCount = ref.watch(completedDownloadCountProvider).value ?? 0;
     final savedAudioCount = ref.watch(starredEpisodeCountProvider).value ?? 0;
     final savedReadCount = ref.watch(starredArticleCountProvider).value ?? 0;
-    final unreadCount = ref.watch(unreadArticleCountProvider).value ?? 0;
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
@@ -142,14 +142,7 @@ final class HomePage extends ConsumerWidget {
                 child: HorizontalShortcutStrip(
                   children: [
                     LibraryShortcut(
-                      icon: Icons.mark_email_unread_outlined,
-                      label: 'Unread',
-                      badge: unreadCount,
-                      color: AppConstants.magenta,
-                      onTap: () => context.push('/reader?filter=unread'),
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.rss_feed_rounded,
+                      icon: Icons.dynamic_feed_outlined,
                       label: 'Feeds',
                       badge: readerFeeds.value?.length ?? 0,
                       color: AppConstants.magenta,
@@ -163,17 +156,29 @@ final class HomePage extends ConsumerWidget {
                       onTap: () => context.push('/saved?tab=articles'),
                     ),
                     LibraryShortcut(
-                      icon: Icons.article_outlined,
-                      label: 'Reader',
+                      icon: Icons.add_link_rounded,
+                      label: 'Add Feed',
                       color: AppConstants.magenta,
-                      onTap: () => context.push('/reader?filter=all'),
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const AddFeedDialog(),
+                      ),
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.video_call_outlined,
+                      label: 'Add YouTube',
+                      color: AppConstants.magenta,
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const AddFeedDialog.youtube(),
+                      ),
                     ),
                   ],
                 ),
               ),
               SliverToBoxAdapter(
                 child: SectionHeader(
-                  'Unread Articles',
+                  'Unread',
                   action: 'See all',
                   onAction: () => context.push('/reader'),
                 ),
@@ -184,7 +189,7 @@ final class HomePage extends ConsumerWidget {
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(18, 4, 18, 10),
                           child: Text(
-                            'No unread articles.',
+                            'No unread feed items.',
                             style: TextStyle(color: AppConstants.secondaryText),
                           ),
                         ),

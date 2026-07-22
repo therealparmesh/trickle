@@ -115,7 +115,7 @@ final class ArticleRepository {
         uri,
         headers: headers,
         maxBytes: AppConstants.discoveryLimitBytes,
-        totalTimeout: const Duration(seconds: 8),
+        totalTimeout: AppConstants.networkConnectionTimeout,
       );
       if (!_isHtmlDocument(document)) {
         _rememberPreviewMiss(article.id);
@@ -124,7 +124,7 @@ final class ArticleRepository {
       final image = await compute(_extractPreviewImage, (
         document.text,
         document.url.toString(),
-      )).timeout(const Duration(seconds: 2));
+      )).timeout(AppConstants.shortOperationTimeout);
       if (image == null) {
         _rememberPreviewMiss(article.id);
         return null;
@@ -210,7 +210,7 @@ final class ArticleRepository {
       extracted = await compute(_extractArticle, (
         document.text,
         document.url.toString(),
-      )).timeout(const Duration(seconds: 3));
+      )).timeout(AppConstants.shortOperationTimeout);
       if (extracted.text.isEmpty) return _feedFallback(article);
     } on Object {
       return _feedFallback(article);

@@ -49,3 +49,14 @@ String speedLabel(int percent) {
       ? '${value.toInt()}x'
       : '${value.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '')}x';
 }
+
+String metadataLine(Iterable<String?> parts) {
+  final seen = <String>{};
+  final values = <String>[];
+  for (final part in parts) {
+    final value = part?.trim();
+    if (value == null || value.isEmpty) continue;
+    if (seen.add(value.toLowerCase())) values.add(value);
+  }
+  return values.join(' · ');
+}

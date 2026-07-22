@@ -93,27 +93,18 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 },
               ),
             ),
-            if (_loading) const LinearProgressIndicator(minHeight: 2),
+            if (_loading)
+              const InlineLoadingView(
+                label: 'Searching',
+                padding: EdgeInsets.zero,
+              ),
             if (_error != null && results > 0)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppConstants.danger.withValues(alpha: 0.07),
-                    border: const Border(
-                      left: BorderSide(color: AppConstants.danger, width: 2),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: AppConstants.danger),
-                      ),
-                    ),
-                  ),
+                child: InlineErrorView(
+                  _error!,
+                  title: 'Couldn’t update results',
+                  onRetry: _runSearch,
                 ),
               ),
             Expanded(
@@ -131,7 +122,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                       icon: Icons.search_off_rounded,
                       title: 'Nothing found',
                       message: _tabs.index == 0
-                          ? 'Try another phrase. Add feeds from Podcasts or Reader.'
+                          ? 'Try another phrase or add a new feed.'
                           : 'Try a broader podcast title or creator.',
                     )
                   : TabBarView(
@@ -180,6 +171,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   Widget _catalogResults() {
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     final subscribedUrls = {
       for (final feed
           in ref.watch(podcastFeedsProvider).value ?? const <Feed>[])
@@ -192,30 +184,59 @@ class _SearchPageState extends ConsumerState<SearchPage>
           const Divider(height: 1, indent: 86, endIndent: 16),
       itemBuilder: (context, index) {
         final result = _catalog[index];
+        final title = EpisodeTitle(
+          title: result.name,
+          explicit: result.explicit,
+          maxLines: largeText ? 4 : 2,
+        );
+        final subtitle = Text(
+          [
+            result.author,
+            if (result.genre != null) result.genre!,
+            if (result.episodeCount case final count?)
+              '$count ${count == 1 ? 'episode' : 'episodes'}',
+          ].where((part) => part.isNotEmpty).join(' · '),
+          maxLines: largeText ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
+        );
+        final subscribe = _CatalogSubscribeButton(
+          key: ValueKey(result.feedUrl),
+          podcastName: result.name,
+          subscribed: subscribedUrls.contains(
+            _feedUrlIdentity(result.feedUrl.toString()),
+          ),
+          onSubscribe: () => _subscribe(result),
+        );
+        if (largeText) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Artwork(url: result.artworkUrl?.toString(), size: 54),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [title, const SizedBox(height: 4), subtitle],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: subscribe),
+              ],
+            ),
+          );
+        }
         return ListTile(
           leading: Artwork(url: result.artworkUrl?.toString(), size: 54),
-          title: EpisodeTitle(
-            title: result.name,
-            explicit: result.explicit,
-            maxLines: 2,
-          ),
-          subtitle: Text(
-            [
-              result.author,
-              if (result.genre != null) result.genre!,
-              if (result.episodeCount case final count?)
-                '$count ${count == 1 ? 'episode' : 'episodes'}',
-            ].where((part) => part.isNotEmpty).join(' · '),
-            maxLines: 2,
-          ),
-          trailing: _CatalogSubscribeButton(
-            key: ValueKey(result.feedUrl),
-            podcastName: result.name,
-            subscribed: subscribedUrls.contains(
-              _feedUrlIdentity(result.feedUrl.toString()),
-            ),
-            onSubscribe: () => _subscribe(result),
-          ),
+          title: title,
+          subtitle: subtitle,
+          trailing: subscribe,
         );
       },
     );
@@ -284,7 +305,10 @@ class _SearchPageState extends ConsumerState<SearchPage>
         setState(() => _catalog = results);
       }
     } on Object catch (error) {
-      if (mounted && generation == _searchGeneration) {
+      if (mounted &&
+          generation == _searchGeneration &&
+          _query.text.trim() == query &&
+          _tabs.index == tab) {
         setState(() => _error = friendlyError(error));
       }
     } finally {
@@ -334,28 +358,38 @@ class _CatalogSubscribeButtonState extends State<_CatalogSubscribeButton> {
   bool _subscribed = false;
 
   @override
+  void didUpdateWidget(covariant _CatalogSubscribeButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.subscribed && !widget.subscribed) _subscribed = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final subscribed = widget.subscribed || _subscribed;
     final label = subscribed ? 'Subscribed' : 'Subscribe';
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
+    final button = SizedBox(
+      width: largeText ? 224 : 108,
+      height: largeText ? 64 : 48,
+      child: TextButton(
+        onPressed: _busy || subscribed ? null : _subscribe,
+        child: _busy
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(label),
+      ),
+    );
     return Semantics(
       button: true,
       enabled: !_busy && !subscribed,
       liveRegion: _busy || subscribed,
       label: _busy ? 'Subscribing to ${widget.podcastName}' : label,
       excludeSemantics: true,
-      child: SizedBox(
-        width: 108,
-        height: 48,
-        child: TextButton(
-          onPressed: _busy || subscribed ? null : _subscribe,
-          child: _busy
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(label),
-        ),
-      ),
+      child: largeText
+          ? MediaQuery.withClampedTextScaling(maxScaleFactor: 2, child: button)
+          : button,
     );
   }
 

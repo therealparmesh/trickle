@@ -11,11 +11,16 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/feed_identity.dart';
 import '../../core/url_identity.dart';
+import '../../core/youtube_support.dart';
 import '../../domain/feed_models.dart';
 import '../database/app_database.dart';
 import '../network/safe_network_client.dart';
 import '../parsing/feed_parser.dart';
 import '../security/private_feed_store.dart';
+
+// Drift stores these timestamps with second precision. Advancing by one full
+// stored unit makes concurrent refresh revisions comparable and deterministic.
+const _feedRevisionStep = Duration(seconds: 1);
 
 final class RefreshAllResult {
   const RefreshAllResult({required this.failedFeeds});
@@ -37,6 +42,7 @@ final class FeedRepository {
   final PrivateFeedStore _privateFeeds;
   final Uuid _uuid = const Uuid();
   final Map<String, Completer<bool>> _feedDeletions = {};
+  final Map<String, Future<bool>> _refreshes = {};
 
   Future<Feed> subscribe(
     String rawAddress, {
@@ -44,7 +50,7 @@ final class FeedRepository {
     String? password,
     String? bearerToken,
     bool forcePrivate = false,
-    Duration totalTimeout = const Duration(seconds: 120),
+    Duration totalTimeout = AppConstants.feedRefreshTimeout,
   }) async {
     final initial = _network.normalizeHttps(Uri.parse(rawAddress.trim()));
     final headers = _authenticationHeaders(
@@ -55,12 +61,17 @@ final class FeedRepository {
     // Query parameters frequently contain signed-feed credentials. Callers
     // can force the same treatment for credentials embedded in an opaque path.
     final requestedPrivate =
-        forcePrivate || headers.isNotEmpty || initial.hasQuery;
+        forcePrivate ||
+        headers.isNotEmpty ||
+        (initial.hasQuery && !isYouTubeAddress(initial));
     final resolved = await _resolveFeedDocument(initial, headers, totalTimeout);
     final document = resolved.document;
     // A public-looking discovery URL can redirect to a signed refresh URL.
     // Keep that query-bearing URL in secure storage too.
-    final isPrivate = requestedPrivate || resolved.refreshUrl.hasQuery;
+    final isPrivate =
+        requestedPrivate ||
+        (resolved.refreshUrl.hasQuery &&
+            !isYouTubeAddress(resolved.refreshUrl));
 
     Feed? existing;
     String? credentialRef;
@@ -119,7 +130,7 @@ final class FeedRepository {
     String? username,
     String? password,
     String? bearerToken,
-    Duration totalTimeout = const Duration(seconds: 120),
+    Duration totalTimeout = AppConstants.feedRefreshTimeout,
   }) async {
     final feed = await _database.feedById(feedId);
     if (feed == null || !feed.isPrivate || feed.credentialRef == null) {
@@ -149,6 +160,7 @@ final class FeedRepository {
         credentialRef: feed.credentialRef,
         document: resolved.document,
         requireExisting: true,
+        expectedRevision: feed.updatedAt,
       );
     } on Object catch (error, stackTrace) {
       try {
@@ -179,8 +191,28 @@ final class FeedRepository {
 
   Future<bool> refreshFeed(
     Feed feed, {
-    Duration totalTimeout = const Duration(seconds: 120),
+    Duration totalTimeout = AppConstants.feedRefreshTimeout,
   }) async {
+    final active = _refreshes[feed.id];
+    if (active != null) return active;
+    final refresh = _refreshFeed(feed, totalTimeout: totalTimeout);
+    _refreshes[feed.id] = refresh;
+    try {
+      return await refresh;
+    } finally {
+      if (identical(_refreshes[feed.id], refresh)) {
+        _refreshes.remove(feed.id);
+      }
+    }
+  }
+
+  Future<bool> _refreshFeed(
+    Feed requestedFeed, {
+    required Duration totalTimeout,
+  }) async {
+    final feed = await _database.feedById(requestedFeed.id);
+    if (feed == null) return false;
+    final previousRevision = feed.updatedAt;
     Uri url;
     Map<String, String> headers = {};
     if (feed.isPrivate) {
@@ -189,6 +221,7 @@ final class FeedRepository {
         await _recordRefreshError(
           feed.id,
           'Private feed credentials are missing.',
+          previousRevision: previousRevision,
         );
         return false;
       }
@@ -209,15 +242,21 @@ final class FeedRepository {
         totalTimeout: totalTimeout,
       );
       if (document.statusCode == 304) {
-        await (_database.update(
-          _database.feeds,
-        )..where((row) => row.id.equals(feed.id))).write(
-          FeedsCompanion(
-            lastRefresh: Value(DateTime.now().toUtc()),
-            refreshError: const Value(null),
-          ),
-        );
-        return true;
+        final now = DateTime.now().toUtc();
+        final updated =
+            await (_database.update(_database.feeds)..where(
+                  (row) =>
+                      row.id.equals(feed.id) &
+                      row.updatedAt.equals(previousRevision),
+                ))
+                .write(
+                  FeedsCompanion(
+                    lastRefresh: Value(now),
+                    refreshError: const Value(null),
+                    updatedAt: Value(_nextFeedRevision(now, feed.updatedAt)),
+                  ),
+                );
+        return updated > 0 || await _database.feedById(feed.id) != null;
       }
       final prepared = await _prepare(document);
       await _storeParsedFeed(
@@ -228,10 +267,19 @@ final class FeedRepository {
         credentialRef: feed.credentialRef,
         document: document,
         requireExisting: true,
+        expectedRevision: previousRevision,
       );
       return true;
+    } on _StaleFeedRefresh {
+      // A newer refresh or settings write already won. Its state is the result
+      // callers should observe, so the obsolete response is a successful no-op.
+      return true;
     } on Object catch (error) {
-      await _recordRefreshError(feed.id, friendlyError(error));
+      await _recordRefreshError(
+        feed.id,
+        friendlyError(error),
+        previousRevision: previousRevision,
+      );
       return false;
     }
   }
@@ -405,20 +453,25 @@ final class FeedRepository {
     required int introSkipMs,
     required int outroSkipMs,
     required bool autoQueue,
-  }) {
-    return (_database.update(
-      _database.feeds,
-    )..where((row) => row.id.equals(feedId))).write(
-      FeedsCompanion(
-        autoDownload: Value(autoDownload),
-        autoDownloadLimit: Value(autoDownloadLimit.clamp(1, 10)),
-        notifications: Value(notifications),
-        introSkipMs: Value(introSkipMs.clamp(0, 600000)),
-        outroSkipMs: Value(outroSkipMs.clamp(0, 600000)),
-        autoQueue: Value(autoQueue),
-        updatedAt: Value(DateTime.now().toUtc()),
-      ),
-    );
+  }) async {
+    await _database.transaction(() async {
+      final current = await _database.feedById(feedId);
+      if (current == null) return;
+      final now = DateTime.now().toUtc();
+      await (_database.update(
+        _database.feeds,
+      )..where((row) => row.id.equals(feedId))).write(
+        FeedsCompanion(
+          autoDownload: Value(autoDownload),
+          autoDownloadLimit: Value(autoDownloadLimit.clamp(1, 10)),
+          notifications: Value(notifications),
+          introSkipMs: Value(introSkipMs.clamp(0, 600000)),
+          outroSkipMs: Value(outroSkipMs.clamp(0, 600000)),
+          autoQueue: Value(autoQueue),
+          updatedAt: Value(_nextFeedRevision(now, current.updatedAt)),
+        ),
+      );
+    });
   }
 
   Future<_ResolvedFeed> _resolveFeedDocument(
@@ -427,15 +480,20 @@ final class FeedRepository {
     Duration totalTimeout,
   ) async {
     final stopwatch = Stopwatch()..start();
+    final directYouTubeFeed = directYouTubeFeedUri(address);
+    final requestAddress = directYouTubeFeed ?? address;
+    final requestHeaders = sameOrigin(address, requestAddress)
+        ? headers
+        : const <String, String>{};
     final document = await _network.get(
-      address,
-      headers: headers,
+      requestAddress,
+      headers: requestHeaders,
       maxBytes: AppConstants.feedLimitBytes,
       totalTimeout: totalTimeout,
     );
     try {
       final prepared = await _prepare(document);
-      return _ResolvedFeed(document, address, headers, prepared);
+      return _ResolvedFeed(document, requestAddress, requestHeaders, prepared);
     } on FeedParseException {
       final html = html_parser.parse(document.text);
       final urls = html
@@ -457,6 +515,15 @@ final class FeedRepository {
           )
           .toSet()
           .toList();
+      final discoveredYouTubeFeed = discoverYouTubeFeedUri(
+        document.url,
+        document.text,
+      );
+      if (discoveredYouTubeFeed != null &&
+          discoveredYouTubeFeed != requestAddress &&
+          !urls.contains(discoveredYouTubeFeed)) {
+        urls.add(discoveredYouTubeFeed);
+      }
       if (urls.isEmpty) {
         throw const FeedParseException(
           'No RSS, Atom, or JSON Feed was found on that page.',
@@ -467,8 +534,8 @@ final class FeedRepository {
         throw const NetworkException('The request timed out.');
       }
       final selected = urls.first;
-      final selectedHeaders = sameOrigin(address, selected)
-          ? headers
+      final selectedHeaders = sameOrigin(requestAddress, selected)
+          ? requestHeaders
           : const <String, String>{};
       final feedDocument = await _network.get(
         selected,
@@ -489,6 +556,7 @@ final class FeedRepository {
     required String? credentialRef,
     required NetworkDocument document,
     required bool requireExisting,
+    DateTime? expectedRevision,
   }) async {
     final parsed = prepared.feed;
     final now = DateTime.now().toUtc();
@@ -496,6 +564,10 @@ final class FeedRepository {
     if (requireExisting &&
         (currentFeed == null || _feedDeletions.containsKey(feedId))) {
       throw const _FeedNoLongerExists();
+    }
+    if (expectedRevision != null &&
+        currentFeed?.updatedAt != expectedRevision) {
+      throw const _StaleFeedRefresh();
     }
     final currentEpisodes = {
       for (final episode in await (_database.select(
@@ -551,6 +623,15 @@ final class FeedRepository {
                 await _database.feedById(feedId) == null)) {
           throw const _FeedNoLongerExists();
         }
+        final feedAtWrite = await _database.feedById(feedId);
+        if (expectedRevision != null &&
+            feedAtWrite?.updatedAt != expectedRevision) {
+          throw const _StaleFeedRefresh();
+        }
+        final effectiveFeed = feedAtWrite ?? currentFeed;
+        final updatedAt = effectiveFeed == null
+            ? now
+            : _nextFeedRevision(now, effectiveFeed.updatedAt);
         await _database
             .into(_database.feeds)
             .insertOnConflictUpdate(
@@ -569,14 +650,14 @@ final class FeedRepository {
                 lastModified: Value(document.header('last-modified')),
                 lastRefresh: Value(now),
                 refreshError: const Value(null),
-                autoDownload: Value(currentFeed?.autoDownload ?? false),
-                autoDownloadLimit: Value(currentFeed?.autoDownloadLimit ?? 3),
-                notifications: Value(currentFeed?.notifications ?? false),
-                introSkipMs: Value(currentFeed?.introSkipMs ?? 0),
-                outroSkipMs: Value(currentFeed?.outroSkipMs ?? 0),
-                autoQueue: Value(currentFeed?.autoQueue ?? false),
-                createdAt: currentFeed?.createdAt ?? now,
-                updatedAt: now,
+                autoDownload: Value(effectiveFeed?.autoDownload ?? false),
+                autoDownloadLimit: Value(effectiveFeed?.autoDownloadLimit ?? 3),
+                notifications: Value(effectiveFeed?.notifications ?? false),
+                introSkipMs: Value(effectiveFeed?.introSkipMs ?? 0),
+                outroSkipMs: Value(effectiveFeed?.outroSkipMs ?? 0),
+                autoQueue: Value(effectiveFeed?.autoQueue ?? false),
+                createdAt: effectiveFeed?.createdAt ?? now,
+                updatedAt: updatedAt,
               ),
             );
         await _database.indexSearchItem(
@@ -618,7 +699,8 @@ final class FeedRepository {
             isPrivate: isPrivate,
           );
           final id = stableContentId(feedId, identity);
-          final existing = currentEpisodes[id];
+          final existing =
+              await _database.episodeById(id) ?? currentEpisodes[id];
           if (existing != null &&
               existing.chaptersUrl != parsedEpisode.chaptersUrl?.toString()) {
             await (_database.delete(
@@ -653,8 +735,8 @@ final class FeedRepository {
                   starred: Value(existing?.starred ?? false),
                   automationApplied: Value(
                     existing?.automationApplied ??
-                        !((currentFeed?.autoDownload ?? false) ||
-                            (currentFeed?.autoQueue ?? false)),
+                        !((effectiveFeed?.autoDownload ?? false) ||
+                            (effectiveFeed?.autoQueue ?? false)),
                   ),
                 ),
               );
@@ -702,7 +784,8 @@ final class FeedRepository {
             isPrivate: isPrivate,
           );
           final id = stableContentId(feedId, identity);
-          final existing = currentArticles[id];
+          final existing =
+              await _database.articleById(id) ?? currentArticles[id];
           await _database
               .into(_database.articles)
               .insertOnConflictUpdate(
@@ -792,15 +875,28 @@ final class FeedRepository {
     return _database.feedById(feedId);
   }
 
-  Future<void> _recordRefreshError(String feedId, String message) async {
-    await (_database.update(
-      _database.feeds,
-    )..where((row) => row.id.equals(feedId))).write(
-      FeedsCompanion(
-        lastRefresh: Value(DateTime.now().toUtc()),
-        refreshError: Value(message),
-      ),
-    );
+  Future<void> _recordRefreshError(
+    String feedId,
+    String message, {
+    required DateTime previousRevision,
+  }) async {
+    await _database.transaction(() async {
+      final current = await _database.feedById(feedId);
+      if (current == null || current.updatedAt != previousRevision) return;
+      await (_database.update(
+        _database.feeds,
+      )..where((row) => row.id.equals(feedId))).write(
+        FeedsCompanion(
+          lastRefresh: Value(DateTime.now().toUtc()),
+          refreshError: Value(message),
+        ),
+      );
+    });
+  }
+
+  DateTime _nextFeedRevision(DateTime now, DateTime previous) {
+    final nextStoredSecond = previous.add(_feedRevisionStep);
+    return now.isAfter(nextStoredSecond) ? now : nextStoredSecond;
   }
 
   Future<Feed?> _privateFeedBySecret(
@@ -850,6 +946,10 @@ final class FeedRepository {
 
 final class _FeedNoLongerExists implements Exception {
   const _FeedNoLongerExists();
+}
+
+final class _StaleFeedRefresh implements Exception {
+  const _StaleFeedRefresh();
 }
 
 final class _ResolvedFeed {
