@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../app/app_providers.dart';
 import '../core/constants.dart';
 import '../features/video/video_session.dart';
-import 'pages/player_page.dart';
+import 'playback_presentation.dart';
 import 'widgets/common.dart';
 import 'widgets/video_player_host.dart';
 
@@ -136,6 +136,18 @@ final class MiniPlayer extends ConsumerWidget {
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
+                                      if (phase.isError)
+                                        Text(
+                                          'Couldn’t play · Tap retry',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: AppConstants.danger,
+                                              ),
+                                        ),
                                     ],
                                   ),
                                 ),

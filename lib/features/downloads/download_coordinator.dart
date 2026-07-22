@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -9,6 +8,7 @@ import 'package:disk_space_plus/disk_space_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/audio_file.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../data/database/app_database.dart';
@@ -497,10 +497,8 @@ final class DownloadCoordinator {
         if (state == DownloadState.complete) {
           path = await update.task.filePath();
           final file = File(path);
-          if (!await file.exists() ||
-              await file.length() == 0 ||
-              _isClearlyNotAudio(update.responseHeaders) ||
-              await _looksLikeWebDocument(file)) {
+          if (_isClearlyNotAudio(update.responseHeaders) ||
+              !await isUsableAudioFile(file)) {
             if (await file.exists()) await file.delete();
             await _setState(
               episodeId,
@@ -562,14 +560,7 @@ final class DownloadCoordinator {
         download?.filePath == null) {
       return false;
     }
-    try {
-      final file = File(download!.filePath!);
-      return await file.exists() &&
-          await file.length() > 0 &&
-          !await _looksLikeWebDocument(file);
-    } on Object {
-      return false;
-    }
+    return isUsableAudioFile(File(download!.filePath!));
   }
 
   Future<void> _markTerminalStateCommitted(String taskId) async {
@@ -681,19 +672,6 @@ final class DownloadCoordinator {
     return type.contains('text/html') ||
         type.contains('application/json') ||
         type.contains('application/xml');
-  }
-
-  Future<bool> _looksLikeWebDocument(File file) async {
-    final bytes = await file
-        .openRead(0, math.min(await file.length(), 512))
-        .fold<List<int>>(<int>[], (buffer, chunk) => buffer..addAll(chunk));
-    final prefix = utf8
-        .decode(bytes, allowMalformed: true)
-        .trimLeft()
-        .toLowerCase();
-    return prefix.startsWith('<!doctype html') ||
-        prefix.startsWith('<html') ||
-        prefix.startsWith('<?xml');
   }
 
   Future<void> dispose() async {

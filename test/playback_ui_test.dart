@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/core/constants.dart';
@@ -12,7 +12,7 @@ import 'package:trickle/data/repositories/playback_source_resolver.dart';
 import 'package:trickle/data/repositories/settings_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/features/player/trickle_audio_handler.dart';
-import 'package:trickle/presentation/pages/player_page.dart';
+import 'package:trickle/presentation/playback_presentation.dart';
 
 void main() {
   group('playback presentation', () {
@@ -156,7 +156,120 @@ void main() {
     await database.close();
   });
 
-  test('a corrupt completed download falls back to streaming', () async {
+  test('native queue publishes valid artwork and current controls', () async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    final handler = TrickleAudioHandler(
+      database: database,
+      settings: SettingsRepository(database),
+      sourceResolver: PlaybackSourceResolver(
+        database,
+        PrivateFeedStore(),
+        network,
+      ),
+    );
+    addTearDown(() async {
+      await handler.disposeHandler();
+      network.close();
+      await database.close();
+    });
+    final now = DateTime.utc(2026, 7, 22);
+    for (final feed in [
+      FeedsCompanion.insert(
+        id: 'empty',
+        title: 'No artwork',
+        feedUrl: 'https://empty.test/feed',
+        imageUrl: const Value('not a URL'),
+        createdAt: now,
+        updatedAt: now,
+      ),
+      FeedsCompanion.insert(
+        id: 'private',
+        title: 'Private artwork',
+        feedUrl: 'private://private',
+        imageUrl: const Value('https://private.test/secret.jpg?token=SECRET'),
+        isPrivate: const Value(true),
+        credentialRef: const Value('private'),
+        createdAt: now,
+        updatedAt: now,
+      ),
+      FeedsCompanion.insert(
+        id: 'public',
+        title: 'Public artwork',
+        feedUrl: 'https://public.test/feed',
+        imageUrl: const Value('https://public.test/art.jpg'),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]) {
+      await database.into(database.feeds).insert(feed);
+    }
+    for (final entry in const [
+      ('empty-episode', 'empty', null),
+      (
+        'private-episode',
+        'private',
+        'https://private.test/episode.jpg?token=SECRET',
+      ),
+      ('public-episode', 'public', null),
+    ]) {
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: entry.$1,
+              feedId: entry.$2,
+              title: entry.$1,
+              enclosureUrl: 'https://example.test/${entry.$1}.mp3',
+              imageUrl: Value(entry.$3),
+              discoveredAt: now,
+            ),
+          );
+      await database
+          .into(database.queueEntries)
+          .insert(
+            QueueEntriesCompanion.insert(
+              id: 'queue-${entry.$1}',
+              episodeId: entry.$1,
+              sortKey: entry.$2 == 'empty'
+                  ? 0
+                  : entry.$2 == 'private'
+                  ? 1
+                  : 2,
+              addedAt: now,
+            ),
+          );
+    }
+
+    await handler.reloadQueueFromDatabase();
+
+    expect(handler.queue.value[0].artUri, isNull);
+    expect(
+      handler.queue.value[1].artUri,
+      Uri.parse('https://private.test/episode.jpg?token=SECRET'),
+    );
+    expect(
+      handler.queue.value[2].artUri,
+      Uri.parse('https://public.test/art.jpg'),
+    );
+
+    handler.mediaItem.add(handler.queue.value.first);
+    await handler.updateQueue([handler.queue.value.first]);
+    expect(
+      handler.playbackState.value.controls,
+      isNot(contains(MediaControl.skipToNext)),
+    );
+    await handler.addEpisodeToQueue('private-episode');
+    expect(
+      handler.playbackState.value.controls,
+      contains(MediaControl.skipToNext),
+    );
+  });
+
+  test('only a usable completed audio file bypasses streaming', () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
     final adapter = _MediaAdapter();
     final network = SafeNetworkClient.forTesting(
@@ -206,15 +319,24 @@ void main() {
           ),
         );
 
-    final source = await PlaybackSourceResolver(
+    final resolver = PlaybackSourceResolver(
       database,
       PrivateFeedStore(),
       network,
-    ).resolve((await database.episodeById('episode'))!);
+    );
+    final episode = (await database.episodeById('episode'))!;
 
-    expect(source.isLocal, isFalse);
-    expect(source.resource, 'https://example.test/audio.mp3');
-    expect(adapter.requests, 1);
+    final emptySource = await resolver.resolve(episode);
+    await emptyFile.writeAsString('<html>expired download</html>');
+    final webPageSource = await resolver.resolve(episode);
+    await emptyFile.writeAsBytes(const [0x49, 0x44, 0x33, 0x04]);
+    final localSource = await resolver.resolve(episode);
+
+    expect(emptySource.isLocal, isFalse);
+    expect(webPageSource.isLocal, isFalse);
+    expect(localSource.isLocal, isTrue);
+    expect(localSource.resource, emptyFile.path);
+    expect(adapter.requests, 2);
   });
 }
 

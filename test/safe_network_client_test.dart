@@ -173,6 +173,61 @@ void main() {
   );
 
   test(
+    'media preflight retries an origin that rejects range requests',
+    () async {
+      final requests = <RequestOptions>[];
+      final adapter = _FakeAdapter((options, _) async {
+        requests.add(options);
+        return requests.length == 1
+            ? ResponseBody.fromString('', 416)
+            : ResponseBody.fromString(
+                '',
+                200,
+                headers: {
+                  'content-type': ['audio/mpeg'],
+                },
+              );
+      });
+      final client = _client(adapter);
+
+      final resource = await client.resolveResource(
+        Uri.parse('https://example.test/audio.mp3'),
+      );
+
+      expect(resource.url.toString(), 'https://example.test/audio.mp3');
+      expect(requests, hasLength(2));
+      expect(requests.first.headers['Range'], 'bytes=0-0');
+      expect(requests.last.headers.containsKey('Range'), isFalse);
+      client.close();
+    },
+  );
+
+  test('media preflight rejects a successful web page response', () async {
+    final adapter = _FakeAdapter(
+      (_, _) async => ResponseBody.fromString(
+        '<html>sign in</html>',
+        200,
+        headers: {
+          'content-type': ['text/html; charset=utf-8'],
+        },
+      ),
+    );
+    final client = _client(adapter);
+
+    await expectLater(
+      client.resolveResource(Uri.parse('https://example.test/audio.mp3')),
+      throwsA(
+        isA<NetworkException>().having(
+          (error) => error.message,
+          'message',
+          'The media server did not return playable audio.',
+        ),
+      ),
+    );
+    client.close();
+  });
+
+  test(
     'media preflight rejects an unsafe redirect before requesting it',
     () async {
       final requests = <RequestOptions>[];

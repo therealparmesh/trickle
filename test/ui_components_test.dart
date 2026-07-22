@@ -14,51 +14,17 @@ import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/repositories/article_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
+import 'package:trickle/features/player/trickle_audio_handler.dart';
 import 'package:trickle/presentation/pages/episode_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
+import 'package:trickle/presentation/pages/player_page.dart';
 import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
+import 'package:trickle/presentation/widgets/episode_playback_button.dart';
 
 void main() {
-  test('download lookup returns the keyed episode row', () async {
-    final now = DateTime.utc(2026, 7, 17);
-    final downloads = [
-      MediaDownload(
-        episodeId: 'first',
-        taskId: 'task-1',
-        status: 0,
-        bytesDownloaded: 0,
-        keep: false,
-        updatedAt: now,
-      ),
-      MediaDownload(
-        episodeId: 'second',
-        taskId: 'task-2',
-        status: 1,
-        bytesDownloaded: 42,
-        keep: false,
-        updatedAt: now,
-      ),
-    ];
-    final container = ProviderContainer(
-      overrides: [
-        downloadsProvider.overrideWith((_) => Stream.value(downloads)),
-      ],
-    );
-    addTearDown(container.dispose);
-    final subscription = container.listen(downloadsProvider, (_, _) {});
-    addTearDown(subscription.close);
-    await container.read(downloadsProvider.future);
-
-    expect(
-      container.read(downloadForEpisodeProvider('second'))?.taskId,
-      'task-2',
-    );
-    expect(container.read(downloadForEpisodeProvider('missing')), isNull);
-  });
-
   test('subscription cleanup starts only after deletion commits', () async {
     final events = <String>[];
 
@@ -88,6 +54,142 @@ void main() {
     );
 
     expect(cleaned, isFalse);
+  });
+
+  testWidgets('buffering playback keeps Pause available', (tester) async {
+    final episode = Episode(
+      id: 'episode',
+      feedId: 'feed',
+      title: 'Buffering episode',
+      enclosureUrl: 'https://example.test/audio.mp3',
+      discoveredAt: DateTime.utc(2026, 7, 22),
+      explicit: false,
+      played: false,
+      starred: false,
+      automationApplied: false,
+    );
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMediaProvider.overrideWith(
+            (_) => Stream.value(
+              const MediaItem(id: 'episode', title: 'Buffering episode'),
+            ),
+          ),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(
+              PlaybackState(
+                processingState: AudioProcessingState.buffering,
+                playing: true,
+              ),
+            ),
+          ),
+          episodeProgressProvider.overrideWith((_, _) => Stream.value(null)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: Scaffold(body: EpisodePlaybackButton(episode: episode)),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+    final pause = tester.getSemantics(
+      find.bySemanticsLabel('Pause Buffering episode'),
+    );
+    expect(pause.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMediaProvider.overrideWith(
+            (_) => Stream.value(
+              const MediaItem(id: 'episode', title: 'Buffering episode'),
+            ),
+          ),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(
+              PlaybackState(processingState: AudioProcessingState.buffering),
+            ),
+          ),
+          episodeProgressProvider.overrideWith((_, _) => Stream.value(null)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: Scaffold(
+            body: EpisodePlaybackButton(episode: episode, expanded: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final spinner = tester.widget<CircularProgressIndicator>(
+      find.byType(CircularProgressIndicator),
+    );
+    expect(spinner.color, AppConstants.background);
+    expect(find.text('Buffering audio'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('player error and progress remain clear at large text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMediaProvider.overrideWith(
+            (_) => Stream.value(
+              const MediaItem(
+                id: 'episode',
+                title: 'A complete playback title at accessibility sizes',
+                album: 'Signal Podcast',
+                duration: Duration(minutes: 10),
+              ),
+            ),
+          ),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(
+              PlaybackState(processingState: AudioProcessingState.error),
+            ),
+          ),
+          playbackPositionProvider.overrideWith(
+            (_) => Stream.value(const Duration(minutes: 5)),
+          ),
+          playbackDurationProvider.overrideWith(
+            (_) => Stream.value(const Duration(minutes: 10)),
+          ),
+          speedProvider.overrideWith((_) => Stream.value(100)),
+          sleepTimerStatusProvider.overrideWith(
+            (_) => Stream.value(const SleepTimerStatus.off()),
+          ),
+          episodeProvider.overrideWith((_, _) => Stream.value(null)),
+          bookmarksProvider.overrideWith((_, _) => Stream.value(const [])),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(3.2)),
+            child: PlayerPage(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(TrickleAudioHandler.playbackErrorMessage), findsOneWidget);
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    expect(slider.semanticFormatterCallback?.call(0), '5:00 of 10:00');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('whitespace artwork URL remains a local placeholder', (

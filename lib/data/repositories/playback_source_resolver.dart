@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../../core/audio_file.dart';
 import '../../core/constants.dart';
 import '../../core/url_identity.dart';
 import '../database/app_database.dart';
@@ -31,19 +32,16 @@ final class PlaybackSourceResolver {
     )..where((row) => row.episodeId.equals(episode.id))).getSingleOrNull();
     if (download?.status == DownloadState.complete.index &&
         download?.filePath != null) {
-      try {
-        final file = File(download!.filePath!);
-        if (await file.exists() && await file.length() > 0) {
-          return PlaybackSource(
-            resource: download.filePath!,
-            headers: const {},
-            isLocal: true,
-          );
-        }
-      } on FileSystemException {
-        // Reconciliation will repair the stale row. Streaming remains usable
-        // in the meantime instead of failing on an unreadable local path.
+      final file = File(download!.filePath!);
+      if (await isUsableAudioFile(file)) {
+        return PlaybackSource(
+          resource: download.filePath!,
+          headers: const {},
+          isLocal: true,
+        );
       }
+      // Reconciliation will repair the stale row. Streaming remains usable
+      // in the meantime instead of failing on an unreadable local path.
     }
     final feed = await _database.feedById(episode.feedId);
     if (feed?.isPrivate == true) {

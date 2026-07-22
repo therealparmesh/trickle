@@ -83,6 +83,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   Future<void> _loadTail = Future<void>.value();
   Future<void> _queueOperationTail = Future<void>.value();
   Future<void> _progressOperationTail = Future<void>.value();
+  Future<void> _sessionOperationTail = Future<void>.value();
   int _episodeSelectionGeneration = 0;
   String? _pendingEpisodeSelectionId;
   int _loadGeneration = 0;
@@ -232,7 +233,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
           }
           _broadcastState();
         }),
-        player.errorStream.listen((_) => _setPlaybackError()),
+        player.errorStream.listen((_) {
+          // setUrl/setFilePath reports load failures through its returned
+          // future. Ignore the matching stream event so an outgoing source
+          // cannot put a newer in-flight selection into an error state.
+          if (!_loadingMedia) _setPlaybackError();
+        }),
         session.interruptionEventStream.listen((event) {
           if (event.begin) {
             switch (event.type) {
@@ -291,7 +297,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   /// Activates the app's playback session before WebKit starts video audio.
   Future<void> activateWebVideoAudioSession() async {
     await initialize();
-    await _session?.setActive(true);
+    await _setSessionActive(true);
   }
 
   Future<void> playEpisode(String episodeId) async {
@@ -377,7 +383,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     )) {
       return;
     }
-    if (await _session?.setActive(true) == false) {
+    if (!await _setSessionActive(true)) {
       _broadcastState(playing: false);
       return;
     }
@@ -385,7 +391,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       expectedLoadGeneration,
       interruptionResumeGeneration,
     )) {
-      await _session?.setActive(false);
+      await _setSessionActive(false);
       return;
     }
     final player = _player!;
@@ -411,6 +417,8 @@ final class TrickleAudioHandler extends BaseAudioHandler
   @override
   Future<void> stop() async {
     _cancelPendingInterruptionResume();
+    _episodeSelectionGeneration++;
+    _pendingEpisodeSelectionId = null;
     _clearLoadPlaybackIntent();
     _loadGeneration++;
     _currentItemStarted = false;
@@ -423,7 +431,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _setSleepStatus(const SleepTimerStatus.off());
     _processingState = AudioProcessingState.idle;
     _broadcastState(playing: false);
-    await _session?.setActive(false);
+    await _setSessionActive(false);
   }
 
   @override
@@ -487,7 +495,6 @@ final class TrickleAudioHandler extends BaseAudioHandler
     final items = [...queue.value];
     final index = _currentQueueIndex(items);
     if (index < 0 || index + 1 >= items.length) {
-      await pause();
       return;
     }
     await _load(items[index + 1], autoPlay: true);
@@ -497,6 +504,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   Future<void> skipToQueueItem(int index) async {
     _episodeSelectionGeneration++;
     if (index < 0 || index >= queue.value.length) return;
+    if (queue.value[index].id == mediaItem.value?.id) return;
     await _persistProgress(markPlayedIfNearEnd: true);
     await _load(queue.value[index], autoPlay: true);
   }
@@ -538,7 +546,6 @@ final class TrickleAudioHandler extends BaseAudioHandler
       queue.where((item) => seen.add(item.id)).toList(growable: false),
     );
     await _persistQueue();
-    _broadcastState();
   }
 
   Future<void> clearQueue() async {
@@ -652,7 +659,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
             );
       });
     });
-    if (played && episodeFound) {
+    final currentIsPlaying =
+        mediaItem.value?.id == episodeId && playbackState.value.playing;
+    if (played && episodeFound && !currentIsPlaying) {
       customEvent.add({'type': 'completed', 'episodeId': episodeId});
     }
   }
@@ -782,6 +791,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       _loadingMedia = false;
       if (_pendingLoadGeneration == generation) {
         _pendingLoadGeneration = null;
+        _pendingLoadEpisodeId = null;
       }
     }
   }
@@ -816,6 +826,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
         mediaItem.add(null);
         _processingState = AudioProcessingState.completed;
         _broadcastState(playing: false);
+        await _setSessionActive(false);
         return;
       }
       if (_repeatOne) {
@@ -839,6 +850,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
         mediaItem.add(null);
         _processingState = AudioProcessingState.completed;
         _broadcastState(playing: false);
+        await _setSessionActive(false);
       }
     } finally {
       _handlingCompletion = false;
@@ -975,6 +987,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
   }
 
   MediaItem _mediaItem(Episode episode, Feed? feed) {
+    final artworkUrl = (episode.imageUrl ?? feed?.imageUrl)?.trim();
+    final artworkUri = artworkUrl == null || artworkUrl.isEmpty
+        ? null
+        : Uri.tryParse(artworkUrl);
     return MediaItem(
       id: episode.id,
       title: episode.title,
@@ -983,7 +999,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
       duration: episode.durationMs == null
           ? null
           : Duration(milliseconds: episode.durationMs!),
-      artUri: Uri.tryParse(episode.imageUrl ?? feed?.imageUrl ?? ''),
+      artUri:
+          artworkUri?.scheme == 'https' && artworkUri?.host.isNotEmpty == true
+          ? artworkUri
+          : null,
       displayDescription: episode.description,
       playable: true,
       extras: {'feedId': episode.feedId, 'explicit': episode.explicit},
@@ -1049,7 +1068,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     }
     if (currentId != null && removed.contains(currentId)) {
       await stop();
-      mediaItem.add(null);
+      if (mediaItem.value?.id == currentId) mediaItem.add(null);
     }
     queue.add(
       queue.value
@@ -1057,7 +1076,6 @@ final class TrickleAudioHandler extends BaseAudioHandler
           .toList(growable: false),
     );
     await _persistQueue();
-    _broadcastState();
   }
 
   Future<void> _persistQueue() {
@@ -1071,6 +1089,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
           addedAt: now,
         ),
     ];
+    _broadcastState();
     return _serializeQueueOperation(() async {
       await _database.batch((batch) {
         batch.deleteAll(_database.queueEntries);
@@ -1150,18 +1169,33 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   void _setPlaybackError() {
     if (_disposed) return;
+    _cancelPendingInterruptionResume();
+    _setPlayIntent(_loadGeneration, requested: false);
     _currentItemStarted = false;
     _checkpointTimer?.cancel();
     _processingState = AudioProcessingState.error;
     _broadcastState(playing: false);
-    final player = _player;
-    if (player != null) _runDetached(player.pause());
+    _runDetached(_setSessionActive(false));
+  }
+
+  Future<bool> _setSessionActive(bool active) {
     final session = _session;
-    if (session != null) {
-      _runDetached(() async {
-        await session.setActive(false);
-      }());
-    }
+    if (session == null) return Future<bool>.value(true);
+    final completer = Completer<bool>();
+    final previous = _sessionOperationTail;
+    _sessionOperationTail = () async {
+      try {
+        await previous;
+      } on Object {
+        // A failed activation must not block the next transport command.
+      }
+      try {
+        completer.complete(await session.setActive(active));
+      } on Object catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }();
+    return completer.future;
   }
 
   void _throwIfDisposed() {
@@ -1173,16 +1207,20 @@ final class TrickleAudioHandler extends BaseAudioHandler
     final isPlaying = _processingState == AudioProcessingState.error
         ? false
         : playing ?? _player?.playing ?? false;
+    final currentIndex = _currentQueueIndex(queue.value);
+    final hasNext = currentIndex >= 0 && currentIndex + 1 < queue.value.length;
     final controls = <MediaControl>[
       MediaControl.rewind,
       isPlaying ? MediaControl.pause : MediaControl.play,
       MediaControl.fastForward,
-      MediaControl.skipToNext,
+      if (hasNext) MediaControl.skipToNext,
     ];
     playbackState.add(
       playbackState.value.copyWith(
         controls: controls,
-        androidCompactActionIndices: const [0, 1, 3],
+        androidCompactActionIndices: hasNext
+            ? const [0, 1, 3]
+            : const [0, 1, 2],
         systemActions: const {
           MediaAction.seek,
           MediaAction.seekBackward,
@@ -1198,7 +1236,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
         updatePosition: _position,
         bufferedPosition: _buffered,
         speed: _speedPercent / 100,
-        queueIndex: _currentQueueIndex(queue.value),
+        queueIndex: currentIndex,
         repeatMode: _repeatOne
             ? AudioServiceRepeatMode.one
             : AudioServiceRepeatMode.none,
@@ -1254,6 +1292,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
       await _queueOperationTail;
     } on Object {
       // The handler can still finish disposal if the final queue write failed.
+    }
+    try {
+      await _setSessionActive(false);
+      await _sessionOperationTail;
+    } on Object {
+      // Native session failures must not prevent player disposal.
     }
     try {
       await _player?.dispose();

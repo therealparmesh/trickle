@@ -15,68 +15,9 @@ import '../../data/repositories/article_repository.dart';
 import '../../data/security/private_feed_store.dart';
 import '../../features/player/trickle_audio_handler.dart';
 import '../episode_actions.dart';
+import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/episode_show_notes.dart';
-
-enum PlaybackUiPhase { loading, buffering, error, playing, paused }
-
-PlaybackUiPhase playbackUiPhaseFor(PlaybackState? state) {
-  return _playbackUiPhaseFor(
-    playing: state?.playing == true,
-    processingState: state?.processingState,
-  );
-}
-
-PlaybackUiPhase _playbackUiPhaseFor({
-  required bool playing,
-  required AudioProcessingState? processingState,
-}) {
-  if (processingState == null ||
-      processingState == AudioProcessingState.loading) {
-    return PlaybackUiPhase.loading;
-  }
-  if (processingState == AudioProcessingState.buffering) {
-    return PlaybackUiPhase.buffering;
-  }
-  if (processingState == AudioProcessingState.error) {
-    return PlaybackUiPhase.error;
-  }
-  return playing ? PlaybackUiPhase.playing : PlaybackUiPhase.paused;
-}
-
-extension PlaybackUiPhasePresentation on PlaybackUiPhase {
-  String get semanticStatus => switch (this) {
-    PlaybackUiPhase.loading => 'Audio is loading.',
-    PlaybackUiPhase.buffering => 'Playback is buffering.',
-    PlaybackUiPhase.error => 'Playback error. Retry playback.',
-    PlaybackUiPhase.playing => 'Playback is playing.',
-    PlaybackUiPhase.paused => 'Playback is paused.',
-  };
-
-  Color get color => switch (this) {
-    PlaybackUiPhase.loading => AppConstants.acid,
-    PlaybackUiPhase.buffering || PlaybackUiPhase.playing => AppConstants.cyan,
-    PlaybackUiPhase.error => AppConstants.danger,
-    PlaybackUiPhase.paused => AppConstants.magenta,
-  };
-
-  bool get isBusy =>
-      this == PlaybackUiPhase.loading || this == PlaybackUiPhase.buffering;
-
-  bool get isError => this == PlaybackUiPhase.error;
-
-  bool canToggle({required bool playing}) => !isBusy || playing;
-
-  String actionLabel({required bool playing}) {
-    if (isError) return 'Retry playback';
-    if (playing) return 'Pause';
-    return switch (this) {
-      PlaybackUiPhase.loading => 'Loading audio',
-      PlaybackUiPhase.buffering => 'Buffering audio',
-      _ => 'Play',
-    };
-  }
-}
 
 String _sleepTimerDescription(SleepTimerStatus status) {
   if (status.mode == SleepTimerMode.off) return 'Sleep timer';
@@ -113,9 +54,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
         ),
       ),
     );
-    final phase = _playbackUiPhaseFor(
-      playing: playback.playing,
-      processingState: playback.processingState,
+    final phase = playbackUiPhaseFor(
+      PlaybackState(
+        playing: playback.playing,
+        processingState:
+            playback.processingState ?? AudioProcessingState.loading,
+      ),
     );
     if (item == null) {
       return Scaffold(
@@ -131,6 +75,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     }
     final explicit = item.extras?['explicit'] == true;
     final speed = ref.watch(speedProvider).value ?? AppConstants.defaultSpeed;
+    final queue = ref.watch(queueProvider).value ?? const <MediaItem>[];
+    final queueIndex = queue.indexWhere((candidate) => candidate.id == item.id);
+    final hasNext = queueIndex >= 0 && queueIndex + 1 < queue.length;
     final sleep =
         ref.watch(sleepTimerStatusProvider).value ??
         const SleepTimerStatus.off();
@@ -276,13 +223,27 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           ),
                           IconButton(
                             tooltip: 'Next',
-                            onPressed: () => _runPlayback(
-                              ref.read(audioHandlerProvider).skipToNext,
-                            ),
+                            onPressed: hasNext
+                                ? () => _runPlayback(
+                                    ref.read(audioHandlerProvider).skipToNext,
+                                  )
+                                : null,
                             icon: const Icon(Icons.skip_next_rounded, size: 30),
                           ),
                         ],
                       ),
+                      if (phase.isError) ...[
+                        const SizedBox(height: 12),
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            TrickleAudioHandler.playbackErrorMessage,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: AppConstants.danger),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 26),
                       Text(
                         'Playback speed',
@@ -509,27 +470,25 @@ class _PlaybackProgressState extends ConsumerState<_PlaybackProgress> {
         !widget.phase.isError;
     return Column(
       children: [
-        Semantics(
-          label:
-              'Playback position ${formatDuration(displayPosition)} of ${formatDuration(duration)}',
-          child: Slider(
-            value: sliderPosition,
-            max: max,
-            onChangeStart: enabled
-                ? (value) => setState(() => _scrubPositionMs = value.round())
-                : null,
-            onChanged: enabled
-                ? (value) {
-                    if (_scrubPositionMs == null) return;
-                    setState(() => _scrubPositionMs = value.round());
-                  }
-                : null,
-            onChangeEnd: enabled
-                ? (value) {
-                    if (_scrubPositionMs != null) _commitSeek(value.round());
-                  }
-                : null,
-          ),
+        Slider(
+          value: sliderPosition,
+          max: max,
+          semanticFormatterCallback: (_) =>
+              '${formatDuration(displayPosition)} of ${formatDuration(duration)}',
+          onChangeStart: enabled
+              ? (value) => setState(() => _scrubPositionMs = value.round())
+              : null,
+          onChanged: enabled
+              ? (value) {
+                  if (_scrubPositionMs == null) return;
+                  setState(() => _scrubPositionMs = value.round());
+                }
+              : null,
+          onChangeEnd: enabled
+              ? (value) {
+                  if (_scrubPositionMs != null) _commitSeek(value.round());
+                }
+              : null,
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),

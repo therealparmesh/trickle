@@ -249,6 +249,7 @@ Future<_TrickleRuntime> _createRuntime() async {
       BackgroundRefreshService().initialize().catchError((Object _) {}),
     );
     await audio.reloadQueueFromDatabase();
+    await audio.initialize();
     return _TrickleRuntime(
       database: database,
       network: network,

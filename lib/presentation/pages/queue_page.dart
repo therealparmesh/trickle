@@ -1,10 +1,12 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../playback_presentation.dart';
 import '../widgets/common.dart';
 
 final class QueuePage extends ConsumerWidget {
@@ -15,6 +17,8 @@ final class QueuePage extends ConsumerWidget {
     final queueState = ref.watch(queueProvider);
     final queue = queueState.value ?? const <MediaItem>[];
     final current = ref.watch(currentMediaProvider).value;
+    final playback = ref.watch(playbackStateProvider).value;
+    final phase = playbackUiPhaseFor(playback);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
       appBar: AppBar(
@@ -99,12 +103,14 @@ final class QueuePage extends ConsumerWidget {
                             selectedTileColor: AppConstants.cyan.withValues(
                               alpha: 0.05,
                             ),
-                            onTap: () => _run(
-                              context,
-                              () => ref
-                                  .read(audioHandlerProvider)
-                                  .skipToQueueItem(index),
-                            ),
+                            onTap: active
+                                ? () => context.push('/player')
+                                : () => _run(
+                                    context,
+                                    () => ref
+                                        .read(audioHandlerProvider)
+                                        .skipToQueueItem(index),
+                                  ),
                             leading: EpisodeArtworkById(
                               episodeId: item.id,
                               fallbackUrl: item.artUri?.toString(),
@@ -118,7 +124,7 @@ final class QueuePage extends ConsumerWidget {
                             subtitle: Text(
                               [
                                 if (item.album?.isNotEmpty == true) item.album!,
-                                if (active) 'Playing',
+                                if (active) phase.label,
                               ].join(' · '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -134,7 +140,8 @@ final class QueuePage extends ConsumerWidget {
                               ),
                             ),
                           ),
-                          const Divider(height: 1, indent: 82, endIndent: 16),
+                          if (index < queue.length - 1)
+                            const Divider(height: 1, indent: 82, endIndent: 16),
                         ],
                       ),
                     );

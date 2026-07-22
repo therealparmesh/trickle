@@ -272,7 +272,9 @@ final class SafeNetworkClient {
     var current = normalizeHttps(requested);
     var requestHeaders = Map<String, String>.of(headers)
       ..removeWhere((name, _) => name.toLowerCase() == 'range');
-    for (var redirects = 0; redirects <= _maxMediaRedirects; redirects++) {
+    var redirects = 0;
+    var useRange = true;
+    while (true) {
       final dnsBudget = _remaining(totalTimeout, stopwatch);
       final validator = _addressValidator;
       if (validator == null) {
@@ -291,7 +293,7 @@ final class SafeNetworkClient {
           current.toString(),
           cancelToken: cancelToken,
           options: Options(
-            headers: {...requestHeaders, 'Range': 'bytes=0-0'},
+            headers: {...requestHeaders, if (useRange) 'Range': 'bytes=0-0'},
             responseType: ResponseType.stream,
             followRedirects: false,
             receiveDataWhenStatusError: true,
@@ -306,11 +308,12 @@ final class SafeNetworkClient {
               'The media server returned an invalid redirect.',
             );
           }
-          if (redirects == _maxMediaRedirects) {
+          if (redirects >= _maxMediaRedirects) {
             throw const NetworkException(
               'The media server redirected too many times.',
             );
           }
+          redirects++;
           cancelToken.cancel('redirect body is not needed');
           final next = normalizeHttps(current.resolve(location));
           if (!sameOrigin(current, next)) {
@@ -324,11 +327,34 @@ final class SafeNetworkClient {
               );
           }
           current = next;
+          useRange = true;
+          continue;
+        }
+        if (useRange && const {400, 403, 416}.contains(status)) {
+          // A minority of media origins reject range requests even though a
+          // normal streaming GET succeeds. Retry once without Range while
+          // retaining the same validation, redirect, and absolute deadline.
+          cancelToken.cancel('range request was not supported');
+          useRange = false;
           continue;
         }
         cancelToken.cancel('media preflight body is not needed');
         if (status < 200 || status >= 300) {
           throw NetworkException('The media server returned HTTP $status.');
+        }
+        final contentType = response.headers
+            .value('content-type')
+            ?.split(';')
+            .first
+            .trim()
+            .toLowerCase();
+        if (contentType != null &&
+            (contentType == 'text/html' ||
+                contentType.contains('json') ||
+                contentType.contains('xml'))) {
+          throw const NetworkException(
+            'The media server did not return playable audio.',
+          );
         }
         return NetworkResource(
           url: current,
@@ -343,7 +369,6 @@ final class SafeNetworkClient {
         timer.cancel();
       }
     }
-    throw const NetworkException('The media server redirected too many times.');
   }
 
   Uri normalizeHttps(Uri input) {

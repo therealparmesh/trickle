@@ -1,10 +1,10 @@
-import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../data/database/app_database.dart';
+import '../playback_presentation.dart';
 import 'common.dart';
 
 final class EpisodePlaybackButton extends ConsumerStatefulWidget {
@@ -33,19 +33,19 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
     final progress = widget.expanded
         ? ref.watch(episodeProgressProvider(widget.episode.id)).value
         : null;
-    final processing = isCurrent ? state?.processingState : null;
     final playing = isCurrent && state?.playing == true;
-    final engineBusy =
-        processing == AudioProcessingState.loading ||
-        processing == AudioProcessingState.buffering;
-    final failed = processing == AudioProcessingState.error;
-    final busy = _running || engineBusy;
+    final phase = isCurrent
+        ? playbackUiPhaseFor(state)
+        : PlaybackUiPhase.paused;
+    final engineBusy = isCurrent && phase.isBusy;
+    final failed = isCurrent && phase.isError;
+    final busy = _running || (engineBusy && !playing);
     final label = failed
         ? 'Retry'
         : playing
         ? 'Pause'
         : engineBusy
-        ? 'Loading'
+        ? phase.actionLabel(playing: false)
         : isCurrent
         ? 'Resume'
         : widget.episode.played || progress?.completed == true
@@ -76,7 +76,10 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
           icon: busy
               ? const SizedBox.square(
                   dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2.3),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.3,
+                    color: AppConstants.background,
+                  ),
                 )
               : Icon(icon),
           label: Text(label),
