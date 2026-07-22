@@ -8,11 +8,11 @@ trickle is a podcast player and RSS reader. No account, login, purchase, subscri
 2. Search the Apple podcast catalog for a public podcast, open it, and subscribe.
 3. Open an episode. The detail screen does not begin playback automatically; tap Play to stream it.
 4. Use the episode menu to download it or add it to Up Next.
-5. From Home, tap Add Feed under Reading to enter a public RSS, Atom, JSON Feed, or website URL.
+5. From Home, tap Add Feed under Feeds to enter a public RSS, Atom, JSON Feed, or website URL.
 6. Tap Add YouTube to enter a public YouTube channel or playlist URL. Both actions use the same feed subscription pipeline.
 7. Open an article to use the extracted reader view. Share and Open in Browser are available from the reader toolbar.
-8. Open a YouTube feed entry to use its in-app web player. It can be minimized while navigating the app, closed, or opened at its original URL. On iPhone, starting playback uses WebKit's system presentation; on Android 8 or later, leaving the app with active video requests activity Picture in Picture. Picture in Picture availability remains controlled by the system and active player. The player first tries yout-ube.com; only if that load fails does the same player load the official YouTube URL from the feed, including any ads YouTube supplies.
-9. Settings contains global playback speed, download cleanup, standard OPML import, separate podcast/reading/combined OPML exports, and local backup controls.
+8. Open a YouTube feed entry to use its in-app web player. It can be minimized to a persistent Now Playing bar while navigating the app, expanded again without reloading, closed, or opened at its original URL. Leaving the app while a video is playing requests WebKit Picture in Picture on iPhone and activity Picture in Picture on Android 8 or later. Picture in Picture availability remains controlled by the system and active player. The player first tries yout-ube.com; only if that load fails does the same player load the official YouTube URL from the feed, including any ads YouTube supplies.
+9. Settings contains global playback speed, download cleanup, standard OPML import, separate OPML exports for podcasts, feeds (RSS and YouTube), and all subscriptions, plus local backup controls.
 
 Network access is required for catalog search, feed refresh, article extraction, artwork, and streaming. Downloaded episodes and previously cached content remain available offline.
 

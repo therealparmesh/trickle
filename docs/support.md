@@ -41,9 +41,9 @@ If a completed download is missing or unusable, trickle falls back to the publis
 
 Use Add YouTube for focused channel and playlist guidance, or paste a public YouTube channel, playlist, or YouTube Atom feed into Add Feed. A video shared from inside a public playlist follows that playlist. Private, members-only, and account-specific lists are not supported by public feeds.
 
-Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. The mini-player remains available while navigating trickle.
+Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. Minimize the player to keep the same video playing from the Now Playing bar while navigating trickle.
 
-On iPhone, starting a video uses WebKit's system presentation so its Picture in Picture and background behavior do not depend on a separate full-screen action. On Android 8 or later, leaving trickle while a video is active requests system Picture in Picture. Availability still depends on the device settings and the active web player. While the system owns a Picture in Picture window, trickle hides its duplicate mini-player; closing Picture in Picture returns the video to the minimized player and resumes it if it had been playing. Podcast audio continues to use native background playback.
+On iPhone, leaving trickle while a video is playing requests WebKit Picture in Picture. On Android 8 or later, leaving trickle while a video is playing requests activity Picture in Picture. Availability depends on the device settings and the active web player. While the system owns a Picture in Picture window, trickle hides its duplicate mini-player; closing Picture in Picture returns the video to the minimized player and resumes it if it had been playing. Podcast audio continues to use native background playback.
 
 ### Background refresh or downloads
 
@@ -59,7 +59,7 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 
 ## Backup and migration
 
-Settings can import standard OPML and export podcast subscriptions, reading subscriptions, or both as OPML. It also provides a local ZIP backup for subscriptions, reading and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
+Settings can import standard OPML and export podcast subscriptions, RSS and YouTube subscriptions, or all subscriptions as OPML. It also provides a local ZIP backup for subscriptions, article and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
 
 Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data.
 

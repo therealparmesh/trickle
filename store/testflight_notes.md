@@ -19,7 +19,7 @@ Please test the combined podcast and feed-reader flow:
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
-- On iPhone, tap Play; verify system presentation starts without another full-screen tap, then background or lock and check Picture in Picture
+- On iPhone, tap Play, minimize to the Now Playing bar, then background or lock and check Picture in Picture
 - On Android 8 or later, leave with active video and verify Picture in Picture; repeat on Android 12 or later
 - With Picture in Picture visible, return Home and verify no black duplicate appears; close it and verify the minimized video returns and resumes if it was playing
 - Check square podcast art and landscape article and video previews from several feeds; every image should crop cleanly without stretching
@@ -29,7 +29,7 @@ Please test the combined podcast and feed-reader flow:
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
 - During Refresh now or OPML import, confirm the row reports item progress, other settings remain usable, and Back works immediately while the operation continues
 - Reopen Settings during an active import and tap Import OPML again; it should rejoin the existing operation instead of opening another picker
-- Export podcast subscriptions, reading subscriptions, and all subscriptions separately; verify each file contains the expected feeds
+- Export podcast subscriptions, RSS and YouTube subscriptions, and all subscriptions separately; verify each file contains the expected feeds
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views

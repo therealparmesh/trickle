@@ -4,14 +4,14 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 
 ## Features
 
-- Apple podcast catalog search, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, standard OPML import, and podcast-only, reading-only, or combined OPML export
-- RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or reading-feed classification
+- Apple podcast catalog search, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, standard OPML import, and separate OPML exports for podcasts, feeds (RSS and YouTube), or all subscriptions
+- RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or article-feed classification
 - Streaming, resumable app-private downloads, persistent Up Next, automatic download cleanup, and per-feed automation
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
 - Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
-- YouTube video entries with a persistent web player and in-app mini-player; iOS uses WebKit system presentation and Android uses activity Picture in Picture for supported background video, while playback tries yout-ube first and then the official YouTube link from the feed if that attempt fails
+- YouTube video entries with a persistent web player that minimizes to the Now Playing bar without reloading; supported background video uses WebKit Picture in Picture on iOS and activity Picture in Picture on Android, while playback tries yout-ube first and then the official YouTube link from the feed if that attempt fails
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information
