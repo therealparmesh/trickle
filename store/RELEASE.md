@@ -82,7 +82,7 @@ The application includes its privacy manifest, background-audio configuration, b
 
 The iOS target is iPhone-only. Five prepared 1320×2868 iPhone 17 Pro Max PNG screenshots are in `store/apple/screenshots/`. The capture flow does not seed content: prepare a simulator with the podcast and feed data asserted by `tool/maestro/capture_store_screenshots.yaml`, then regenerate the images from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml`.
 
-In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the prepared screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
+In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, and publish that response before submitting a version. Provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the prepared screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
 
 ## Acceptance checklist
 

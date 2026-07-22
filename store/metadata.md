@@ -88,4 +88,4 @@ Choose background refresh from 1 hour through 1 week and remove played downloads
 - Account deletion: Not applicable; the app has no account
 - Encryption export compliance: Uses only operating-system and standard HTTPS encryption; `ITSAppUsesNonExemptEncryption` is false
 
-The publisher must supply the legal name, copyright, and review contact in the store consoles.
+The publisher's legal name, copyright, and review contact are configured in the store consoles. Verify them before each submission.
