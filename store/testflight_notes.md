@@ -5,7 +5,9 @@ Please test the combined podcast and feed-reader flow:
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Open podcast search results to preview their podcast detail screen, then subscribe, unsubscribe, and resubscribe without leaving that screen
 - Confirm an already subscribed podcast offers Unsubscribe in search without affecting other results
-- Stream, seek, pause, resume, and change the global playback speed
+- Stream, seek, pause, resume, pause while buffering, and change the global playback speed
+- Verify a failed audio source shows a clear playback message and Retry action instead of an unexplained red control; retry after restoring the network
+- Add and remove the final Up Next episode and confirm Next is enabled only when another episode exists, including on lock-screen controls
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
 - Verify played-download cleanup offers only Immediately, 1 day, and 1 week
