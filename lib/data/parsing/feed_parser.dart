@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:html/parser.dart' as html_parser;
 import 'package:xml/xml.dart';
 
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/formatters.dart';
 import '../../domain/feed_models.dart';
 
 final class FeedParser {
@@ -763,7 +763,7 @@ final class FeedParser {
 
   String? _plainText(String? source) {
     if (source == null) return null;
-    final value = (html_parser.parseFragment(source).text ?? '').trim();
+    final value = plainText(source);
     return value.isEmpty ? null : value;
   }
 }

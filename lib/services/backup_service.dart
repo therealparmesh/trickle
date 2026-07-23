@@ -6,7 +6,6 @@ import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
-import 'package:html/parser.dart' as html_parser;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -15,6 +14,7 @@ import '../data/database/app_database.dart';
 import '../core/constants.dart';
 import '../core/errors.dart';
 import '../core/feed_identity.dart';
+import '../core/formatters.dart';
 
 final class BackupResult {
   const BackupResult({
@@ -255,7 +255,7 @@ final class BackupService {
           entityId: actualFeedId,
           kind: 'feed',
           title: feed.title,
-          body: '${feed.author ?? ''} ${_plain(feed.description)}',
+          body: '${feed.author ?? ''} ${plainText(feed.description)}',
           feedTitle: feed.title,
         );
       }
@@ -313,7 +313,7 @@ final class BackupService {
           entityId: actualEpisodeId,
           kind: 'episode',
           title: episode.title,
-          body: _plain(episode.description),
+          body: plainText(episode.description),
           feedTitle: feedTitles[actualFeedId] ?? '',
         );
       }
@@ -353,7 +353,7 @@ final class BackupService {
           kind: 'article',
           title: article.title,
           body:
-              '${article.author ?? ''} ${_plain(article.contentHtml ?? article.summary)}',
+              '${article.author ?? ''} ${plainText(article.contentHtml ?? article.summary)}',
           feedTitle: feedTitles[actualFeedId] ?? '',
         );
       }
@@ -447,13 +447,6 @@ final class BackupService {
     ),
     _ => false,
   };
-
-  String _plain(String? html) {
-    if (html == null || html.isEmpty) return '';
-    return (html_parser.parseFragment(html).text ?? '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
 
   String? _https(String? raw) {
     if (raw == null) return null;

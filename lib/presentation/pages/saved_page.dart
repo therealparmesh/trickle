@@ -31,7 +31,7 @@ final class _SavedPageState extends ConsumerState<SavedPage> {
       initialIndex: widget.initialTab.clamp(0, 1),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Saved'),
+          title: const PageTitle('Saved'),
           bottom: const AdaptiveTabBar(
             tabs: [
               Tab(text: 'Episodes'),

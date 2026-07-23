@@ -17,7 +17,7 @@ final class DownloadsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final downloads = ref.watch(downloadsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Downloads')),
+      appBar: AppBar(title: const PageTitle('Downloads')),
       body: AppBackdrop(
         child: downloads.when(
           data: (items) => items.isEmpty

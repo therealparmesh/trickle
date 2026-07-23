@@ -9,6 +9,7 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../widgets/common.dart';
+import '../widgets/design_system.dart';
 
 final class LibraryPage extends ConsumerWidget {
   const LibraryPage({super.key});
@@ -19,7 +20,7 @@ final class LibraryPage extends ConsumerWidget {
     final queue = queueState.value ?? const [];
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Library'),
+        title: const PageTitle('Library'),
         actions: [
           IconButton(
             tooltip: 'Settings',
@@ -130,20 +131,14 @@ final class LibraryPage extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                 child: AppCard(
+                  accent: AppConstants.acid,
                   onTap: () => context.push('/downloads'),
                   child: Row(
                     children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppConstants.acid.withValues(alpha: 0.16),
-                        ),
-                        child: const Icon(
-                          Icons.offline_bolt_rounded,
-                          color: AppConstants.acid,
-                        ),
+                      const SignalIcon(
+                        icon: Icons.offline_bolt_rounded,
+                        color: AppConstants.acid,
+                        size: 52,
                       ),
                       const SizedBox(width: 14),
                       Expanded(

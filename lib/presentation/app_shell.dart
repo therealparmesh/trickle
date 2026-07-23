@@ -7,6 +7,7 @@ import '../core/constants.dart';
 import '../features/video/video_session.dart';
 import 'playback_presentation.dart';
 import 'widgets/common.dart';
+import 'widgets/design_system.dart';
 import 'widgets/video_player_host.dart';
 
 final class AppShell extends ConsumerWidget {
@@ -92,146 +93,150 @@ final class MiniPlayer extends ConsumerWidget {
         heightFactor: 1,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 840),
-          child: Row(
-            children: [
-              Expanded(
-                child: Semantics(
-                  button: true,
-                  liveRegion: true,
-                  label:
-                      'Open Now Playing. ${item.title}${explicit ? ', explicit' : ''}. ${phase.semanticStatus}',
-                  excludeSemantics: true,
-                  onTap: () => context.push('/player'),
-                  child: Material(
-                    color: AppConstants.elevated.withValues(alpha: 0.97),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(height / 2),
-                      side: const BorderSide(color: AppConstants.hairline),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () => context.push('/player'),
-                      child: SizedBox(
-                        height: height,
-                        child: Stack(
-                          children: [
-                            Row(
-                              children: [
-                                const SizedBox(width: 6),
-                                EpisodeArtworkById(
-                                  episodeId: item.id,
-                                  fallbackUrl: item.artUri?.toString(),
-                                  size: 56,
-                                  radius: 28,
-                                ),
-                                const SizedBox(width: 11),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      EpisodeTitle(
-                                        title: item.title,
-                                        explicit: explicit,
-                                        maxLines: 1,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+          child: Semantics(
+            container: true,
+            explicitChildNodes: true,
+            child: Material(
+              color: AppConstants.elevated.withValues(alpha: 0.98),
+              shape: const CutCornerBorder(
+                cut: 14,
+                side: BorderSide(color: AppConstants.hairline),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                height: height,
+                child: Stack(
+                  children: [
+                    Row(
+                      children: [
+                        Container(width: 3, color: phase.color),
+                        Expanded(
+                          child: Semantics(
+                            button: true,
+                            label:
+                                'Open Now Playing. ${item.title}${explicit ? ', explicit' : ''}. ${phase.semanticStatus}',
+                            excludeSemantics: true,
+                            onTap: () => context.push('/player'),
+                            child: InkWell(
+                              onTap: () => context.push('/player'),
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 6),
+                                  EpisodeArtworkById(
+                                    episodeId: item.id,
+                                    fallbackUrl: item.artUri?.toString(),
+                                    size: 54,
+                                    radius: 4,
+                                  ),
+                                  const SizedBox(width: 11),
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        EpisodeTitle(
+                                          title: item.title,
+                                          explicit: explicit,
+                                          maxLines: 1,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
-                                      ),
-                                      if (phase.isError)
+                                        const SizedBox(height: 2),
                                         Text(
-                                          'Couldn’t play · Tap retry',
+                                          phase.isError
+                                              ? 'Couldn’t play'
+                                              : item.album ?? phase.label,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodySmall
                                               ?.copyWith(
-                                                color: AppConstants.danger,
+                                                color: phase.isError
+                                                    ? AppConstants.danger
+                                                    : AppConstants
+                                                          .secondaryText,
                                               ),
                                         ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: AppConstants.secondaryText,
-                                ),
-                                const SizedBox(width: 10),
-                              ],
-                            ),
-                            Positioned(
-                              left: 28,
-                              right: 28,
-                              bottom: 0,
-                              child: LinearProgressIndicator(
-                                value: phase.isBusy ? null : ratio,
-                                minHeight: 2,
-                                backgroundColor: Colors.transparent,
-                                color: phase.color,
+                                ],
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: actionLabel,
-                excludeFromSemantics: true,
-                child: Semantics(
-                  button: true,
-                  enabled: canToggle,
-                  label: actionLabel,
-                  excludeSemantics: true,
-                  onTap: canToggle
-                      ? () => _togglePlayback(context, ref, playing)
-                      : null,
-                  child: Material(
-                    color: phase.isError
-                        ? AppConstants.danger
-                        : phase.isBusy && !playing
-                        ? AppConstants.elevated
-                        : AppConstants.cyan,
-                    shape: const CircleBorder(),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: canToggle
-                          ? () => _togglePlayback(context, ref, playing)
-                          : null,
-                      child: SizedBox.square(
-                        dimension: 68,
-                        child: phase.isBusy
-                            ? Center(
+                        Tooltip(
+                          message: actionLabel,
+                          excludeFromSemantics: true,
+                          child: Semantics(
+                            button: true,
+                            enabled: canToggle,
+                            label: actionLabel,
+                            excludeSemantics: true,
+                            onTap: canToggle
+                                ? () => _togglePlayback(context, ref, playing)
+                                : null,
+                            child: Material(
+                              color: phase.isError
+                                  ? AppConstants.danger
+                                  : AppConstants.cyan,
+                              shape: const CutCornerBorder(cut: 9),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: canToggle
+                                    ? () =>
+                                          _togglePlayback(context, ref, playing)
+                                    : null,
                                 child: SizedBox.square(
-                                  dimension: 25,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: playing
-                                        ? AppConstants.background
-                                        : AppConstants.secondaryText,
-                                  ),
+                                  dimension: 52,
+                                  child: phase.isBusy
+                                      ? Center(
+                                          child: SizedBox.square(
+                                            dimension: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              color: playing
+                                                  ? AppConstants.background
+                                                  : AppConstants.secondaryText,
+                                            ),
+                                          ),
+                                        )
+                                      : Icon(
+                                          phase.isError
+                                              ? Icons.refresh_rounded
+                                              : playing
+                                              ? Icons.pause_rounded
+                                              : Icons.play_arrow_rounded,
+                                          color: AppConstants.background,
+                                          size: 30,
+                                        ),
                                 ),
-                              )
-                            : Icon(
-                                phase.isError
-                                    ? Icons.refresh_rounded
-                                    : playing
-                                    ? Icons.pause_rounded
-                                    : Icons.play_arrow_rounded,
-                                color: AppConstants.background,
-                                size: 34,
                               ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                      ],
+                    ),
+                    Positioned(
+                      left: 3,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        value: phase.isBusy ? null : ratio,
+                        minHeight: 2,
+                        backgroundColor: Colors.transparent,
+                        color: phase.color,
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -257,5 +262,5 @@ final class MiniPlayer extends ConsumerWidget {
 
 double _miniPlayerHeight(BuildContext context) {
   final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
-  return 68 + (textScale - 1) * 18;
+  return 66 + (textScale - 1) * 28;
 }

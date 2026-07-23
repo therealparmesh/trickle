@@ -9,6 +9,7 @@ import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../core/url_identity.dart';
 import '../../data/database/app_database.dart';
+import 'design_system.dart';
 
 void showErrorSnackBar(BuildContext context, Object error) {
   showMessageSnackBar(context, friendlyError(error));
@@ -19,6 +20,25 @@ void showMessageSnackBar(BuildContext context, String message) {
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+final class PageTitle extends StatelessWidget {
+  const PageTitle(this.title, {super.key});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: title,
+      header: true,
+      excludeSemantics: true,
+      child: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 2,
+        child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
 }
 
 Future<void> refreshAllFeeds(
@@ -53,14 +73,22 @@ final class HorizontalShortcutStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.textScalerOf(context).scale(1) > 1.5) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    if (textScale > 1.5) {
       return LayoutBuilder(
         builder: (context, constraints) {
           const horizontalPadding = 10.0;
-          final itemWidth = (constraints.maxWidth - horizontalPadding * 2) / 2;
+          const spacing = 6.0;
+          final columns = textScale > 2 ? 1 : 2;
+          final itemWidth =
+              (constraints.maxWidth -
+                  horizontalPadding * 2 -
+                  spacing * (columns - 1)) /
+              columns;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: Wrap(
+              spacing: spacing,
               runSpacing: 4,
               children: [
                 for (final child in children)
@@ -281,12 +309,10 @@ final class GlassIconButton extends StatelessWidget {
         button: true,
         label: tooltip,
         excludeSemantics: true,
+        onTap: onPressed,
         child: Material(
           color: AppConstants.surface.withValues(alpha: 0.94),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: const BorderSide(color: AppConstants.hairline),
-          ),
+          shape: const CutCornerBorder(cut: 11),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onPressed,
@@ -436,10 +462,12 @@ final class _SpeedCell extends StatelessWidget {
         color: selected
             ? AppConstants.cyan.withValues(alpha: 0.18)
             : AppConstants.elevated,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+        shape: CutCornerBorder(
+          cut: 9,
           side: BorderSide(
-            color: selected ? AppConstants.cyan : AppConstants.hairline,
+            color: selected
+                ? AppConstants.cyan
+                : AppConstants.hairline.withValues(alpha: 0.7),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -490,18 +518,26 @@ final class SectionHeader extends StatelessWidget {
     return Semantics(
       header: true,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 24, 10, 9),
+        padding: const EdgeInsets.fromLTRB(18, 26, 10, 10),
         child: stackAction
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  titleWidget,
+                  Row(
+                    children: [
+                      const _SectionSignal(),
+                      const SizedBox(width: 9),
+                      Expanded(child: titleWidget),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Align(alignment: Alignment.centerRight, child: actionWidget),
                 ],
               )
             : Row(
                 children: [
+                  const _SectionSignal(),
+                  const SizedBox(width: 9),
                   Expanded(child: titleWidget),
                   ?actionWidget,
                 ],
@@ -509,6 +545,21 @@ final class SectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+final class _SectionSignal extends StatelessWidget {
+  const _SectionSignal();
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Column(
+      children: [
+        Container(width: 3, height: 13, color: AppConstants.cyan),
+        const SizedBox(height: 2),
+        Container(width: 3, height: 5, color: AppConstants.magenta),
+      ],
+    ),
+  );
 }
 
 final class AdaptiveTabBar extends StatelessWidget
@@ -528,6 +579,13 @@ final class AdaptiveTabBar extends StatelessWidget
       controller: controller,
       isScrollable: scrollable,
       tabAlignment: scrollable ? TabAlignment.start : TabAlignment.fill,
+      textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 2),
+      indicatorSize: TabBarIndicatorSize.tab,
+      indicatorWeight: 3,
+      indicatorPadding: const EdgeInsets.symmetric(horizontal: 14),
+      overlayColor: WidgetStatePropertyAll(
+        AppConstants.cyan.withValues(alpha: 0.06),
+      ),
       tabs: tabs,
     );
   }
@@ -538,23 +596,22 @@ final class AppCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(16),
     this.onTap,
+    this.accent,
     super.key,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppConstants.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(padding: padding, child: child),
-      ),
+    return SignalPanel(
+      onTap: onTap,
+      padding: padding,
+      accent: accent,
+      child: child,
     );
   }
 }
@@ -578,59 +635,9 @@ final class LibraryShortcut extends StatelessWidget {
     final textScale = MediaQuery.textScalerOf(
       context,
     ).scale(1).clamp(1.0, 3.2).toDouble();
-    return Semantics(
-      button: true,
-      label: label,
-      excludeSemantics: true,
-      onTap: onTap,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: SizedBox(
-          width: (86 + (textScale - 1) * 63).clamp(86.0, 224.0),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color.withValues(alpha: 0.16),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: color.withValues(alpha: 0.16),
-                          border: Border.all(
-                            color: color.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        child: Icon(icon, color: color, size: 28),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    return SizedBox(
+      width: (162 + (textScale - 1) * 42).clamp(162.0, 224.0),
+      child: CommandTile(icon: icon, label: label, color: color, onTap: onTap),
     );
   }
 }
@@ -1001,9 +1008,12 @@ final class LoadingView extends StatelessWidget {
     liveRegion: true,
     child: ExcludeSemantics(
       child: Center(
-        child: SizedBox.square(
-          dimension: 26,
-          child: CircularProgressIndicator(strokeWidth: 2.5),
+        child: SizedBox(
+          width: 72,
+          child: ClipPath(
+            clipper: ShapeBorderClipper(shape: const CutCornerBorder(cut: 3)),
+            child: const LinearProgressIndicator(minHeight: 4),
+          ),
         ),
       ),
     ),
@@ -1136,24 +1146,27 @@ final class AppBackdrop extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF0D131B), AppConstants.background],
-          stops: [0, 0.3],
+          colors: [Color(0xFF0A1017), AppConstants.background],
+          stops: [0, 0.34],
         ),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth > 840
-              ? 840.0
-              : constraints.maxWidth;
-          return Align(
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: width,
-              height: constraints.maxHeight,
-              child: child,
-            ),
-          );
-        },
+      child: CustomPaint(
+        painter: const SignalBackdropPainter(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth > 840
+                ? 840.0
+                : constraints.maxWidth;
+            return Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: width,
+                height: constraints.maxHeight,
+                child: child,
+              ),
+            );
+          },
+        ),
       ),
     );
   }

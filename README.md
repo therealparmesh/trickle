@@ -4,14 +4,14 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 
 ## Features
 
-- Apple podcast catalog search, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, standard OPML import, and separate OPML exports for podcasts, feeds (RSS and YouTube), or all subscriptions
+- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, standard OPML import, and separate OPML exports for podcasts, feeds (RSS and YouTube), or all subscriptions
 - RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or article-feed classification
 - Streaming, resumable app-private downloads, persistent Up Next, automatic download cleanup, and per-feed automation
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
 - Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
-- YouTube video entries with a persistent web player that tries yout-ube first, falls back to the official YouTube link from the feed, and minimizes to a live Now Playing preview without reloading; user-started system Picture in Picture keeps audio playing in the background while other video pauses when the app is hidden
+- YouTube video entries with a persistent web player, official-source fallback, and a live minimized Now Playing preview that does not reload; user-started system Picture in Picture keeps audio playing in the background while other video pauses when the app is hidden
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information
@@ -22,6 +22,12 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 - iOS 14.0 or later on iPhone
 
 Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally out of scope.
+
+## Interface
+
+The home flow puts recent episodes first, followed by Up Next, downloads, saved items, subscriptions, and unread feed entries. A persistent mini player keeps the current episode or video reachable without taking over navigation.
+
+The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 
 ## Prerequisites
 
@@ -67,7 +73,7 @@ The unsigned build commands verify compilation without requiring publisher crede
 - `lib/data`: Drift/SQLite persistence, hardened HTTPS networking, feed parsing, private-feed storage, and repositories
 - `lib/features`: background downloads, long-lived audio handling, and the active video session
 - `lib/services`: refresh scheduling, feed automation, notifications, OPML, and local backup
-- `lib/presentation`: Riverpod-driven screens, reusable content components, and the floating player shell
+- `lib/presentation`: Riverpod-driven screens, the shared visual system, reusable content components, and the persistent player shell
 
 The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Potentially expensive feed and article parsing runs away from the UI isolate. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
 
@@ -91,4 +97,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and five 1320×2868 App Store screenshots are in `store/apple/`; private signing-key material remains outside the repository.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in screenshots were regenerated from the current visual system on July 23, 2026.

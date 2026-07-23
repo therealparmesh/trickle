@@ -15,8 +15,10 @@ import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/repositories/article_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/features/player/trickle_audio_handler.dart';
+import 'package:trickle/presentation/app_shell.dart';
 import 'package:trickle/presentation/pages/episode_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
+import 'package:trickle/presentation/pages/home_page.dart';
 import 'package:trickle/presentation/pages/player_page.dart';
 import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
@@ -254,67 +256,54 @@ void main() {
     expect(image.fit, BoxFit.cover);
   });
 
-  testWidgets('home controls reflow into two columns at large text', (
+  testWidgets('home command flow stacks at accessibility text sizes', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 3000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: MediaQuery(
-          data: const MediaQueryData(
-            size: Size(432, 900),
-            textScaler: TextScaler.linear(2),
-          ),
-          child: const Scaffold(
-            body: Column(
-              children: [
-                SectionHeader('Podcasts', action: 'See all', onAction: _noop),
-                HorizontalShortcutStrip(
-                  children: [
-                    LibraryShortcut(
-                      icon: Icons.queue_music_rounded,
-                      label: 'Up Next',
-                      onTap: _noop,
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.arrow_downward_rounded,
-                      label: 'Downloads',
-                      onTap: _noop,
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.bookmark_outline_rounded,
-                      label: 'Saved',
-                      onTap: _noop,
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.grid_view_rounded,
-                      label: 'Library',
-                      onTap: _noop,
-                    ),
-                  ],
-                ),
-              ],
+      ProviderScope(
+        overrides: [
+          recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+          podcastFeedsProvider.overrideWith((_) => Stream.value(const [])),
+          readerUnreadArticlesProvider(
+            5,
+          ).overrideWith((_) => Stream.value(const [])),
+          queueProvider.overrideWith((_) => Stream.value(const [])),
+          unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(393, 3000),
+              textScaler: TextScaler.linear(3.2),
             ),
+            child: const HomePage(),
           ),
         ),
       ),
     );
+    await tester.pump();
+    await tester.pump();
 
     expect(find.text('Up Next'), findsOneWidget);
     expect(find.text('Downloads'), findsOneWidget);
-    expect(find.text('Saved'), findsOneWidget);
+    expect(find.text('Saved episodes'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Sources'), findsOneWidget);
+    expect(find.text('Add YouTube feed'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('See all')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Podcasts')).dy),
-    );
-    expect(
-      tester.getTopLeft(find.text('Saved')).dy,
+      tester.getTopLeft(find.text('Downloads')).dy,
       greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
     );
     expect(
-      tester.getTopLeft(find.text('Library')).dy,
+      tester.getTopLeft(find.text('Saved episodes')).dy,
       greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Library')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Saved episodes')).dy),
     );
     expect(tester.takeException(), isNull);
   });
@@ -398,6 +387,7 @@ void main() {
     final initialArticles = tester.getSize(find.text('Articles'));
     final initialFeeds = tester.getSize(find.text('Feeds'));
     expect(initialArticles.height, initialFeeds.height);
+    expect(initialArticles.height, lessThan(kTextTabBarHeight));
 
     DefaultTabController.of(
       tester.element(find.byType(AdaptiveTabBar)),
@@ -444,6 +434,7 @@ void main() {
   testWidgets('subscribed button confirms podcast and feed removal', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     await tester.binding.setSurfaceSize(const Size(393, 852));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -498,9 +489,14 @@ void main() {
         matching: find.byType(InkWell),
       );
       expect(label, findsOneWidget);
+      expect(tapTarget, findsOneWidget);
       expect(
         find.ancestor(of: label, matching: find.byType(AppBar)),
-        findsOneWidget,
+        findsNothing,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('subscription-pill'))).dx,
+        lessThan(80),
       );
       expect(tester.getSize(tapTarget).height, greaterThanOrEqualTo(48));
       expect(
@@ -555,6 +551,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
     await database.close();
     await tester.pump(const Duration(milliseconds: 1));
+    semantics.dispose();
   });
 
   testWidgets('speed selector shows only exact product speeds', (tester) async {
@@ -797,21 +794,36 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: TrickleTheme.dark,
-        home: Scaffold(
-          body: Column(
-            children: [
-              GlassIconButton(
-                icon: Icons.search_rounded,
-                tooltip: 'Search',
-                onPressed: () => pressed = true,
-              ),
-              const LibraryShortcut(
-                icon: Icons.download_rounded,
-                label: 'Downloads',
-                onTap: _noop,
-              ),
-              const LoadingView(),
-            ],
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(393, 852),
+            textScaler: TextScaler.linear(3.2),
+          ),
+          child: Scaffold(
+            body: Column(
+              children: [
+                GlassIconButton(
+                  icon: Icons.search_rounded,
+                  tooltip: 'Search',
+                  onPressed: () => pressed = true,
+                ),
+                const HorizontalShortcutStrip(
+                  children: [
+                    LibraryShortcut(
+                      icon: Icons.download_rounded,
+                      label: 'Downloads',
+                      onTap: _noop,
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.bookmark_outline_rounded,
+                      label: 'Saved',
+                      onTap: _noop,
+                    ),
+                  ],
+                ),
+                const LoadingView(),
+              ],
+            ),
           ),
         ),
       ),
@@ -823,12 +835,91 @@ void main() {
       tester.getSemantics(find.bySemanticsLabel('Search')).label,
       'Search',
     );
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel('Search'))
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
     expect(find.bySemanticsLabel('Downloads'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Saved')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
+    );
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
     final shortcut = tester.getSemantics(find.bySemanticsLabel('Downloads'));
     expect(shortcut.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byType(GlassIconButton));
     expect(pressed, isTrue);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('mini player separates open and playback actions', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentMediaProvider.overrideWith(
+            (_) => Stream.value(
+              const MediaItem(id: 'episode', title: 'Episode title'),
+            ),
+          ),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(
+              PlaybackState(
+                playing: true,
+                processingState: AudioProcessingState.ready,
+              ),
+            ),
+          ),
+          playbackPositionProvider.overrideWith(
+            (_) => Stream.value(const Duration(minutes: 2)),
+          ),
+          playbackDurationProvider.overrideWith(
+            (_) => Stream.value(const Duration(minutes: 10)),
+          ),
+          episodeProvider.overrideWith((_, _) => Stream.value(null)),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const MediaQuery(
+            data: MediaQueryData(
+              size: Size(393, 852),
+              textScaler: TextScaler.linear(3.2),
+            ),
+            child: Scaffold(body: MiniPlayer()),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final open = find.bySemanticsLabel(
+      RegExp(r'^Open Now Playing\. Episode title\.'),
+    );
+    final pause = find.bySemanticsLabel('Pause');
+    expect(open, findsOneWidget);
+    expect(pause, findsOneWidget);
+    expect(
+      tester
+          .getSemantics(open)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
+    expect(
+      tester
+          .getSemantics(pause)
+          .getSemanticsData()
+          .hasAction(SemanticsAction.tap),
+      isTrue,
+    );
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });

@@ -17,6 +17,7 @@ import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/presentation/pages/article_page.dart';
 import 'package:trickle/presentation/widgets/article_content.dart';
+import 'package:trickle/presentation/widgets/common.dart';
 
 void main() {
   late AppDatabase database;
@@ -1212,7 +1213,7 @@ Future<void> _revealAllArticleContent(WidgetTester tester) async {
 
 Future<void> _waitForArticlePreparation(WidgetTester tester) async {
   for (var attempt = 0; attempt < 100; attempt++) {
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) return;
+    if (find.byType(LoadingView).evaluate().isEmpty) return;
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 10)),
     );

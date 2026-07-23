@@ -495,7 +495,7 @@ class AppDatabase extends _$AppDatabase {
     )..where((row) => row.id.equals(id))).watchSingleOrNull();
   }
 
-  Stream<List<Episode>> watchEpisodesForFeed(
+  Selectable<Episode> _episodesForFeedQuery(
     String feedId, {
     required int limit,
   }) {
@@ -507,7 +507,18 @@ class AppDatabase extends _$AppDatabase {
         (row) => OrderingTerm.asc(row.id),
       ]);
     query.limit(limit);
-    return query.watch();
+    return query;
+  }
+
+  Future<List<Episode>> episodesForFeed(String feedId, {required int limit}) {
+    return _episodesForFeedQuery(feedId, limit: limit).get();
+  }
+
+  Stream<List<Episode>> watchEpisodesForFeed(
+    String feedId, {
+    required int limit,
+  }) {
+    return _episodesForFeedQuery(feedId, limit: limit).watch();
   }
 
   Stream<List<Article>> watchArticlesForFeed(

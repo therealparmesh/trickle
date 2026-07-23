@@ -20,7 +20,7 @@ final class PodcastsPage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Podcasts'),
+        title: const PageTitle('Podcasts'),
         actions: [
           IconButton(
             tooltip: 'Add feed',
@@ -43,7 +43,7 @@ final class PodcastsPage extends ConsumerWidget {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              const SliverToBoxAdapter(child: SectionHeader('Subscriptions')),
+              const SliverPadding(padding: EdgeInsets.only(top: 8)),
               feeds.when(
                 data: (items) => items.isEmpty
                     ? SliverToBoxAdapter(

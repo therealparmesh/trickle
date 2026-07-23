@@ -7,6 +7,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/core/constants.dart';
+import 'package:trickle/core/errors.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
@@ -34,6 +35,36 @@ void main() {
   tearDown(() async {
     network.close();
     await database.close();
+  });
+
+  test('podcast preview parses metadata without persisting it', () async {
+    final preview = await repository.loadPodcastPreview(
+      'https://example.test/feed.xml',
+    );
+
+    expect(preview.title, 'Private Signal');
+    expect(preview.episodes.single.title, 'Encrypted Dispatch');
+    expect(await database.select(database.feeds).get(), isEmpty);
+    expect(await database.select(database.episodes).get(), isEmpty);
+  });
+
+  test('podcast preview rejects a non-podcast feed', () async {
+    network.close();
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _ReaderFeedAdapter(),
+      addressValidator: (_) async {},
+    );
+    repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+
+    await expectLater(
+      repository.loadPodcastPreview('https://example.test/articles.xml'),
+      throwsA(isA<FeedParseException>()),
+    );
+    expect(await database.select(database.feeds).get(), isEmpty);
   });
 
   test(
@@ -825,6 +856,37 @@ final class _FeedAdapter implements HttpClientAdapter {
               url="https://cdn.example.test/audio.mp3?token=MEDIA_SECRET"
               type="audio/mpeg"
             />
+          </item>
+        </channel>
+      </rss>
+      ''',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/rss+xml'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+final class _ReaderFeedAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      '''
+      <rss version="2.0">
+        <channel>
+          <title>Written Signal</title>
+          <item>
+            <guid>article-1</guid>
+            <title>Field notes</title>
+            <link>https://example.test/field-notes</link>
           </item>
         </channel>
       </rss>

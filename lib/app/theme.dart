@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/constants.dart';
+import '../presentation/widgets/design_system.dart';
 
 abstract final class TrickleFonts {
   static const ui = 'SpaceGrotesk';
@@ -12,11 +13,11 @@ abstract final class TrickleFonts {
 
 abstract final class TrickleTheme {
   static const _tabLabelStyle = TextStyle(
-    fontFamily: TrickleFonts.display,
+    fontFamily: TrickleFonts.ui,
     fontSize: 14,
-    height: 1.1,
+    height: 1.15,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.55,
+    letterSpacing: 0.15,
   );
 
   static final ThemeData dark = _buildDark();
@@ -55,13 +56,14 @@ abstract final class TrickleTheme {
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
+        toolbarHeight: 60,
         titleTextStyle: TextStyle(
           color: AppConstants.primaryText,
           fontFamily: TrickleFonts.display,
-          fontSize: 23,
+          fontSize: 22,
           height: 1.05,
           fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
+          letterSpacing: 0.1,
         ),
       ),
       textTheme: base.textTheme
@@ -72,90 +74,95 @@ abstract final class TrickleTheme {
           .copyWith(
             displaySmall: const TextStyle(
               fontFamily: TrickleFonts.display,
-              fontSize: 38,
-              height: 1.02,
+              fontSize: 36,
+              height: 1.04,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.45,
+              letterSpacing: -0.35,
             ),
             headlineMedium: const TextStyle(
               fontFamily: TrickleFonts.display,
-              fontSize: 27,
-              height: 1.08,
+              fontSize: 26,
+              height: 1.1,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
+              letterSpacing: -0.15,
             ),
             titleLarge: const TextStyle(
               fontFamily: TrickleFonts.display,
-              fontSize: 21,
-              height: 1.12,
+              fontSize: 20,
+              height: 1.15,
               fontWeight: FontWeight.w600,
-              letterSpacing: 0.15,
+              letterSpacing: 0.1,
             ),
             titleMedium: const TextStyle(
+              fontFamily: TrickleFonts.ui,
               fontSize: 16,
               height: 1.25,
               fontWeight: FontWeight.w600,
               letterSpacing: -0.1,
             ),
             titleSmall: const TextStyle(
+              fontFamily: TrickleFonts.ui,
               fontSize: 14,
               height: 1.22,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
             ),
             bodyLarge: const TextStyle(
+              fontFamily: TrickleFonts.ui,
               fontSize: 16,
               height: 1.5,
               fontWeight: FontWeight.w400,
               letterSpacing: -0.1,
             ),
             bodyMedium: const TextStyle(
+              fontFamily: TrickleFonts.ui,
               fontSize: 14,
               height: 1.45,
               fontWeight: FontWeight.w400,
               letterSpacing: 0,
             ),
             bodySmall: const TextStyle(
+              fontFamily: TrickleFonts.ui,
               fontSize: 12,
               height: 1.35,
               fontWeight: FontWeight.w400,
               letterSpacing: 0.08,
             ),
             labelLarge: const TextStyle(
-              fontFamily: TrickleFonts.display,
+              fontFamily: TrickleFonts.ui,
               fontSize: 14,
-              height: 1.1,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.25,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.1,
             ),
             labelMedium: const TextStyle(
-              fontFamily: TrickleFonts.display,
+              fontFamily: TrickleFonts.ui,
               fontSize: 12,
-              height: 1.1,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
             ),
             labelSmall: const TextStyle(
-              fontFamily: TrickleFonts.display,
+              fontFamily: TrickleFonts.ui,
               fontSize: 10,
-              height: 1.1,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.75,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.35,
             ),
           ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppConstants.elevated,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(4),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(4),
           borderSide: const BorderSide(color: AppConstants.hairline),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(4),
           borderSide: const BorderSide(color: AppConstants.cyan),
         ),
         labelStyle: const TextStyle(color: AppConstants.secondaryText),
@@ -164,7 +171,7 @@ abstract final class TrickleTheme {
         backgroundColor: AppConstants.surface,
         selectedColor: AppConstants.cyan.withValues(alpha: 0.12),
         side: const BorderSide(color: AppConstants.hairline),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: const CutCornerBorder(cut: 9),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -181,16 +188,14 @@ abstract final class TrickleTheme {
           side: const WidgetStatePropertyAll(
             BorderSide(color: AppConstants.hairline),
           ),
-          shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-          ),
+          shape: const WidgetStatePropertyAll(CutCornerBorder(cut: 8)),
           textStyle: const WidgetStatePropertyAll(
             TextStyle(
-              fontFamily: TrickleFonts.display,
+              fontFamily: TrickleFonts.ui,
               fontSize: 13,
-              height: 1.1,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.45,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.1,
             ),
           ),
           minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
@@ -202,22 +207,18 @@ abstract final class TrickleTheme {
           foregroundColor: AppConstants.background,
           backgroundColor: AppConstants.cyan,
           minimumSize: const Size(48, 48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: const CutCornerBorder(cut: 11),
           textStyle: const TextStyle(
-            fontFamily: TrickleFonts.display,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.25,
+            fontFamily: TrickleFonts.ui,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.1,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(48, 48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: const CutCornerBorder(cut: 11),
         ),
       ),
       iconButtonTheme: const IconButtonThemeData(
@@ -254,7 +255,7 @@ abstract final class TrickleTheme {
           color: AppConstants.primaryText,
           fontFamily: TrickleFonts.ui,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: const CutCornerBorder(cut: 12),
         behavior: SnackBarBehavior.floating,
       ),
       dividerTheme: const DividerThemeData(
@@ -265,9 +266,9 @@ abstract final class TrickleTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: AppConstants.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppConstants.hairline),
+        shape: const CutCornerBorder(
+          cut: 16,
+          side: BorderSide(color: AppConstants.hairline),
         ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
@@ -279,9 +280,9 @@ abstract final class TrickleTheme {
       popupMenuTheme: PopupMenuThemeData(
         color: AppConstants.elevated,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: AppConstants.hairline),
+        shape: const CutCornerBorder(
+          cut: 11,
+          side: BorderSide(color: AppConstants.hairline),
         ),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
@@ -294,9 +295,7 @@ abstract final class TrickleTheme {
         side: const WidgetStatePropertyAll(
           BorderSide(color: AppConstants.hairline),
         ),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+        shape: const WidgetStatePropertyAll(CutCornerBorder(cut: 12)),
         hintStyle: const WidgetStatePropertyAll(
           TextStyle(color: AppConstants.secondaryText),
         ),
@@ -305,13 +304,14 @@ abstract final class TrickleTheme {
         indicatorColor: AppConstants.cyan,
         labelColor: AppConstants.cyan,
         unselectedLabelColor: AppConstants.secondaryText,
-        dividerColor: AppConstants.hairline,
+        dividerColor: Colors.transparent,
         labelStyle: _tabLabelStyle,
         unselectedLabelStyle: _tabLabelStyle,
       ),
       listTileTheme: const ListTileThemeData(
         iconColor: AppConstants.secondaryText,
         textColor: AppConstants.primaryText,
+        minVerticalPadding: 8,
         subtitleTextStyle: TextStyle(
           color: AppConstants.secondaryText,
           fontSize: 12,

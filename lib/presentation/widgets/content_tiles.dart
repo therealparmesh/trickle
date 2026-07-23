@@ -7,8 +7,10 @@ import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
+import '../../domain/feed_models.dart';
 import '../episode_actions.dart';
 import 'common.dart';
+import 'design_system.dart';
 import 'episode_playback_button.dart';
 
 final class EpisodeTile extends ConsumerWidget {
@@ -37,7 +39,7 @@ final class EpisodeTile extends ConsumerWidget {
       if (downloadState == DownloadState.complete) 'Downloaded',
     ]);
     return _InsetListFrame(
-      indent: 86,
+      accent: episode.played ? null : AppConstants.magenta,
       child: Row(
         children: [
           Expanded(
@@ -59,7 +61,7 @@ final class EpisodeTile extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
                   child: Row(
                     children: [
-                      EpisodeArtwork(episode: episode, size: 58),
+                      EpisodeArtwork(episode: episode, size: 58, radius: 5),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -161,6 +163,94 @@ final class EpisodeTile extends ConsumerWidget {
   }
 }
 
+final class PodcastPreviewEpisodeTile extends StatelessWidget {
+  const PodcastPreviewEpisodeTile({
+    required this.episode,
+    this.fallbackArtworkUrl,
+    super.key,
+  });
+
+  final ParsedEpisode episode;
+  final Uri? fallbackArtworkUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = plainText(episode.description);
+    final metadata = metadataLine([
+      relativeDate(episode.publishedAt),
+      compactDuration(episode.duration?.inMilliseconds),
+    ]);
+    return _InsetListFrame(
+      child: Semantics(
+        container: true,
+        label: [
+          'Episode ${episode.title}',
+          if (episode.explicit) 'Explicit',
+          if (metadata.isNotEmpty) metadata,
+          if (description.isNotEmpty) description,
+        ].join('. '),
+        excludeSemantics: true,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Artwork(
+                url: (episode.imageUrl ?? fallbackArtworkUrl)?.toString(),
+                size: 58,
+                radius: 5,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    EpisodeTitle(
+                      title: episode.title,
+                      explicit: episode.explicit,
+                      maxLines: 2,
+                      style: const TextStyle(
+                        color: AppConstants.primaryText,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                      ),
+                    ),
+                    if (metadata.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        metadata,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppConstants.secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppConstants.secondaryText,
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 final class ArticleTile extends ConsumerWidget {
   const ArticleTile(this.article, {this.showSource = true, super.key});
   final Article article;
@@ -179,7 +269,7 @@ final class ArticleTile extends ConsumerWidget {
       relativeDate(article.publishedAt),
     ]);
     return _InsetListFrame(
-      indent: isVideo ? 140 : 100,
+      accent: article.readAt == null ? AppConstants.cyan : null,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -330,7 +420,7 @@ final class _ArticleThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!isVideo) {
-      return ArticleArtwork(article: article, size: 72, radius: 10);
+      return ArticleArtwork(article: article, size: 72, radius: 5);
     }
     return Stack(
       alignment: Alignment.center,
@@ -339,7 +429,7 @@ final class _ArticleThumbnail extends StatelessWidget {
           article: article,
           size: 112,
           aspectRatio: 16 / 9,
-          radius: 10,
+          radius: 5,
         ),
         DecoratedBox(
           decoration: BoxDecoration(
@@ -390,7 +480,6 @@ final class PodcastTile extends StatelessWidget {
             ? author
             : 'Podcast');
     return _InsetListFrame(
-      indent: 102,
       child: Semantics(
         container: true,
         button: true,
@@ -403,7 +492,7 @@ final class PodcastTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                FeedArtwork(feed: feed, size: 72, radius: 10),
+                FeedArtwork(feed: feed, size: 72, radius: 5),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -448,19 +537,37 @@ final class PodcastTile extends StatelessWidget {
 }
 
 final class _InsetListFrame extends StatelessWidget {
-  const _InsetListFrame({required this.indent, required this.child});
+  const _InsetListFrame({required this.child, this.accent});
 
-  final double indent;
   final Widget child;
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        child,
-        Divider(height: 1, indent: indent, endIndent: 16),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CutCornerBorder(cut: 9),
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            child,
+            if (accent case final value?)
+              Positioned(
+                left: 0,
+                top: 14,
+                bottom: 14,
+                child: IgnorePointer(
+                  child: ColoredBox(
+                    color: value,
+                    child: const SizedBox(width: 2),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

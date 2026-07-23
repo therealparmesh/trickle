@@ -18,6 +18,7 @@ import '../../features/player/trickle_audio_handler.dart';
 import '../episode_actions.dart';
 import '../playback_presentation.dart';
 import '../widgets/common.dart';
+import '../widgets/design_system.dart';
 import '../widgets/episode_show_notes.dart';
 
 String _sleepTimerDescription(SleepTimerStatus status) {
@@ -64,7 +65,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     );
     if (item == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Now Playing')),
+        appBar: AppBar(title: const PageTitle('Now Playing')),
         body: const AppBackdrop(
           child: EmptyState(
             icon: Icons.graphic_eq_rounded,
@@ -85,7 +86,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Now Playing'),
+        title: const PageTitle('Now Playing'),
         actions: [
           IconButton(
             tooltip: _sleepTimerDescription(sleep),
@@ -150,8 +151,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                       Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 380),
-                          child: AppCard(
-                            padding: const EdgeInsets.all(7),
+                          child: SignalMediaFrame(
                             child: AspectRatio(
                               aspectRatio: 1,
                               child: EpisodeArtworkById(
@@ -181,59 +181,88 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 19),
-                      _PlaybackProgress(
-                        episodeId: item.id,
-                        fallbackDuration: item.duration ?? Duration.zero,
-                        phase: phase,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          IconButton(
-                            tooltip: 'Previous',
-                            onPressed: () => _runPlayback(
-                              ref.read(audioHandlerProvider).skipToPrevious,
+                      const SizedBox(height: 20),
+                      SignalPanel(
+                        accent: phase.color,
+                        color: AppConstants.surface.withValues(alpha: 0.86),
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                        child: Column(
+                          children: [
+                            _PlaybackProgress(
+                              episodeId: item.id,
+                              fallbackDuration: item.duration ?? Duration.zero,
+                              phase: phase,
                             ),
-                            icon: const Icon(
-                              Icons.skip_previous_rounded,
-                              size: 30,
+                            const SizedBox(height: 8),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final showQueueNavigation =
+                                    constraints.maxWidth >= 280;
+                                return Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    if (showQueueNavigation)
+                                      IconButton(
+                                        tooltip: 'Previous',
+                                        onPressed: () => _runPlayback(
+                                          ref
+                                              .read(audioHandlerProvider)
+                                              .skipToPrevious,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.skip_previous_rounded,
+                                          size: 28,
+                                        ),
+                                      ),
+                                    _SkipButton(
+                                      label: '15',
+                                      tooltip: 'Back 15 seconds',
+                                      onPressed: phase.isBusy || phase.isError
+                                          ? null
+                                          : () => _runPlayback(
+                                              ref
+                                                  .read(audioHandlerProvider)
+                                                  .rewind,
+                                            ),
+                                      backwards: true,
+                                    ),
+                                    _PrimaryPlaybackButton(
+                                      playing: playback.playing,
+                                      phase: phase,
+                                    ),
+                                    _SkipButton(
+                                      label: '30',
+                                      tooltip: 'Forward 30 seconds',
+                                      onPressed: phase.isBusy || phase.isError
+                                          ? null
+                                          : () => _runPlayback(
+                                              ref
+                                                  .read(audioHandlerProvider)
+                                                  .fastForward,
+                                            ),
+                                    ),
+                                    if (showQueueNavigation)
+                                      IconButton(
+                                        tooltip: 'Next',
+                                        onPressed: hasNext
+                                            ? () => _runPlayback(
+                                                ref
+                                                    .read(audioHandlerProvider)
+                                                    .skipToNext,
+                                              )
+                                            : null,
+                                        icon: const Icon(
+                                          Icons.skip_next_rounded,
+                                          size: 28,
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
                             ),
-                          ),
-                          _SkipButton(
-                            label: '15',
-                            tooltip: 'Back 15 seconds',
-                            onPressed: phase.isBusy || phase.isError
-                                ? null
-                                : () => _runPlayback(
-                                    ref.read(audioHandlerProvider).rewind,
-                                  ),
-                            backwards: true,
-                          ),
-                          _PrimaryPlaybackButton(
-                            playing: playback.playing,
-                            phase: phase,
-                          ),
-                          _SkipButton(
-                            label: '30',
-                            tooltip: 'Forward 30 seconds',
-                            onPressed: phase.isBusy || phase.isError
-                                ? null
-                                : () => _runPlayback(
-                                    ref.read(audioHandlerProvider).fastForward,
-                                  ),
-                          ),
-                          IconButton(
-                            tooltip: 'Next',
-                            onPressed: hasNext
-                                ? () => _runPlayback(
-                                    ref.read(audioHandlerProvider).skipToNext,
-                                  )
-                                : null,
-                            icon: const Icon(Icons.skip_next_rounded, size: 30),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       if (phase.isError) ...[
                         const SizedBox(height: 12),
@@ -248,9 +277,21 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         ),
                       ],
                       const SizedBox(height: 26),
-                      Text(
-                        'Playback speed',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      Row(
+                        children: [
+                          Container(
+                            width: 18,
+                            height: 3,
+                            color: AppConstants.cyan,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              'Playback speed',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       PlaybackSpeedSelector(
@@ -555,9 +596,9 @@ final class _PrimaryPlaybackButton extends ConsumerWidget {
       child: FilledButton(
         style: FilledButton.styleFrom(
           backgroundColor: phase.isError ? AppConstants.danger : null,
-          minimumSize: const Size.square(66),
+          minimumSize: const Size.square(64),
           padding: EdgeInsets.zero,
-          shape: const CircleBorder(),
+          shape: const CutCornerBorder(cut: 15),
         ),
         onPressed: onPressed,
         child: Tooltip(

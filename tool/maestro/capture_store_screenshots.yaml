@@ -18,13 +18,22 @@ appId: com.parmscript.trickle
 - takeScreenshot: "store/apple/screenshots/03-episode"
 - tapOn: "Back"
 - tapOn: "Back"
-- tapOn: "Unread, .* items"
+- tapOn:
+    text: "See all"
+    index: 1
 - assertVisible: "Unread"
 - takeScreenshot: "store/apple/screenshots/04-unread"
-- tapOn: "Back"
-- tapOn: "Search"
-- tapOn: "Episodes, articles, or feeds…"
-- inputText: "Google DeepMind"
-- tapOn: ".*Our Approach to Bioresilience.*"
+- tapOn: "Feeds"
+- tapOn: "Hacker News: Front Page"
+- tapOn: "Unread article .*"
+- assertVisible: ".*Hacker News: Front Page.*"
+- swipe:
+    start: "50%,20%"
+    end: "50%,90%"
+    duration: 500
+- swipe:
+    start: "50%,20%"
+    end: "50%,90%"
+    duration: 500
 - assertVisible: ".*Hacker News: Front Page.*"
 - takeScreenshot: "store/apple/screenshots/05-reader"

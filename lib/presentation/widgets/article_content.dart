@@ -17,6 +17,7 @@ import '../../core/constants.dart';
 import '../../core/url_identity.dart';
 import '../../data/security/private_feed_store.dart';
 import 'common.dart';
+import 'design_system.dart';
 
 final class ArticleContent extends StatefulWidget {
   const ArticleContent({
@@ -1028,8 +1029,10 @@ final class _ArticleImage extends ConsumerWidget {
                       .toInt();
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                child: ClipPath(
+                  clipper: ShapeBorderClipper(
+                    shape: const CutCornerBorder(cut: 9),
+                  ),
                   child: Image.file(
                     File(localPath),
                     key: ValueKey('article-image:$source'),
@@ -1047,7 +1050,7 @@ final class _ArticleImage extends ConsumerWidget {
         ? image
         : InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
+            customBorder: const CutCornerBorder(cut: 9),
             child: image,
           );
     if (onTap != null) {
@@ -1126,8 +1129,8 @@ final class _ArticleImage extends ConsumerWidget {
         }
         return Align(
           alignment: Alignment.centerLeft,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+          child: ClipPath(
+            clipper: ShapeBorderClipper(shape: const CutCornerBorder(cut: 9)),
             child: SizedBox(
               key: keyed ? ValueKey('article-image:$source') : null,
               width: width,

@@ -8,6 +8,7 @@ import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
 import '../episode_actions.dart';
 import '../widgets/common.dart';
+import '../widgets/design_system.dart';
 import '../widgets/episode_playback_button.dart';
 import '../widgets/episode_show_notes.dart';
 
@@ -25,7 +26,7 @@ final class EpisodePage extends ConsumerWidget {
         : ref.watch(feedProvider(value.feedId)).value;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Episode'),
+        title: const PageTitle('Episode'),
         actions: [
           IconButton(
             tooltip: 'Share episode',
@@ -116,8 +117,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                   maxWidth: wide ? 240 : 220,
                   maxHeight: wide ? 240 : 220,
                 ),
-                child: AppCard(
-                  padding: const EdgeInsets.all(6),
+                child: SignalMediaFrame(
                   child: AspectRatio(
                     aspectRatio: 1,
                     child: EpisodeArtwork(

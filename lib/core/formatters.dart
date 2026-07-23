@@ -1,4 +1,12 @@
+import 'package:html/parser.dart' as html_parser;
 import 'package:intl/intl.dart';
+
+String plainText(String? html) {
+  if (html == null || html.isEmpty) return '';
+  return (html_parser.parseFragment(html).text ?? '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
 
 String formatDuration(Duration duration) {
   final seconds = duration.inSeconds.clamp(0, 1 << 31);

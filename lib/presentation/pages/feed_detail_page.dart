@@ -12,6 +12,7 @@ import '../../domain/feed_models.dart';
 import '../subscription_actions.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/design_system.dart';
 
 /// Detail surface shared by podcast and non-podcast feeds.
 final class FeedDetailPage extends ConsumerStatefulWidget {
@@ -31,6 +32,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   static const _pageSize = 100;
   late String? _feedId = widget.feedId;
   late PodcastSearchResult? _podcast = widget.podcast;
+  Future<ParsedFeed>? _catalogPreview;
   int _limit = _pageSize;
   bool _subscribing = false;
   bool _unsubscribing = false;
@@ -38,10 +40,23 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   bool _forcePrivateResubscribe = false;
 
   @override
+  void initState() {
+    super.initState();
+    _catalogPreview = _loadCatalogPreview();
+  }
+
+  Future<ParsedFeed>? _loadCatalogPreview() {
+    final podcast = _podcast;
+    if (_feedId != null || podcast == null) return null;
+    return ref
+        .read(feedRepositoryProvider)
+        .loadPodcastPreview(podcast.feedUrl.toString());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final feedId = _feedId;
     if (feedId == null) return _catalogPodcast(context);
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     final feed = ref.watch(feedProvider(feedId));
     final page = (feedId: feedId, limit: _limit);
     final kind = feed.value == null
@@ -79,18 +94,16 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
             articles.value?.isNotEmpty == true);
     return Scaffold(
       appBar: AppBar(
-        title: Text(switch (kind) {
-          FeedKind.reader => 'Feed',
-          FeedKind.podcast => 'Podcast',
-          null => 'Subscription',
-        }),
+        title: PageTitle(
+          MediaQuery.textScalerOf(context).scale(1) > 1.8
+              ? switch (kind) {
+                  FeedKind.podcast => 'Podcast',
+                  FeedKind.reader => 'Feed',
+                  null => 'Subscription',
+                }
+              : feed.value?.title ?? 'Subscription',
+        ),
         actions: [
-          if (!largeText && feed.value != null)
-            _SubscriptionControl(
-              feedTitle: feed.value!.title,
-              busy: _unsubscribing,
-              onPressed: () => _unsubscribe(feed.value!),
-            ),
           IconButton(
             tooltip: switch (kind) {
               FeedKind.podcast => 'Podcast settings',
@@ -135,16 +148,14 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                       feed: value,
                       refreshing: _refreshing,
                       onRefresh: () => _refresh(value),
-                      subscriptionControl: largeText
-                          ? MediaQuery.withClampedTextScaling(
-                              maxScaleFactor: 2,
-                              child: _SubscriptionControl(
-                                feedTitle: value.title,
-                                busy: _unsubscribing,
-                                onPressed: () => _unsubscribe(value),
-                              ),
-                            )
-                          : null,
+                      subscriptionControl: MediaQuery.withClampedTextScaling(
+                        maxScaleFactor: 2,
+                        child: _SubscriptionControl(
+                          feedTitle: value.title,
+                          busy: _unsubscribing,
+                          onPressed: () => _unsubscribe(value),
+                        ),
+                      ),
                     ),
                   ),
                   if (showEpisodes) ...[
@@ -239,6 +250,11 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     try {
       final kind =
           FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
+      final episodes = kind == FeedKind.podcast
+          ? await ref
+                .read(databaseProvider)
+                .episodesForFeed(feed.id, limit: _limit)
+          : const <Episode>[];
       final secret = feed.isPrivate && feed.credentialRef != null
           ? await ref.read(privateFeedStoreProvider).read(feed.credentialRef!)
           : null;
@@ -256,12 +272,16 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
               explicit: false,
             )
           : null;
+      final retainedPreview = podcast == null
+          ? null
+          : _storedPodcastPreview(feed, episodes);
       await removeSubscription(ref, feed);
       if (!mounted) return;
       if (podcast != null) {
         setState(() {
           _feedId = null;
           _podcast = podcast;
+          _catalogPreview = Future.value(retainedPreview!);
           _forcePrivateResubscribe = feed.isPrivate;
           _unsubscribing = false;
         });
@@ -281,7 +301,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     final podcast = _podcast;
     if (podcast == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Podcast')),
+        appBar: AppBar(title: const PageTitle('Podcast')),
         body: const AppBackdrop(
           child: EmptyState(
             icon: Icons.podcasts_rounded,
@@ -291,8 +311,6 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
         ),
       );
     }
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
-    final preview = _previewFeed(podcast);
     final control = _SubscriptionControl(
       feedTitle: podcast.name,
       subscribed: false,
@@ -301,42 +319,103 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     );
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Podcast'),
-        actions: [if (!largeText) control],
+        title: PageTitle(
+          MediaQuery.textScalerOf(context).scale(1) > 1.8
+              ? 'Podcast'
+              : podcast.name,
+        ),
       ),
       body: AppBackdrop(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: _FeedHero(
-                feed: preview,
-                refreshing: false,
-                subscriptionControl: largeText
-                    ? MediaQuery.withClampedTextScaling(
-                        maxScaleFactor: 2,
-                        child: control,
-                      )
-                    : null,
-              ),
-            ),
-            const SliverToBoxAdapter(child: SectionHeader('Episodes')),
-            const SliverToBoxAdapter(
-              child: SizedBox(
-                height: 220,
-                child: EmptyState(
-                  icon: Icons.podcasts_rounded,
-                  title: 'Subscribe to load episodes',
-                  message:
-                      'Episodes will appear here after this podcast is added.',
-                  compact: true,
+        child: FutureBuilder<ParsedFeed>(
+          future: _catalogPreview,
+          builder: (context, snapshot) {
+            final details = snapshot.data;
+            final episodes = details?.episodes ?? const <ParsedEpisode>[];
+            final visibleCount = episodes.length < _limit
+                ? episodes.length
+                : _limit;
+            final loading =
+                snapshot.connectionState != ConnectionState.done &&
+                details == null;
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _FeedHero(
+                    feed: _previewFeed(podcast, details),
+                    refreshing: false,
+                    subscriptionControl: MediaQuery.withClampedTextScaling(
+                      maxScaleFactor: 2,
+                      child: control,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
-          ],
+                const SliverToBoxAdapter(child: SectionHeader('Episodes')),
+                if (loading)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: InlineLoadingView(
+                        label: 'Loading podcast details',
+                      ),
+                    ),
+                  )
+                else if (snapshot.hasError)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: InlineErrorView(
+                        friendlyError(snapshot.error!),
+                        title: 'Couldn’t load podcast details',
+                        onRetry: _retryCatalogPreview,
+                      ),
+                    ),
+                  )
+                else if (episodes.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 190,
+                      child: EmptyState(
+                        icon: Icons.podcasts_rounded,
+                        title: 'No episodes yet',
+                        message: 'This podcast has not published any episodes.',
+                        compact: true,
+                      ),
+                    ),
+                  )
+                else
+                  SliverList.builder(
+                    itemCount: visibleCount,
+                    itemBuilder: (_, index) => PodcastPreviewEpisodeTile(
+                      episode: episodes[index],
+                      fallbackArtworkUrl:
+                          details?.imageUrl ?? podcast.artworkUrl,
+                    ),
+                  ),
+                if (visibleCount < episodes.length)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: OutlinedButton.icon(
+                        onPressed: () => setState(() => _limit += _pageSize),
+                        icon: const Icon(Icons.expand_more_rounded),
+                        label: const Text('Load older episodes'),
+                      ),
+                    ),
+                  ),
+                const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+              ],
+            );
+          },
         ),
       ),
     );
+  }
+
+  void _retryCatalogPreview() {
+    setState(() {
+      _limit = _pageSize;
+      _catalogPreview = _loadCatalogPreview();
+    });
   }
 
   Future<void> _subscribe() async {
@@ -353,6 +432,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       if (!mounted) return;
       setState(() {
         _feedId = feed.id;
+        _catalogPreview = null;
         _forcePrivateResubscribe = false;
         _subscribing = false;
       });
@@ -403,103 +483,112 @@ final class _FeedHero extends StatelessWidget {
     final artworkIcon = youtubeKind == null
         ? Icons.rss_feed_rounded
         : Icons.ondemand_video_rounded;
+    final kind =
+        FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
+    final accent = kind == FeedKind.podcast
+        ? AppConstants.cyan
+        : AppConstants.magenta;
     return LayoutBuilder(
       builder: (context, constraints) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (stackIdentity) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  FeedArtwork(
-                    feed: feed,
-                    size: 88,
-                    radius: 8,
-                    icon: artworkIcon,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+        child: SignalPanel(
+          accent: accent,
+          color: AppConstants.surface.withValues(alpha: 0.88),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (stackIdentity) ...[
+                FeedArtwork(feed: feed, size: 88, radius: 8, icon: artworkIcon),
+                if (subscriptionControl != null) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: subscriptionControl,
                   ),
-                  if (subscriptionControl != null) ...[
+                ],
+                const SizedBox(height: 14),
+                _FeedIdentity(feed: feed),
+                const SizedBox(height: 14),
+                _FeedDescription(feed: feed),
+              ] else if (constraints.maxWidth < 460) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FeedArtwork(
+                      feed: feed,
+                      size: 88,
+                      radius: 8,
+                      icon: artworkIcon,
+                    ),
                     const SizedBox(width: 14),
+                    Expanded(child: _FeedIdentity(feed: feed)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                _FeedDescription(feed: feed),
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FeedArtwork(
+                      feed: feed,
+                      size: 124,
+                      radius: 10,
+                      icon: artworkIcon,
+                    ),
+                    const SizedBox(width: 20),
                     Expanded(
-                      child: Align(
-                        alignment: Alignment.topRight,
-                        child: subscriptionControl,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FeedIdentity(feed: feed),
+                          const SizedBox(height: 12),
+                          _FeedDescription(feed: feed),
+                        ],
                       ),
                     ),
                   ],
-                ],
-              ),
-              const SizedBox(height: 14),
-              _FeedIdentity(feed: feed),
-              const SizedBox(height: 14),
-              _FeedDescription(feed: feed),
-            ] else if (constraints.maxWidth < 460) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  FeedArtwork(
-                    feed: feed,
-                    size: 88,
-                    radius: 8,
-                    icon: artworkIcon,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(child: _FeedIdentity(feed: feed)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _FeedDescription(feed: feed),
-            ] else
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  FeedArtwork(
-                    feed: feed,
-                    size: 124,
-                    radius: 10,
-                    icon: artworkIcon,
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FeedIdentity(feed: feed),
-                        const SizedBox(height: 12),
-                        _FeedDescription(feed: feed),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            if (refreshing) ...[
-              const SizedBox(height: 14),
-              const InlineLoadingView(label: 'Refreshing feed'),
-            ] else if (feed.refreshError != null) ...[
-              const SizedBox(height: 14),
-              InlineErrorView(
-                feed.refreshError!,
-                title: 'Couldn’t refresh feed',
-                onRetry: onRefresh,
-              ),
+                ),
+              if (!stackIdentity && subscriptionControl != null) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: subscriptionControl,
+                ),
+              ],
+              if (refreshing) ...[
+                const SizedBox(height: 14),
+                const InlineLoadingView(label: 'Refreshing feed'),
+              ] else if (feed.refreshError != null) ...[
+                const SizedBox(height: 14),
+                InlineErrorView(
+                  feed.refreshError!,
+                  title: 'Couldn’t refresh feed',
+                  onRetry: onRefresh,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-Feed _previewFeed(PodcastSearchResult podcast) {
+Feed _previewFeed(PodcastSearchResult podcast, ParsedFeed? details) {
   final timestamp = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  final parsedTitle = details?.title.trim();
+  final parsedAuthor = details?.author?.trim();
   return Feed(
     id: 'catalog-preview',
-    title: podcast.name,
-    description: podcast.genre,
+    title: parsedTitle?.isNotEmpty == true ? parsedTitle! : podcast.name,
+    description: details?.description?.trim().isNotEmpty == true
+        ? details!.description!.trim()
+        : podcast.genre,
     feedUrl: podcast.feedUrl.toString(),
-    imageUrl: podcast.artworkUrl?.toString(),
-    author: podcast.author,
+    imageUrl: (details?.imageUrl ?? podcast.artworkUrl)?.toString(),
+    author: parsedAuthor?.isNotEmpty == true ? parsedAuthor : podcast.author,
     kind: FeedKind.podcast.index,
     isPrivate: false,
     autoDownload: false,
@@ -510,6 +599,41 @@ Feed _previewFeed(PodcastSearchResult podcast) {
     autoQueue: false,
     createdAt: timestamp,
     updatedAt: timestamp,
+  );
+}
+
+ParsedFeed _storedPodcastPreview(Feed feed, List<Episode> episodes) {
+  return ParsedFeed(
+    title: feed.title,
+    description: feed.description,
+    siteUrl: null,
+    imageUrl: feed.imageUrl == null ? null : Uri.tryParse(feed.imageUrl!),
+    author: feed.author,
+    kind: FeedKind.podcast,
+    episodes: [
+      for (final episode in episodes)
+        ParsedEpisode(
+          guid: episode.guid,
+          title: episode.title,
+          description: episode.description,
+          enclosureUrl: Uri.parse(episode.enclosureUrl),
+          mimeType: episode.mimeType,
+          imageUrl: episode.imageUrl == null
+              ? null
+              : Uri.tryParse(episode.imageUrl!),
+          publishedAt: episode.publishedAt,
+          duration: episode.durationMs == null
+              ? null
+              : Duration(milliseconds: episode.durationMs!),
+          fileSize: episode.fileSize,
+          explicit: episode.explicit,
+          chaptersUrl: episode.chaptersUrl == null
+              ? null
+              : Uri.tryParse(episode.chaptersUrl!),
+          transcripts: const [],
+        ),
+    ],
+    articles: const [],
   );
 }
 
@@ -579,6 +703,7 @@ final class _SubscriptionControl extends StatelessWidget {
           ? 'Subscribed to $feedTitle. Unsubscribe'
           : 'Subscribe to $feedTitle',
       excludeSemantics: true,
+      onTap: busy ? null : onPressed,
       child: Tooltip(
         message: busy
             ? label
@@ -589,39 +714,37 @@ final class _SubscriptionControl extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: busy ? null : onPressed,
-            borderRadius: BorderRadius.circular(10),
+            customBorder: const CutCornerBorder(cut: 7),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Center(
-                child: DecoratedBox(
-                  key: const ValueKey('subscription-pill'),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.06),
-                    border: Border.all(color: color.withValues(alpha: 0.52)),
-                    borderRadius: BorderRadius.circular(8),
+              child: DecoratedBox(
+                key: const ValueKey('subscription-pill'),
+                decoration: ShapeDecoration(
+                  color: color.withValues(alpha: 0.06),
+                  shape: CutCornerBorder(
+                    cut: 7,
+                    side: BorderSide(color: color.withValues(alpha: 0.4)),
                   ),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 28),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            subscribed
-                                ? Icons.check_rounded
-                                : Icons.add_rounded,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            label,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.labelSmall?.copyWith(color: color),
-                          ),
-                        ],
-                      ),
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 28),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          subscribed ? Icons.check_rounded : Icons.add_rounded,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          label,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.labelSmall?.copyWith(color: color),
+                        ),
+                      ],
                     ),
                   ),
                 ),

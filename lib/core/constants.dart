@@ -32,16 +32,16 @@ abstract final class AppConstants {
   static const articleLimitBytes = 5 * 1024 * 1024;
   static const imageLimitBytes = 10 * 1024 * 1024;
   static const transcriptLimitBytes = 20 * 1024 * 1024;
-  static const cyan = Color(0xFF42E8F5);
-  static const magenta = Color(0xFFFF4FA3);
-  static const acid = Color(0xFFC6F36A);
-  static const background = Color(0xFF080A0F);
-  static const surface = Color(0xFF14171D);
-  static const elevated = Color(0xFF1B1F27);
-  static const primaryText = Color(0xFFF5F7FA);
-  static const secondaryText = Color(0xFF9299A8);
+  static const cyan = Color(0xFF36E4F1);
+  static const magenta = Color(0xFFFF3D9A);
+  static const acid = Color(0xFFD2FA72);
+  static const background = Color(0xFF05070B);
+  static const surface = Color(0xFF0E131A);
+  static const elevated = Color(0xFF161D26);
+  static const primaryText = Color(0xFFF4F7F9);
+  static const secondaryText = Color(0xFFA1A9B5);
   static const danger = Color(0xFFFF6574);
-  static const hairline = Color(0xFF2A303A);
+  static const hairline = Color(0xFF27323D);
 }
 
 enum FeedKind { podcast, reader }

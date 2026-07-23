@@ -15,6 +15,7 @@ import '../../core/constants.dart';
 import '../../core/youtube_support.dart';
 import '../../features/video/video_session.dart';
 import 'common.dart';
+import 'design_system.dart';
 
 final class VideoPlayerHost extends ConsumerStatefulWidget {
   const VideoPlayerHost({required this.child, super.key});
@@ -176,9 +177,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             child: Material(
               color: AppConstants.elevated.withValues(alpha: 0.97),
               clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-                side: const BorderSide(color: AppConstants.hairline),
+              shape: const CutCornerBorder(
+                cut: 14,
+                side: BorderSide(color: AppConstants.hairline),
               ),
               child: Row(
                 children: [
@@ -259,9 +260,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               clipBehavior: Clip.antiAlias,
               shape: expanded
                   ? const RoundedRectangleBorder()
-                  : RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      side: const BorderSide(color: AppConstants.hairline),
+                  : const CutCornerBorder(
+                      cut: 14,
+                      side: BorderSide(color: AppConstants.hairline),
                     ),
               child: SafeArea(
                 top: expanded && !systemPresentation,
@@ -443,6 +444,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           child: Semantics(
             button: true,
             label: 'Expand video',
+            excludeSemantics: true,
+            onTap: () => ref.read(videoSessionProvider.notifier).expand(),
             child: InkWell(
               onTap: () => ref.read(videoSessionProvider.notifier).expand(),
             ),

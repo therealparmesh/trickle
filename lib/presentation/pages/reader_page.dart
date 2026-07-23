@@ -13,6 +13,8 @@ import 'podcasts_page.dart';
 
 enum _ReaderFilter { unread, all, starred }
 
+enum _AddSourceType { feed, youtube }
+
 final class ReaderPage extends ConsumerStatefulWidget {
   const ReaderPage({
     this.initialFeeds = false,
@@ -60,7 +62,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reader'),
+        title: const PageTitle('Reader'),
         bottom: AdaptiveTabBar(
           controller: _tabs,
           tabs: const [
@@ -70,20 +72,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         ),
         actions: [
           IconButton(
-            tooltip: 'Add feed',
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const AddFeedDialog(),
-            ),
+            tooltip: 'Add source',
+            onPressed: _showAddSourceSheet,
             icon: const Icon(Icons.add_rounded),
-          ),
-          IconButton(
-            tooltip: 'Add YouTube feed',
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const AddFeedDialog.youtube(),
-            ),
-            icon: const Icon(Icons.video_call_outlined),
           ),
         ],
       ),
@@ -315,6 +306,41 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     } finally {
       if (mounted) setState(() => _markingAllRead = false);
     }
+  }
+
+  Future<void> _showAddSourceSheet() async {
+    final type = await showModalBottomSheet<_AddSourceType>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.add_link_rounded),
+                title: const Text('Add feed'),
+                subtitle: const Text('RSS, Atom, JSON Feed, or a website'),
+                onTap: () => Navigator.pop(context, _AddSourceType.feed),
+              ),
+              ListTile(
+                leading: const Icon(Icons.video_call_outlined),
+                title: const Text('Add YouTube feed'),
+                subtitle: const Text('Public channel or playlist'),
+                onTap: () => Navigator.pop(context, _AddSourceType.youtube),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || type == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => type == _AddSourceType.youtube
+          ? const AddFeedDialog.youtube()
+          : const AddFeedDialog(),
+    );
   }
 }
 

@@ -5,10 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
 import '../episode_actions.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/design_system.dart';
 import '../widgets/episode_playback_button.dart';
 import 'podcasts_page.dart';
 
@@ -20,6 +22,8 @@ final class HomePage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
+    final queueCount = ref.watch(queueProvider).value?.length;
+    final unreadCount = ref.watch(unreadArticleCountProvider).value;
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
@@ -69,28 +73,33 @@ final class HomePage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SectionHeader('Listen')),
               SliverToBoxAdapter(
-                child: HorizontalShortcutStrip(
-                  children: [
-                    LibraryShortcut(
+                child: _CommandDeck(
+                  title: 'Listen',
+                  commands: [
+                    CommandTile(
                       icon: Icons.queue_music_rounded,
                       label: 'Up Next',
+                      detail: 'Your play order',
+                      badge: queueCount == 0 ? null : queueCount,
                       onTap: () => context.push('/queue'),
                     ),
-                    LibraryShortcut(
+                    CommandTile(
                       icon: Icons.arrow_downward_rounded,
                       label: 'Downloads',
+                      detail: 'Available offline',
                       onTap: () => context.push('/downloads'),
                     ),
-                    LibraryShortcut(
+                    CommandTile(
                       icon: Icons.bookmark_outline_rounded,
-                      label: 'Saved',
+                      label: 'Saved episodes',
+                      detail: 'Keep for later',
                       onTap: () => context.push('/saved'),
                     ),
-                    LibraryShortcut(
+                    CommandTile(
                       icon: Icons.grid_view_rounded,
                       label: 'Library',
+                      detail: 'Listening tools',
                       onTap: () => context.push('/library'),
                     ),
                   ],
@@ -129,34 +138,40 @@ final class HomePage extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SectionHeader('Feeds')),
               SliverToBoxAdapter(
-                child: HorizontalShortcutStrip(
-                  children: [
-                    LibraryShortcut(
+                child: _CommandDeck(
+                  title: 'Feeds',
+                  accent: AppConstants.magenta,
+                  commands: [
+                    CommandTile(
                       icon: Icons.dynamic_feed_outlined,
-                      label: 'Feeds',
+                      label: 'Sources',
+                      detail: 'Web and video feeds',
+                      badge: unreadCount == 0 ? null : unreadCount,
                       color: AppConstants.magenta,
                       onTap: () => context.push('/reader?tab=feeds'),
                     ),
-                    LibraryShortcut(
+                    CommandTile(
                       icon: Icons.bookmark_outline_rounded,
-                      label: 'Saved',
+                      label: 'Saved articles',
+                      detail: 'Your reading list',
                       color: AppConstants.magenta,
                       onTap: () => context.push('/saved?tab=articles'),
                     ),
-                    LibraryShortcut(
+                    CommandTile(
                       icon: Icons.add_link_rounded,
-                      label: 'Add Feed',
+                      label: 'Add feed',
+                      detail: 'RSS, Atom, or website',
                       color: AppConstants.magenta,
                       onTap: () => showDialog<void>(
                         context: context,
                         builder: (_) => const AddFeedDialog(),
                       ),
                     ),
-                    LibraryShortcut(
+                    CommandTile(
                       icon: Icons.video_call_outlined,
-                      label: 'Add YouTube',
+                      label: 'Add YouTube feed',
+                      detail: 'Channel or playlist',
                       color: AppConstants.magenta,
                       onTap: () => showDialog<void>(
                         context: context,
@@ -215,28 +230,36 @@ final class _HomeToolbar extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 11, 16, 9),
         child: SizedBox(
-          height: 48,
-          child: Stack(
-            alignment: Alignment.center,
+          height: 50,
+          child: Row(
             children: [
-              const TrickleMark(size: 34),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GlassIconButton(
-                  icon: Icons.settings_outlined,
-                  tooltip: 'Settings',
-                  onPressed: () => context.push('/settings'),
+              const ExcludeSemantics(child: TrickleMark(size: 34)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 2,
+                  child: Text(
+                    'trickle',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleLarge?.copyWith(letterSpacing: 0.5),
+                  ),
                 ),
               ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: GlassIconButton(
-                  icon: Icons.search_rounded,
-                  tooltip: 'Search',
-                  onPressed: () => context.push('/search'),
-                ),
+              GlassIconButton(
+                icon: Icons.search_rounded,
+                tooltip: 'Search',
+                onPressed: () => context.push('/search'),
+              ),
+              const SizedBox(width: 8),
+              GlassIconButton(
+                icon: Icons.settings_outlined,
+                tooltip: 'Settings',
+                onPressed: () => context.push('/settings'),
               ),
             ],
           ),
@@ -254,21 +277,17 @@ final class _RecentStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
-    final rowHeight = 78 + (textScale - 1) * 34;
-    final rows = textScale >= 2 ? 1 : 2;
     return SizedBox(
-      height: rowHeight * rows + 26,
-      child: GridView.builder(
+      height: 118 + (textScale - 1) * 32,
+      child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
         scrollDirection: Axis.horizontal,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: rows,
-          mainAxisExtent: 284,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-        ),
         itemCount: episodes.length,
-        itemBuilder: (context, index) => _RecentEpisodeCard(episodes[index]),
+        separatorBuilder: (_, _) => const SizedBox(width: 9),
+        itemBuilder: (context, index) => SizedBox(
+          width: textScale > 1.5 ? 336 : 302,
+          child: _RecentEpisodeCard(episodes[index]),
+        ),
       ),
     );
   }
@@ -283,14 +302,23 @@ final class _RecentEpisodeCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(currentMediaProvider).value;
     final playing = ref.watch(playbackStateProvider).value?.playing == true;
+    final feed = ref.watch(feedProvider(episode.feedId)).value;
     final isCurrent = current?.id == episode.id;
     final status = isCurrent
         ? (playing ? 'playing' : 'paused')
         : (episode.played ? 'played' : 'new');
-    return Material(
-      color: AppConstants.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
-      clipBehavior: Clip.antiAlias,
+    final detail = [
+      if (feed?.title.isNotEmpty == true) feed!.title,
+      relativeDate(episode.publishedAt),
+      compactDuration(episode.durationMs),
+    ].join(' · ');
+    return SignalPanel(
+      accent: isCurrent
+          ? AppConstants.acid
+          : episode.played
+          ? null
+          : AppConstants.magenta,
+      padding: EdgeInsets.zero,
       child: Row(
         children: [
           Expanded(
@@ -306,11 +334,11 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                 onTap: () => context.push('/episode/${episode.id}'),
                 onLongPress: () => _showActions(context, ref),
                 child: Padding(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.fromLTRB(8, 8, 2, 8),
                   child: Row(
                     children: [
-                      EpisodeArtwork(episode: episode, size: 58, radius: 9),
-                      const SizedBox(width: 10),
+                      EpisodeArtwork(episode: episode, size: 76, radius: 5),
+                      const SizedBox(width: 11),
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -328,6 +356,18 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                                 height: 1.15,
                               ),
                             ),
+                            const SizedBox(height: 5),
+                            Text(
+                              detail,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: isCurrent
+                                        ? AppConstants.acid
+                                        : AppConstants.secondaryText,
+                                  ),
+                            ),
                           ],
                         ),
                       ),
@@ -338,7 +378,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 6),
+            padding: const EdgeInsets.only(right: 5),
             child: EpisodePlaybackButton(episode: episode),
           ),
         ],
@@ -378,5 +418,63 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     } on Object catch (error) {
       if (context.mounted) showErrorSnackBar(context, error);
     }
+  }
+}
+
+final class _CommandDeck extends StatelessWidget {
+  const _CommandDeck({
+    required this.title,
+    required this.commands,
+    this.accent = AppConstants.cyan,
+  });
+
+  final String title;
+  final List<Widget> commands;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final singleColumn = MediaQuery.textScalerOf(context).scale(1) > 1.55;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 18, 2, 10),
+            child: Row(
+              children: [
+                Container(width: 18, height: 3, color: accent),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 8.0;
+              final width = singleColumn
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - gap) / 2;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  for (final command in commands)
+                    SizedBox(width: width, child: command),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

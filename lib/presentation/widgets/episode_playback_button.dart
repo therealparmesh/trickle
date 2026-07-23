@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../data/database/app_database.dart';
 import '../playback_presentation.dart';
 import 'common.dart';
+import 'design_system.dart';
 
 final class EpisodePlaybackButton extends ConsumerStatefulWidget {
   const EpisodePlaybackButton({
@@ -94,16 +95,40 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
       label: tooltip,
       excludeSemantics: true,
       onTap: onPressed,
-      child: IconButton.filledTonal(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        color: failed ? AppConstants.danger : AppConstants.cyan,
-        icon: busy
-            ? const SizedBox.square(
-                dimension: 20,
-                child: CircularProgressIndicator(strokeWidth: 2.2),
-              )
-            : Icon(icon),
+      child: Tooltip(
+        message: tooltip,
+        excludeFromSemantics: true,
+        child: Material(
+          color: failed
+              ? AppConstants.danger.withValues(alpha: 0.16)
+              : AppConstants.cyan.withValues(alpha: 0.14),
+          shape: CutCornerBorder(
+            cut: 10,
+            side: BorderSide(
+              color: failed
+                  ? AppConstants.danger.withValues(alpha: 0.6)
+                  : AppConstants.cyan.withValues(alpha: 0.45),
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: SizedBox.square(
+              dimension: 48,
+              child: Center(
+                child: busy
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                      )
+                    : Icon(
+                        icon,
+                        color: failed ? AppConstants.danger : AppConstants.cyan,
+                      ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

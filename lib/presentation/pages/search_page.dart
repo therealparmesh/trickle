@@ -71,7 +71,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     final results = _tabs.index == 0 ? _local.length : _catalog.length;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search'),
+        title: const PageTitle('Search'),
         bottom: AdaptiveTabBar(
           controller: _tabs,
           tabs: const [
@@ -153,8 +153,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       itemCount: _local.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, indent: 56, endIndent: 16),
+      separatorBuilder: (_, _) => const SizedBox(height: 3),
       itemBuilder: (context, index) {
         final hit = _local[index];
         final icon = switch (hit.kind) {
@@ -188,8 +187,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       itemCount: _catalog.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, indent: 86, endIndent: 16),
+      separatorBuilder: (_, _) => const SizedBox(height: 3),
       itemBuilder: (context, index) {
         final result = _catalog[index];
         return _CatalogResultRow(
@@ -471,6 +469,7 @@ final class _CatalogSubscriptionButton extends StatelessWidget {
           ? '${subscribed ? 'Unsubscribing from' : 'Subscribing to'} $podcastName'
           : '$label $podcastName',
       excludeSemantics: true,
+      onTap: busy ? null : onPressed,
       child: largeText
           ? MediaQuery.withClampedTextScaling(maxScaleFactor: 2, child: button)
           : button,

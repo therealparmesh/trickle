@@ -48,7 +48,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         imagesState.error;
     final package = ref.watch(packageInfoProvider).value;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const PageTitle('Settings')),
       body: AppBackdrop(
         child: Center(
           child: ConstrainedBox(
@@ -64,6 +64,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                 const SectionHeader('Playback'),
                 AppCard(
+                  accent: AppConstants.cyan,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -110,6 +111,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const SectionHeader('Feeds'),
                 AppCard(
+                  accent: AppConstants.magenta,
                   child: Column(
                     children: [
                       AdaptiveDropdownField<RefreshInterval>(
@@ -210,6 +212,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const SectionHeader('Import and export'),
                 AppCard(
+                  accent: AppConstants.acid,
                   child: Column(
                     children: [
                       _ActionTile(
@@ -341,6 +344,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const SectionHeader('Privacy'),
                 const AppCard(
+                  accent: AppConstants.magenta,
                   child: Text(
                     'trickle doesn’t collect your information.',
                     style: TextStyle(

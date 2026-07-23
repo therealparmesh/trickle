@@ -10,6 +10,7 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../playback_presentation.dart';
 import '../widgets/common.dart';
+import '../widgets/design_system.dart';
 
 final class QueuePage extends ConsumerWidget {
   const QueuePage({super.key});
@@ -24,7 +25,7 @@ final class QueuePage extends ConsumerWidget {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Up Next'),
+        title: const PageTitle('Up Next'),
         actions: [
           if (largeText)
             IconButton(
@@ -98,14 +99,20 @@ final class QueuePage extends ConsumerWidget {
                             .read(audioHandlerProvider)
                             .removeQueueItem(item),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ListTile(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        child: SignalPanel(
+                          accent: active ? AppConstants.acid : null,
+                          color: Colors.transparent,
+                          padding: EdgeInsets.zero,
+                          child: ListTile(
                             key: ValueKey('tile-${item.id}'),
                             selected: active,
-                            selectedTileColor: AppConstants.cyan.withValues(
-                              alpha: 0.05,
+                            selectedTileColor: AppConstants.acid.withValues(
+                              alpha: 0.04,
                             ),
                             onTap: active
                                 ? () => context.push('/player')
@@ -144,9 +151,7 @@ final class QueuePage extends ConsumerWidget {
                               ),
                             ),
                           ),
-                          if (index < queue.length - 1)
-                            const Divider(height: 1, indent: 82, endIndent: 16),
-                        ],
+                        ),
                       ),
                     );
                   },

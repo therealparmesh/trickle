@@ -13,6 +13,7 @@ import '../../data/repositories/article_repository.dart';
 import '../../features/video/video_session.dart';
 import '../widgets/common.dart';
 import '../widgets/article_content.dart';
+import '../widgets/design_system.dart';
 
 final class ArticlePage extends ConsumerStatefulWidget {
   const ArticlePage({required this.articleId, super.key});
@@ -38,7 +39,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     final playbackUri = privacyYouTubePlaybackUri(sourceUri);
     return Scaffold(
       appBar: AppBar(
-        title: Text(playbackUri == null ? 'Reader' : 'Video'),
+        title: PageTitle(playbackUri == null ? 'Reader' : 'Video'),
         actions: [
           if (playbackUri == null)
             PopupMenuButton<String>(
@@ -152,18 +153,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              Text(
-                                metadataLine([
-                                  if (feed?.title.isNotEmpty == true)
-                                    feed!.title,
-                                  if (value.author?.isNotEmpty == true)
-                                    value.author!,
-                                  relativeDate(value.publishedAt),
-                                ]),
-                                style: const TextStyle(
-                                  color: AppConstants.cyan,
-                                ),
-                              ),
+                              _metadata(value, feed?.title),
                               const SizedBox(height: 26),
                               if (extracted?.readerFallback == true) ...[
                                 _ReaderFallbackNotice(
@@ -271,14 +261,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    metadataLine([
-                      if (feed?.title.isNotEmpty == true) feed!.title,
-                      if (article.author?.isNotEmpty == true) article.author!,
-                      relativeDate(article.publishedAt),
-                    ]),
-                    style: const TextStyle(color: AppConstants.cyan),
-                  ),
+                  _metadata(article, feed?.title),
                   if (summary?.isNotEmpty == true) ...[
                     const SizedBox(height: 26),
                     Text(
@@ -490,6 +473,29 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
       }
     });
   }
+
+  Widget _metadata(Article article, String? feedTitle) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Container(width: 18, height: 3, color: AppConstants.magenta),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            metadataLine([
+              if (feedTitle?.isNotEmpty == true) feedTitle!,
+              if (article.author?.isNotEmpty == true) article.author!,
+              relativeDate(article.publishedAt),
+            ]),
+            style: const TextStyle(color: AppConstants.cyan),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 final class _ReaderFallbackNotice extends StatelessWidget {
@@ -507,11 +513,11 @@ final class _ReaderFallbackNotice extends StatelessWidget {
       container: true,
       liveRegion: true,
       child: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: const ShapeDecoration(
           color: AppConstants.elevated,
-          borderRadius: BorderRadius.circular(12),
-          border: const Border(
-            left: BorderSide(color: AppConstants.magenta, width: 3),
+          shape: CutCornerBorder(
+            cut: 12,
+            side: BorderSide(color: AppConstants.hairline),
           ),
         ),
         child: Padding(

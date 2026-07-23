@@ -17,6 +17,7 @@ import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/podcast_search_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
+import 'package:trickle/domain/feed_models.dart';
 import 'package:trickle/presentation/pages/podcasts_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/search_page.dart';
@@ -268,10 +269,23 @@ void main() {
           FeedsCompanion.insert(
             id: 'podcast',
             title: 'Signal Podcast',
+            description: const Value('Stored show description'),
             feedUrl: 'https://resubscribe.test/feed.xml',
             kind: Value(FeedKind.podcast.index),
             createdAt: now,
             updatedAt: now,
+          ),
+        );
+    await database
+        .into(database.episodes)
+        .insert(
+          EpisodesCompanion.insert(
+            id: 'stored-episode',
+            feedId: 'podcast',
+            title: 'Stored episode',
+            description: const Value('<p>Stored episode notes.</p>'),
+            enclosureUrl: 'https://resubscribe.test/stored.mp3',
+            discoveredAt: now,
           ),
         );
     await tester.pumpWidget(
@@ -295,7 +309,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Subscribe'), findsOneWidget);
-    expect(find.text('Subscribe to load episodes'), findsOneWidget);
+    expect(find.text('Stored show description'), findsOneWidget);
+    expect(find.text('Stored episode'), findsOneWidget);
+    expect(find.text('Stored episode notes.'), findsOneWidget);
 
     await tester.tap(find.text('Subscribe'));
     for (
@@ -318,6 +334,70 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
     }
     expect(find.text('First episode'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    network.close();
+    await database.close();
+  });
+
+  testWidgets('catalog podcast loads real metadata without subscribing', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _ImmediateFeedAdapter(),
+      addressValidator: (_) async {},
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: PrivateFeedStore(storage: const FlutterSecureStorage()),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: FeedDetailPage.catalog(
+            podcast: PodcastSearchResult(
+              name: 'Catalog title',
+              author: 'Catalog author',
+              feedUrl: Uri.parse('https://resubscribe.test/feed.xml'),
+              artworkUrl: null,
+              genre: 'Technology',
+              episodeCount: 1,
+              explicit: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    for (
+      var attempt = 0;
+      attempt < 30 && find.text('First episode').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    expect(find.text('Signal Podcast'), findsWidgets);
+    expect(find.text('Actual show description'), findsOneWidget);
+    expect(find.text('First episode'), findsOneWidget);
+    expect(find.text('Episode preview notes.'), findsOneWidget);
+    expect(find.text('Subscribe'), findsOneWidget);
+    expect(await database.select(database.feeds).get(), isEmpty);
+    expect(await database.select(database.episodes).get(), isEmpty);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -559,12 +639,16 @@ final class _ImmediateFeedAdapter implements HttpClientAdapter {
   ) async {
     return ResponseBody.fromString(
       '''
-      <rss version="2.0">
+      <rss version="2.0"
+        xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
         <channel>
           <title>Signal Podcast</title>
+          <description>Actual show description</description>
           <item>
             <guid>episode-1</guid>
             <title>First episode</title>
+            <description><![CDATA[<p>Episode preview notes.</p>]]></description>
+            <itunes:duration>42:30</itunes:duration>
             <enclosure
               url="https://resubscribe.test/audio.mp3"
               type="audio/mpeg"

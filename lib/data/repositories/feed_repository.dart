@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/feed_identity.dart';
+import '../../core/formatters.dart';
 import '../../core/url_identity.dart';
 import '../../core/youtube_support.dart';
 import '../../domain/feed_models.dart';
@@ -43,6 +44,24 @@ final class FeedRepository {
   final Uuid _uuid = const Uuid();
   final Map<String, Completer<bool>> _feedDeletions = {};
   final Map<String, Future<bool>> _refreshes = {};
+
+  /// Loads and parses a podcast without creating or changing a subscription.
+  Future<ParsedFeed> loadPodcastPreview(
+    String rawAddress, {
+    Duration totalTimeout = AppConstants.feedRefreshTimeout,
+  }) async {
+    final initial = _network.normalizeHttps(Uri.parse(rawAddress.trim()));
+    final resolved = await _resolveFeedDocument(
+      initial,
+      const <String, String>{},
+      totalTimeout,
+    );
+    final feed = resolved.prepared.feed;
+    if (feed.kind != FeedKind.podcast) {
+      throw const FeedParseException('That address is not a podcast feed.');
+    }
+    return feed;
+  }
 
   Future<Feed> subscribe(
     String rawAddress, {
@@ -984,13 +1003,13 @@ _PreparedFeed _parseAndPrepareFeed(({String source, String url}) input) {
   final feed = const FeedParser().parse(input.source, Uri.parse(input.url));
   return _PreparedFeed(
     feed: feed,
-    feedBody: '${feed.author ?? ''} ${_plainText(feed.description)}',
+    feedBody: '${feed.author ?? ''} ${plainText(feed.description)}',
     episodeBodies: [
-      for (final episode in feed.episodes) _plainText(episode.description),
+      for (final episode in feed.episodes) plainText(episode.description),
     ],
     articleBodies: [
       for (final article in feed.articles)
-        '${article.author ?? ''} ${_plainText(article.contentHtml ?? article.summary)}',
+        '${article.author ?? ''} ${plainText(article.contentHtml ?? article.summary)}',
     ],
   );
 }
@@ -1026,11 +1045,4 @@ String _articleIdentity(ParsedArticle article, {required bool isPrivate}) {
   if (guid?.isNotEmpty == true) return guid!;
   final published = article.publishedAt?.toUtc().millisecondsSinceEpoch;
   return '${article.title.trim().toLowerCase()}|${published ?? 0}';
-}
-
-String _plainText(String? html) {
-  if (html == null || html.isEmpty) return '';
-  return (html_parser.parseFragment(html).text ?? '')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
