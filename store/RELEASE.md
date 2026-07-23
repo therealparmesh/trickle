@@ -59,7 +59,7 @@ If `android/key.properties` is absent, release bundles are deliberately unsigned
 
 Current Android release status: the application identifier and API levels are ready, but no upload keystore, `android/key.properties`, Play app record, or Publishing API service account has been created. Do not upload the existing unsigned bundle.
 
-Complete Play Console Data safety from `store/metadata.md`, declare no ads, select News & Magazines, provide the hosted privacy URL, complete content rating, and test the exact signed bundle in internal testing before production.
+Complete Play Console Data safety from `store/metadata.md`, select News & Magazines, provide the hosted privacy URL, complete the required declarations and content rating, and test the exact signed bundle in internal testing before production.
 
 If the publisher is using a personal Play developer account created after November 13, 2023, Google requires a closed test with at least 12 opted-in testers continuously for 14 days before production access can be requested. Organization accounts and older personal accounts follow the eligibility shown by Play Console.
 
@@ -83,9 +83,9 @@ Apple has required [Xcode 26 or later with the iOS 26 SDK or later since April 2
 
 The application includes its privacy manifest, background-audio configuration, background-refresh identifier, encryption declaration, and 1024-pixel icon. A final build phase removes the downloader SDK's generic Photo Library declaration because trickle stores audio only in app-private storage and does not use that optional SDK feature.
 
-The iOS target is iPhone-only. Five prepared 1320×2868 iPhone 17 Pro Max PNG screenshots are in `store/apple/screenshots/`. The capture flow does not seed content: prepare a simulator with the podcast and feed data asserted by `tool/maestro/capture_store_screenshots.yaml`, then regenerate the images from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml`.
+The iOS target is iPhone-only. Five 1320×2868 iPhone captures regenerated from the current visual system on July 23, 2026 are in `store/apple/screenshots/`. The capture flow does not seed content: prepare a simulator with the podcast and feed data asserted by `tool/maestro/capture_store_screenshots.yaml`, then regenerate the images from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml`.
 
-In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, and publish that response before submitting a version. Provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the prepared screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
+In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, and publish that response before submitting a version. Provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the current screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
 
 ## Acceptance checklist
 
@@ -93,9 +93,9 @@ In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, a
 - Playback: stream, seek, pause, resume, previous/next, interruptions, unplugged headphones, lock screen, background audio, and every global speed
 - Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, removal, and every cleanup policy
 - Queue and extras: reorder, remove, persistence, sleep timers, intro/outro skip, repeat-one, chapters, transcripts, and bookmarks
-- Subscriptions: concurrent row-level catalog subscriptions, public/private direct URLs, query/path credentials, website discovery, malformed feeds, redirects, UTF-8/UTF-16 OPML import, separate OPML exports for podcasts, feeds (RSS and YouTube), and all subscriptions, backup/restore, and unsubscribe cleanup
+- Subscriptions: complete catalog previews before subscription and after in-place unsubscribe, concurrent row-level catalog subscriptions, public/private direct URLs, query/path credentials, website discovery, malformed feeds, redirects, UTF-8/UTF-16 OPML import, separate OPML exports for podcasts, feeds (RSS and YouTube), and all subscriptions, backup/restore, and unsubscribe cleanup
 - Reader: RSS, Atom, JSON Feed, YouTube channel and playlist discovery, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
-- Video: yout-ube-first loading, official YouTube fallback only after failure, unmodified official-player ads, minimize/expand without reload, a live minimized preview, a thumbnail-only in-app bar during user-started system Picture in Picture, dismissal that fully closes the player, restoration to the live minimized player, background audio only during Picture in Picture, foreground-only behavior otherwise, network loss, and close/reopen
+- Video: initial-page loading, official-source fallback only after failure, minimize/expand without reload, a live minimized preview, a thumbnail-only in-app bar during user-started system Picture in Picture, dismissal that fully closes the player, restoration to the live minimized player, background audio only during Picture in Picture, foreground-only behavior otherwise, network loss, and close/reopen
 - Loading and failures: initial, inline, row-level, and pull-to-refresh progress; repeated-tap prevention; coalesced duplicate refreshes; stale-response rejection; 10-second video-source attempts; 15-second background work; 30-second document and per-feed deadlines; partial refresh results; actionable retry controls; safe malformed-file messages; and replacement rather than stacking of transient messages
 - System behavior: notification denied/granted, per-feed notifications, background refresh, airplane mode, DNS failure, and server errors
 - Accessibility and layout: VoiceOver, TalkBack, dynamic text, small/large phones, portrait/landscape, contrast, and smooth long-list scrolling

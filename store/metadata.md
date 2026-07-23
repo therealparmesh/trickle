@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 20
+- Build: 21
 
 ## Name
 
@@ -29,7 +29,7 @@ Podcasts and feeds in one fast, focused cyberpunk interface.
 
 trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
 
-Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. Video playback tries yout-ube first and uses the official YouTube link only if that attempt fails. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
 trickle does not collect your information. Import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and create a local backup whenever you want.
 
@@ -58,7 +58,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-Upload the five iPhone screenshots from `store/apple/screenshots/` in filename order:
+Five 1320×2868 iPhone screenshots were regenerated from the current visual system on July 23, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
 
 1. Home
 2. Podcast
@@ -86,7 +86,6 @@ Choose background refresh from 1 hour through 1 week and remove played downloads
 - Apple App Privacy: Data Not Collected by the developer
 - Tracking: No
 - Google Play Data safety: No developer data collection or sharing
-- Ads: No
 - Account deletion: Not applicable; the app has no account
 - Encryption export compliance: Uses only operating-system and standard HTTPS encryption; `ITSAppUsesNonExemptEncryption` is false
 

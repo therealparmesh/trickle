@@ -2,8 +2,10 @@
 
 Please test the combined podcast and feed flow:
 
+- Check the cyberpunk visual hierarchy across Home, Podcasts, Feeds, Search, and Settings; content rows should remain low-chrome, aligned, and readable without decorative boxes or dividers competing with content
+- At the largest system text size, verify the home command deck, subscription control, shortcut grids, mini player, and tab navigation reflow without clipping, overlap, or undersized targets
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
-- Open podcast search results to preview their podcast detail screen, then subscribe, unsubscribe, and resubscribe without leaving that screen
+- Open a podcast search result and verify its real show description, episode artwork, dates, durations, and episode summaries appear before subscription; subscribe, unsubscribe, and resubscribe without leaving the screen or losing those details
 - Stream, seek, pause, resume, pause while buffering, and change the global playback speed
 - Verify a failed audio source shows a clear playback message and Retry action instead of an unexplained red control; retry after restoring the network
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
@@ -19,7 +21,7 @@ Please test the combined podcast and feed flow:
 - Close Picture in Picture with its system X and repeat with the in-app Now Playing X; both must end and discard the WebView so reopening starts a new player
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews from several feeds; every image should crop cleanly without stretching
-- Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
+- Simulate failure of the initial video page and verify the existing player automatically loads the official source URL from the feed without opening a second player
 - Block both playback sources or go offline and verify the player offers Try again and Open original without obscuring the rest of the app
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
