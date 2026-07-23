@@ -29,7 +29,7 @@ Podcasts and feeds in one fast, focused cyberpunk interface.
 
 trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
 
-Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. System Picture in Picture supports web video when the platform, device settings, and active player allow it. Video playback tries yout-ube first and uses the official YouTube link only if that attempt fails. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+Find podcasts, subscribe to any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. Video playback tries yout-ube first and uses the official YouTube link only if that attempt fails. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
 trickle does not collect your information. Import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and create a local backup whenever you want.
 
@@ -77,7 +77,7 @@ Upload the five iPhone screenshots from `store/apple/screenshots/` in filename o
 
 Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, follow public YouTube channels and playlists as feeds, stream or download episodes, build a queue, import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and read articles in a clean reader view.
 
-Video entries play in a persistent player that can minimize to the Now Playing bar and continue through supported system Picture in Picture.
+Video entries play in a persistent player with a live minimized preview and user-started system Picture in Picture on supported devices.
 
 Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 

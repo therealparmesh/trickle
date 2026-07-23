@@ -32,20 +32,21 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   WebViewController? _controller;
   Future<WebViewController>? _controllerInitialization;
   Future<void> _navigationTail = Future<void>.value();
-  Future<void> _androidActivityTail = Future<void>.value();
-  Uri? _androidPlaybackRequest;
+  String? _loadedArticleId;
   Uri? _loadedUri;
   Uri? _activeRequestUri;
   Timer? _loadTimeout;
   int _sessionGeneration = 0;
+  int _controllerToken = 0;
   int _progress = 0;
+  bool _pageLoaded = false;
   bool _ready = false;
   bool _videoPlaying = false;
   bool _videoBuffering = false;
-  bool _backgroundPresentationRequested = false;
-  bool? _androidVideoActive;
-  bool _androidPictureInPicture = false;
-  bool _webPictureInPicture = false;
+  bool _pausedForBackground = false;
+  bool _requestingPictureInPicture = false;
+  AppLifecycleState _lifecycleState =
+      WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
   VideoPlaybackSource _source = VideoPlaybackSource.privacyWrapper;
   String? _error;
 
@@ -66,29 +67,30 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     WidgetsBinding.instance.removeObserver(this);
     if (defaultTargetPlatform == TargetPlatform.android) {
       _platformChannel.setMethodCallHandler(null);
-      unawaited(_setAndroidVideoActive(false));
     }
     _loadTimeout?.cancel();
+    unawaited(
+      ref
+          .read(audioHandlerProvider)
+          .deactivateWebVideoAudioSession()
+          .catchError((Object _) {}),
+    );
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
     if (state == AppLifecycleState.resumed) {
-      _backgroundPresentationRequested = false;
+      _pausedForBackground = false;
       return;
     }
-    if (state != AppLifecycleState.inactive ||
-        !_videoPlaying ||
-        _backgroundPresentationRequested ||
-        ref.read(videoSessionProvider) == null) {
-      return;
-    }
-    _backgroundPresentationRequested = true;
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      unawaited(
-        _sendVideoCommand('picture-in-picture').catchError((Object _) {}),
-      );
+    final session = ref.read(videoSessionProvider);
+    if (session != null &&
+        shouldPauseVideoForLifecycle(state, session.presentation) &&
+        !_pausedForBackground) {
+      _pausedForBackground = true;
+      unawaited(_pauseForBackground());
     }
   }
 
@@ -102,10 +104,13 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         unawaited(_close());
       }
     });
-    if (session != null && session.playbackUri != _loadedUri) {
+    if (session != null &&
+        (session.articleId != _loadedArticleId ||
+            session.playbackUri != _loadedUri)) {
       // Reserve this session before scheduling the load. A controller startup
       // failure must leave a stable retry state instead of scheduling itself
       // again on every rebuild.
+      _loadedArticleId = session.articleId;
       _loadedUri = session.playbackUri;
       final generation = ++_sessionGeneration;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -113,24 +118,109 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       });
     }
 
+    final pictureInPicture =
+        session?.presentation == VideoPresentation.pictureInPicture;
+    final webKitPictureInPicture =
+        pictureInPicture && defaultTargetPlatform == TargetPlatform.iOS;
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (session != null && _webPictureInPicture) _player(context, session),
+        if (session != null && webKitPictureInPicture)
+          _player(context, session, systemPresentation: true),
         ExcludeSemantics(
-          excluding:
-              session?.expanded == true &&
-              session?.externalPresentation != true,
+          excluding: session?.presentation == VideoPresentation.expanded,
           child: widget.child,
         ),
-        if (session != null && !_webPictureInPicture) _player(context, session),
+        if (session != null && !webKitPictureInPicture)
+          _player(context, session, systemPresentation: pictureInPicture),
+        if (session != null && webKitPictureInPicture)
+          _pictureInPictureBar(context, session),
       ],
     );
   }
 
-  Widget _player(BuildContext context, VideoSession session) {
-    final systemPresentation = _androidPictureInPicture || _webPictureInPicture;
-    final expanded = session.expanded || systemPresentation;
+  Widget _pictureInPictureBar(BuildContext context, VideoSession session) {
+    final height = videoMiniPlayerHeight(context);
+    final bottom = MediaQuery.viewInsetsOf(context).bottom > 0
+        ? -height
+        : MediaQuery.viewPaddingOf(context).bottom + 8;
+    final previewWidth = (MediaQuery.sizeOf(context).width * 0.34).clamp(
+      116.0,
+      160.0,
+    );
+    return Positioned(
+      key: const ValueKey('picture-in-picture-video-bar'),
+      left: 12,
+      right: 12,
+      bottom: bottom,
+      height: height,
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 840),
+          child: Semantics(
+            container: true,
+            liveRegion: true,
+            label: '${session.title}. Playing in Picture in Picture.',
+            child: Material(
+              color: AppConstants.elevated.withValues(alpha: 0.97),
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: const BorderSide(color: AppConstants.hairline),
+              ),
+              child: Row(
+                children: [
+                  _VideoThumbnail(
+                    articleId: session.articleId,
+                    width: previewWidth,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          session.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Picture in Picture',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppConstants.secondaryText),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close video',
+                    onPressed: _close,
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _player(
+    BuildContext context,
+    VideoSession session, {
+    required bool systemPresentation,
+  }) {
+    final expanded =
+        session.presentation == VideoPresentation.expanded ||
+        systemPresentation;
     final miniHeight = videoMiniPlayerHeight(context);
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final bottom = keyboardOpen
@@ -144,65 +234,72 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       right: expanded ? 0 : 12,
       bottom: expanded ? 0 : bottom,
       height: expanded ? null : miniHeight,
-      child: Semantics(
-        scopesRoute: expanded,
-        namesRoute: expanded,
-        explicitChildNodes: true,
-        label: expanded ? 'Video player' : null,
-        child: Material(
-          color: AppConstants.elevated,
-          clipBehavior: Clip.antiAlias,
-          shape: expanded
-              ? const RoundedRectangleBorder()
-              : RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: const BorderSide(color: AppConstants.hairline),
-                ),
-          child: SafeArea(
-            top: expanded && !systemPresentation,
-            bottom: expanded && !systemPresentation,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final toolbarHeight = expanded
-                    ? _expandedToolbarHeight(context)
-                    : 0.0;
-                final previewSize = expanded
-                    ? Size(constraints.maxWidth, constraints.maxHeight)
-                    : _miniPreviewSize(constraints, miniHeight);
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned(
-                      left: 0,
-                      top: expanded
-                          ? toolbarHeight
-                          : (constraints.maxHeight - previewSize.height) / 2,
-                      width: expanded
-                          ? constraints.maxWidth
-                          : previewSize.width,
-                      height: expanded
-                          ? constraints.maxHeight - toolbarHeight
-                          : previewSize.height,
-                      child: IgnorePointer(
-                        ignoring: !expanded,
-                        child: ColoredBox(
-                          color: Colors.black,
-                          child: _webContent(
-                            session,
-                            compact: !expanded && !systemPresentation,
+      child: IgnorePointer(
+        ignoring: systemPresentation,
+        child: ExcludeSemantics(
+          excluding: systemPresentation,
+          child: Semantics(
+            scopesRoute: expanded,
+            namesRoute: expanded,
+            explicitChildNodes: true,
+            label: expanded ? 'Video player' : null,
+            child: Material(
+              color: AppConstants.elevated,
+              clipBehavior: Clip.antiAlias,
+              shape: expanded
+                  ? const RoundedRectangleBorder()
+                  : RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      side: const BorderSide(color: AppConstants.hairline),
+                    ),
+              child: SafeArea(
+                top: expanded && !systemPresentation,
+                bottom: expanded && !systemPresentation,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final toolbarHeight = expanded && !systemPresentation
+                        ? _expandedToolbarHeight(context)
+                        : 0.0;
+                    final previewSize = expanded
+                        ? Size(constraints.maxWidth, constraints.maxHeight)
+                        : _miniPreviewSize(constraints, miniHeight);
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Positioned(
+                          left: 0,
+                          top: expanded
+                              ? toolbarHeight
+                              : (constraints.maxHeight - previewSize.height) /
+                                    2,
+                          width: expanded
+                              ? constraints.maxWidth
+                              : previewSize.width,
+                          height: expanded
+                              ? constraints.maxHeight - toolbarHeight
+                              : previewSize.height,
+                          child: IgnorePointer(
+                            ignoring: !expanded,
+                            child: ColoredBox(
+                              color: Colors.black,
+                              child: _webContent(
+                                session,
+                                compact: !expanded && !systemPresentation,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    if (systemPresentation)
-                      const SizedBox.shrink()
-                    else if (expanded)
-                      _expandedToolbar(context, session, toolbarHeight)
-                    else
-                      _miniControls(context, session, previewSize.width),
-                  ],
-                );
-              },
+                        if (systemPresentation)
+                          const SizedBox.shrink()
+                        else if (expanded)
+                          _expandedToolbar(context, session, toolbarHeight)
+                        else
+                          _miniControls(context, session, previewSize.width),
+                      ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -220,11 +317,18 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             key: const ValueKey('persistent-video-webview'),
             controller: controller,
           ),
-        if (!_ready || _error != null)
+        if (!_pageLoaded || _error != null)
           ColoredBox(
             color: AppConstants.background,
             child: _error == null
-                ? LoadingView(label: 'Loading video')
+                ? compact
+                      ? const Center(
+                          child: SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const LoadingView(label: 'Loading video')
                 : compact
                 ? const Center(
                     child: Icon(
@@ -274,6 +378,17 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
+                ),
+                IconButton(
+                  tooltip: _requestingPictureInPicture
+                      ? 'Opening Picture in Picture'
+                      : _videoPlaying
+                      ? 'Picture in Picture'
+                      : 'Play video before Picture in Picture',
+                  onPressed: _videoPlaying && !_requestingPictureInPicture
+                      ? () => unawaited(_enterPictureInPicture())
+                      : null,
+                  icon: const Icon(Icons.picture_in_picture_alt_rounded),
                 ),
                 IconButton(
                   tooltip: 'Open original',
@@ -399,12 +514,13 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<WebViewController> _createController() async {
+    final controllerToken = ++_controllerToken;
     late final PlatformWebViewControllerCreationParams params;
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
         // The WebView stays attached when the player collapses into the
         // persistent Now Playing bar. WebKit can move the same media into
-        // system Picture in Picture when the app leaves the foreground.
+        // system Picture in Picture after the user requests it.
         allowsInlineMediaPlayback: true,
         mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
       );
@@ -415,78 +531,46 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
     await controller.addJavaScriptChannel(
       'TrickleVideoState',
-      onMessageReceived: _handleWebVideoState,
+      onMessageReceived: (message) =>
+          _handleWebVideoState(message, controllerToken),
     );
-    if (controller.platform case final WebKitWebViewController webKit) {
-      await _installWebKitPresentationObserver(webKit);
-    }
     await controller.setBackgroundColor(AppConstants.background);
     await controller.setNavigationDelegate(
       NavigationDelegate(
         onProgress: (progress) {
-          if (mounted && ref.read(videoSessionProvider) != null) {
+          if (_isCurrentController(controller, controllerToken) &&
+              ref.read(videoSessionProvider) != null) {
             setState(() => _progress = progress);
           }
         },
-        onPageFinished: (url) =>
-            unawaited(_finishPageLoad(controller, Uri.tryParse(url))),
+        onPageFinished: (url) => unawaited(
+          _finishPageLoad(controller, Uri.tryParse(url), controllerToken),
+        ),
         onWebResourceError: (error) {
-          if (!mounted || ref.read(videoSessionProvider) == null) {
+          if (!_isCurrentController(controller, controllerToken) ||
+              ref.read(videoSessionProvider) == null) {
             return;
           }
           final failedUri = Uri.tryParse(error.url ?? '');
           if (error.isForMainFrame == false || failedUri == null) {
             return;
           }
-          if (error.isForMainFrame != true && failedUri != _activeRequestUri) {
-            return;
-          }
           if (!_isActiveLoadUri(failedUri)) return;
           _fallbackOrShowError();
         },
         onHttpError: (error) {
-          if (!mounted || ref.read(videoSessionProvider) == null) return;
+          if (!_isCurrentController(controller, controllerToken) ||
+              ref.read(videoSessionProvider) == null) {
+            return;
+          }
           final failedUri = error.request?.uri ?? error.response?.uri;
           if (_isActiveLoadUri(failedUri)) _fallbackOrShowError();
         },
         onNavigationRequest: (request) {
-          final uri = Uri.tryParse(request.url);
-          if (!_usingOfficialFallback &&
-              controller.platform is AndroidWebViewController &&
-              uri != null &&
-              _isPlaybackHost(uri.host) &&
-              _isCurrentVideo(uri) &&
-              _androidPlaybackRequest != uri) {
-            _androidPlaybackRequest = uri;
-            final generation = _sessionGeneration;
-            unawaited(
-              _serializeNavigation(() async {
-                if (generation != _sessionGeneration ||
-                    ref.read(videoSessionProvider) == null) {
-                  return;
-                }
-                await controller.loadRequest(
-                  uri,
-                  headers: {
-                    'Referer':
-                        ref
-                            .read(videoSessionProvider)
-                            ?.playbackUri
-                            .toString() ??
-                        'https://www.yout-ube.com/',
-                  },
-                );
-              }).catchError((Object _) {
-                if (mounted &&
-                    generation == _sessionGeneration &&
-                    _source == VideoPlaybackSource.privacyWrapper &&
-                    _isActiveLoadUri(uri)) {
-                  _fallbackOrShowError(generation: generation);
-                }
-              }),
-            );
+          if (!_isCurrentController(controller, controllerToken)) {
             return NavigationDecision.prevent;
           }
+          final uri = Uri.tryParse(request.url);
           if (!request.isMainFrame) return NavigationDecision.navigate;
           final allowedHost = _usingOfficialFallback
               ? _isOfficialYouTubeHost(uri?.host)
@@ -508,32 +592,38 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     return controller;
   }
 
-  Future<void> _finishPageLoad(WebViewController controller, Uri? uri) async {
-    if (!mounted ||
+  Future<void> _finishPageLoad(
+    WebViewController controller,
+    Uri? uri,
+    int controllerToken,
+  ) async {
+    if (!_isCurrentController(controller, controllerToken) ||
         ref.read(videoSessionProvider) == null ||
         !_isActivePlaybackUri(uri)) {
       return;
     }
-    if (controller.platform is AndroidWebViewController) {
-      try {
-        // Android cannot install a WKUserScript in every frame. The privacy
-        // wrapper redirect and the official fallback both put the playable
-        // video in the main document, so observe it once that page is ready.
-        await controller.runJavaScript(_videoPresentationObserver);
-      } on Object {
-        // Foreground playback remains usable if state observation is blocked.
-      }
+    try {
+      await controller.runJavaScript(_videoPresentationObserver);
+    } on Object {
+      // Foreground playback remains usable if state observation is blocked.
     }
-    if (!mounted ||
+    if (!_isCurrentController(controller, controllerToken) ||
         ref.read(videoSessionProvider) == null ||
         !_isActivePlaybackUri(uri)) {
       return;
     }
-    _loadTimeout?.cancel();
+    final session = ref.read(videoSessionProvider)!;
+    if (shouldPauseVideoForLifecycle(_lifecycleState, session.presentation)) {
+      await _pauseForBackground();
+    }
+    if (!_isCurrentController(controller, controllerToken) ||
+        ref.read(videoSessionProvider) == null ||
+        !_isActivePlaybackUri(uri)) {
+      return;
+    }
     setState(() {
       _progress = 100;
-      _ready = true;
-      _videoBuffering = false;
+      _pageLoaded = true;
       _error = null;
     });
   }
@@ -551,13 +641,11 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _activeRequestUri = requestUri;
     _source = source;
-    _androidPlaybackRequest = null;
-    _resetSystemPresentation();
-    unawaited(_setAndroidVideoActive(false));
     _loadTimeout?.cancel();
     if (mounted) {
       setState(() {
         _progress = 0;
+        _pageLoaded = false;
         _ready = false;
         _videoPlaying = false;
         _videoBuffering = false;
@@ -565,10 +653,13 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       });
     }
     late final WebViewController controller;
+    final initialization = _controllerInitialization ??= _createController();
     try {
-      controller = await (_controllerInitialization ??= _createController());
+      controller = await initialization;
     } on Object {
-      _controllerInitialization = null;
+      if (identical(_controllerInitialization, initialization)) {
+        _controllerInitialization = null;
+      }
       if (_isCurrentSession(session, generation)) {
         _showLoadError(
           'Couldn’t start the video player.',
@@ -583,15 +674,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _controller = controller;
     setState(() {});
-    try {
-      await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
-    } on Object {
-      // Foreground video remains usable if the audio session cannot activate.
-    }
-    if (!_isCurrentSession(session, generation) ||
-        _activeRequestUri != requestUri) {
-      return;
-    }
     _loadTimeout = Timer(AppConstants.videoSourceLoadTimeout, () {
       if (_isCurrentSession(session, generation) && !_ready) {
         _fallbackOrShowError(generation: generation, timedOut: true);
@@ -657,8 +739,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     _loadTimeout?.cancel();
-    unawaited(_setAndroidVideoActive(false));
     setState(() {
+      _pageLoaded = false;
       _ready = false;
       _videoPlaying = false;
       _videoBuffering = false;
@@ -667,25 +749,33 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<void> _close() async {
-    final generation = ++_sessionGeneration;
+    _sessionGeneration++;
+    _controllerToken++;
     ref.read(videoSessionProvider.notifier).close();
-    _resetSystemPresentation(updateSession: false);
     _loadTimeout?.cancel();
+    _loadedArticleId = null;
     _loadedUri = null;
     _activeRequestUri = null;
+    _pageLoaded = false;
     _ready = false;
     _videoPlaying = false;
     _videoBuffering = false;
-    _backgroundPresentationRequested = false;
+    _pausedForBackground = false;
+    _requestingPictureInPicture = false;
     _source = VideoPlaybackSource.privacyWrapper;
     _error = null;
     final controller = _controller;
+    _controller = null;
+    _controllerInitialization = null;
     final stopPlayback = controller == null
         ? Future<void>.value()
         : _serializeNavigation(() async {
-            if (generation != _sessionGeneration ||
-                ref.read(videoSessionProvider) != null) {
-              return;
+            try {
+              await controller.runJavaScript(
+                "document.querySelectorAll('video').forEach((video) => video.pause());",
+              );
+            } on Object {
+              // Loading a blank document still stops media if scripting fails.
             }
             try {
               await controller.loadHtmlString(
@@ -695,7 +785,13 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               // Removing the platform view also stops playback.
             }
           });
-    await Future.wait([_setAndroidVideoActive(false), stopPlayback]);
+    await Future.wait([
+      ref
+          .read(audioHandlerProvider)
+          .deactivateWebVideoAudioSession()
+          .catchError((Object _) {}),
+      stopPlayback,
+    ]);
   }
 
   Future<void> _openExternal(Uri uri) async {
@@ -711,31 +807,60 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<Object?> _handlePlatformCall(MethodCall call) async {
-    if (call.method != 'pictureInPictureChanged') return null;
     if (!mounted) return null;
-    final active = call.arguments == true;
-    if (_androidPictureInPicture != active) {
-      setState(() => _androidPictureInPicture = active);
-      ref.read(videoSessionProvider.notifier).setExternalPresentation(active);
+    if (call.method == 'pictureInPictureClosed') {
+      if (call.arguments == _sessionGeneration) await _close();
+      return null;
+    }
+    if (call.method != 'pictureInPictureChanged') return null;
+    final arguments = call.arguments;
+    if (arguments is! Map || arguments['request'] != _sessionGeneration) {
+      return null;
+    }
+    final active = arguments['active'] == true;
+    if (active) {
+      await _markPictureInPictureActive();
+    } else {
+      ref.read(videoSessionProvider.notifier).leavePictureInPicture();
     }
     return null;
   }
 
-  void _handleWebVideoState(JavaScriptMessage message) {
-    if (!mounted || ref.read(videoSessionProvider) == null) return;
+  void _handleWebVideoState(JavaScriptMessage message, int controllerToken) {
+    if (!mounted ||
+        controllerToken != _controllerToken ||
+        ref.read(videoSessionProvider) == null) {
+      return;
+    }
     final event = _decodeVideoEvent(message.message);
     if (event == null || !_isActivePlaybackUri(event.sourceUri)) return;
     switch (event.state) {
       case 'pip-start':
-        if (_webPictureInPicture) return;
-        setState(() => _webPictureInPicture = true);
-        ref.read(videoSessionProvider.notifier).setExternalPresentation(true);
+        unawaited(_markPictureInPictureActive());
       case 'pip-stop':
-        if (!_webPictureInPicture) return;
-        setState(() => _webPictureInPicture = false);
-        ref.read(videoSessionProvider.notifier).setExternalPresentation(false);
+        if (ref.read(videoSessionProvider)?.presentation !=
+            VideoPresentation.pictureInPicture) {
+          return;
+        }
+        if (_lifecycleState == AppLifecycleState.hidden ||
+            _lifecycleState == AppLifecycleState.paused ||
+            _lifecycleState == AppLifecycleState.detached) {
+          unawaited(_close());
+        } else {
+          ref.read(videoSessionProvider.notifier).leavePictureInPicture();
+        }
+      case 'pip-closed':
+        unawaited(_close());
       case 'video-playing':
-        _updateVideoPlayback(playing: true, buffering: false);
+        final session = ref.read(videoSessionProvider)!;
+        if (shouldPauseVideoForLifecycle(
+          _lifecycleState,
+          session.presentation,
+        )) {
+          unawaited(_pauseForBackground());
+        } else {
+          _updateVideoPlayback(playing: true, buffering: false);
+        }
       case 'video-paused' || 'video-ended':
         _updateVideoPlayback(playing: false, buffering: false);
       case 'video-buffering':
@@ -765,6 +890,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   void _updateVideoPlayback({required bool playing, required bool buffering}) {
     if (!mounted ||
         (_ready &&
+            _pageLoaded &&
             _error == null &&
             _videoPlaying == playing &&
             _videoBuffering == buffering)) {
@@ -772,12 +898,87 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _loadTimeout?.cancel();
     setState(() {
+      _pageLoaded = true;
       _ready = true;
       _error = null;
       _videoPlaying = playing;
       _videoBuffering = buffering;
     });
-    unawaited(_setAndroidVideoActive(playing));
+  }
+
+  Future<void> _pauseForBackground() async {
+    try {
+      await _sendVideoCommand('pause');
+    } on Object {
+      // The platform also suspends a detached WebView.
+    }
+    try {
+      await ref.read(audioHandlerProvider).deactivateWebVideoAudioSession();
+    } on Object {
+      // Paused media cannot produce background audio without focus.
+    }
+  }
+
+  Future<void> _enterPictureInPicture() async {
+    if (_requestingPictureInPicture ||
+        !_videoPlaying ||
+        ref.read(videoSessionProvider) == null) {
+      return;
+    }
+    final generation = _sessionGeneration;
+    setState(() => _requestingPictureInPicture = true);
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final entered =
+            await _platformChannel.invokeMethod<bool>(
+              'enterPictureInPicture',
+              _sessionGeneration,
+            ) ??
+            false;
+        if (!entered && mounted) {
+          showMessageSnackBar(
+            context,
+            'Picture in Picture isn’t available on this device.',
+          );
+        } else if (entered && generation == _sessionGeneration) {
+          await _markPictureInPictureActive();
+        }
+        return;
+      }
+      await _sendVideoCommand('picture-in-picture');
+    } on MissingPluginException {
+      if (mounted) {
+        showMessageSnackBar(
+          context,
+          'Picture in Picture isn’t available on this device.',
+        );
+      }
+    } on PlatformException {
+      if (mounted) {
+        showMessageSnackBar(
+          context,
+          'Picture in Picture isn’t available on this device.',
+        );
+      }
+    } finally {
+      if (mounted && generation == _sessionGeneration) {
+        setState(() => _requestingPictureInPicture = false);
+      }
+    }
+  }
+
+  Future<void> _markPictureInPictureActive() async {
+    final session = ref.read(videoSessionProvider);
+    if (session == null ||
+        session.presentation == VideoPresentation.pictureInPicture) {
+      return;
+    }
+    ref.read(videoSessionProvider.notifier).enterPictureInPicture();
+    try {
+      await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
+    } on Object {
+      // System Picture in Picture remains usable without explicit audio focus.
+    }
   }
 
   Future<void> _toggleVideoPlayback(VideoSession session) async {
@@ -807,53 +1008,15 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       ref.read(videoSessionProvider)?.articleId == session.articleId &&
       ref.read(videoSessionProvider)?.playbackUri == session.playbackUri;
 
+  bool _isCurrentController(WebViewController controller, int token) =>
+      mounted &&
+      token == _controllerToken &&
+      identical(controller, _controller);
+
   Future<void> _serializeNavigation(Future<void> Function() operation) {
     final result = _navigationTail.then((_) => operation());
     _navigationTail = result.catchError((Object _) {});
     return result;
-  }
-
-  Future<void> _installWebKitPresentationObserver(
-    WebKitWebViewController controller,
-  ) async {
-    try {
-      await _platformChannel.invokeMethod<void>(
-        'installWebKitPresentationObserver',
-        <String, Object>{
-          'webViewIdentifier': controller.webViewIdentifier,
-          'source': _videoPresentationObserver,
-        },
-      );
-    } on MissingPluginException {
-      // Unsupported hosts keep normal foreground video playback.
-    } on PlatformException {
-      // Unsupported hosts keep normal foreground video playback.
-    }
-  }
-
-  void _resetSystemPresentation({bool updateSession = true}) {
-    _androidPictureInPicture = false;
-    _webPictureInPicture = false;
-    if (updateSession) {
-      ref.read(videoSessionProvider.notifier).setExternalPresentation(false);
-    }
-  }
-
-  Future<void> _setAndroidVideoActive(bool active) async {
-    if (defaultTargetPlatform != TargetPlatform.android) return;
-    if (_androidVideoActive == active) return;
-    _androidVideoActive = active;
-    final result = _androidActivityTail.then((_) async {
-      try {
-        await _platformChannel.invokeMethod<void>('setVideoActive', active);
-      } on MissingPluginException {
-        // Widget tests and unsupported Android devices have no host channel.
-      } on PlatformException {
-        // Foreground video remains usable if PiP is unavailable.
-      }
-    });
-    _androidActivityTail = result.catchError((Object _) {});
-    await result;
   }
 
   _VideoPhase get _videoPhase {
@@ -869,16 +1032,13 @@ const _videoPresentationObserver = r'''
   if (window.__trickleVideoObserver) return;
   window.__trickleVideoObserver = true;
 
-  const sendState = (state) => {
+  const send = (state) => {
     try {
       window.TrickleVideoState.postMessage(JSON.stringify({
         state: state,
         url: window.location.href,
       }));
     } catch (_) {}
-  };
-  const notify = (active) => {
-    sendState(active ? 'pip-start' : 'pip-stop');
   };
   const mode = (video) => {
     if (video.webkitPresentationMode) return video.webkitPresentationMode;
@@ -892,54 +1052,27 @@ const _videoPresentationObserver = r'''
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     let inPictureInPicture = false;
-    let resumeAfterPictureInPicture = false;
-    let pauseTimer;
 
-    const update = () => {
+    const updatePresentation = () => {
       const active = mode(video) === 'picture-in-picture';
-      if (active && !inPictureInPicture) {
-        clearTimeout(pauseTimer);
-        resumeAfterPictureInPicture = !video.paused;
-        inPictureInPicture = true;
-        notify(true);
-        return;
-      }
-      if (!active && inPictureInPicture) {
-        clearTimeout(pauseTimer);
-        const shouldResume = resumeAfterPictureInPicture;
-        inPictureInPicture = false;
-        notify(false);
-        if (shouldResume && video.paused) {
-          setTimeout(() => video.play().catch(() => {}), 0);
-        }
-      }
+      if (active === inPictureInPicture) return;
+      inPictureInPicture = active;
+      send(active ? 'pip-start' : (video.paused ? 'pip-closed' : 'pip-stop'));
     };
-    video.addEventListener('webkitpresentationmodechanged', update);
-    video.addEventListener('enterpictureinpicture', update);
-    video.addEventListener('leavepictureinpicture', update);
-    video.addEventListener('play', () => {
-      notifyState('video-playing');
-      if (inPictureInPicture) resumeAfterPictureInPicture = true;
-    });
-    video.addEventListener('pause', () => {
-      notifyState(video.ended ? 'video-ended' : 'video-paused');
-      if (!inPictureInPicture) return;
-      clearTimeout(pauseTimer);
-      pauseTimer = setTimeout(() => {
-        if (inPictureInPicture && mode(video) === 'picture-in-picture') {
-          resumeAfterPictureInPicture = false;
-        }
-      }, 300);
-    });
-    video.addEventListener('playing', () => notifyState('video-playing'));
-    video.addEventListener('waiting', () => notifyState('video-buffering'));
-    video.addEventListener('stalled', () => notifyState('video-buffering'));
-    video.addEventListener('canplay', () => notifyState('video-ready'));
-    video.addEventListener('ended', () => notifyState('video-ended'));
-    video.addEventListener('error', () => notifyState('video-error'));
-    notifyState(video.paused ? 'video-paused' : 'video-playing');
+    video.addEventListener('webkitpresentationmodechanged', updatePresentation);
+    video.addEventListener('enterpictureinpicture', updatePresentation);
+    video.addEventListener('leavepictureinpicture', updatePresentation);
+    video.addEventListener('play', () => send('video-playing'));
+    video.addEventListener('playing', () => send('video-playing'));
+    video.addEventListener('pause', () =>
+      send(video.ended ? 'video-ended' : 'video-paused'));
+    video.addEventListener('waiting', () => send('video-buffering'));
+    video.addEventListener('stalled', () => send('video-buffering'));
+    video.addEventListener('canplay', () => send('video-ready'));
+    video.addEventListener('ended', () => send('video-ended'));
+    video.addEventListener('error', () => send('video-error'));
+    send(video.paused ? 'video-paused' : 'video-playing');
   };
-  const notifyState = sendState;
   const command = (video, action) => {
     if (action === 'play') video.play().catch(() => {});
     if (action === 'pause') video.pause();
@@ -954,11 +1087,6 @@ const _videoPresentationObserver = r'''
   };
   const dispatchCommand = (action) => {
     document.querySelectorAll('video').forEach((video) => command(video, action));
-    document.querySelectorAll('iframe').forEach((frame) => {
-      try {
-        frame.contentWindow.postMessage({__trickleVideoCommand: action}, '*');
-      } catch (_) {}
-    });
   };
   window.addEventListener('message', (event) => {
     const action = event.data && event.data.__trickleVideoCommand;
@@ -977,6 +1105,47 @@ const _videoPresentationObserver = r'''
   }).observe(document, {childList: true, subtree: true});
 })();
 ''';
+
+final class _VideoThumbnail extends ConsumerWidget {
+  const _VideoThumbnail({required this.articleId, required this.width});
+
+  final String articleId;
+  final double width;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox(
+      width: width,
+      height: double.infinity,
+      child: ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: ref
+              .watch(articleProvider(articleId))
+              .when(
+                data: (article) => article == null
+                    ? _placeholder()
+                    : ArticleArtwork(
+                        article: article,
+                        size: width,
+                        aspectRatio: 16 / 9,
+                        radius: 0,
+                      ),
+                loading: _placeholder,
+                error: (_, _) => _placeholder(),
+              ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Artwork(
+    size: width,
+    aspectRatio: 16 / 9,
+    radius: 0,
+    icon: Icons.ondemand_video_rounded,
+  );
+}
 
 final class _VideoError extends StatelessWidget {
   const _VideoError({

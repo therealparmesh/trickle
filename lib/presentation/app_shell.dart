@@ -22,7 +22,7 @@ final class AppShell extends ConsumerWidget {
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final playerInset = keyboardOpen
         ? 0.0
-        : video?.expanded == false && video?.externalPresentation == false
+        : video != null && video.presentation != VideoPresentation.expanded
         ? videoMiniPlayerHeight(context) +
               16 +
               MediaQuery.viewPaddingOf(context).bottom
@@ -34,7 +34,10 @@ final class AppShell extends ConsumerWidget {
     return VideoPlayerHost(
       child: BackButtonListener(
         onBackButtonPressed: () async {
-          if (ref.read(videoSessionProvider)?.expanded != true) return false;
+          if (ref.read(videoSessionProvider)?.presentation !=
+              VideoPresentation.expanded) {
+            return false;
+          }
           ref.read(videoSessionProvider.notifier).minimize();
           return true;
         },

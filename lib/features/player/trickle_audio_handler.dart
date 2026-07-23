@@ -300,6 +300,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
     await _setSessionActive(true);
   }
 
+  Future<void> deactivateWebVideoAudioSession() async {
+    if (_session != null && _player?.playing != true && !_playRequested) {
+      await _setSessionActive(false);
+    }
+  }
+
   Future<void> playEpisode(String episodeId) async {
     final generation = ++_episodeSelectionGeneration;
     _pendingEpisodeSelectionId = episodeId;

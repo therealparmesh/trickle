@@ -19,9 +19,10 @@ Please test the combined podcast and feed flow:
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
-- On iPhone, tap Play, minimize to the Now Playing bar, then background or lock and check Picture in Picture
-- On Android 8 or later, leave with active video and verify Picture in Picture; repeat on Android 12 or later
-- With Picture in Picture visible, return Home and verify no black duplicate appears; close it and verify the minimized video returns and resumes if it was playing
+- On iPhone, tap Play and then the Picture in Picture button; repeat on Android 8 or later and Android 12 or later
+- During Picture in Picture, verify the in-app Now Playing bar shows the entry thumbnail rather than a duplicate video; restore the system window and verify the live minimized player returns without reloading
+- Close Picture in Picture with its system X and repeat with the in-app Now Playing X; both must end and discard the WebView so reopening starts a new player
+- Background or lock during Picture in Picture and verify audio continues; repeat from expanded and minimized playback and verify video pauses instead
 - Check square podcast art and landscape article and video previews from several feeds; every image should crop cleanly without stretching
 - Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
 - Block both playback sources or go offline and verify the player offers Try again and Open original without obscuring the rest of the app

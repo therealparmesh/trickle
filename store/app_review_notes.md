@@ -11,14 +11,14 @@ trickle is a podcast player and RSS reader. No account, login, purchase, subscri
 5. From Home, tap Add Feed under Feeds to enter a public RSS, Atom, JSON Feed, or website URL.
 6. Tap Add YouTube to enter a public YouTube channel or playlist URL. Both actions use the same feed subscription pipeline.
 7. Open an article to use the extracted reader view. Share and Open in Browser are available from the reader toolbar.
-8. Open a YouTube feed entry to use its in-app web player. It can be minimized to a persistent Now Playing bar while navigating the app, expanded again without reloading, closed, or opened at its original URL. Leaving the app while a video is playing requests WebKit Picture in Picture on iPhone and activity Picture in Picture on Android 8 or later. Picture in Picture availability remains controlled by the system and active player. The player first tries yout-ube.com; only if that load fails does the same player load the official YouTube URL from the feed, including any ads YouTube supplies.
+8. Open a YouTube feed entry to use its in-app web player. It can be minimized to a persistent live Now Playing preview while navigating the app, expanded again without reloading, closed, or opened at its original URL. Its explicit Picture in Picture button starts the system presentation on supported devices. During Picture in Picture, the in-app bar uses the entry thumbnail. Closing either the bar or system window ends the video. Video audio continues while the app is hidden only during Picture in Picture; otherwise the video pauses. The player first tries yout-ube.com; only if that load fails does the same player load the official YouTube URL from the feed, including any ads YouTube supplies.
 9. Settings contains global playback speed, download cleanup, standard OPML import, separate OPML exports for podcasts, feeds (RSS and YouTube), and all subscriptions, plus local backup controls.
 
 Network access is required for catalog search, feed refresh, article extraction, artwork, and streaming. Downloaded episodes and previously cached content remain available offline.
 
 ## Background audio and downloads
 
-Background audio is active for podcast playback. Web-video background playback uses the operating system's media presentation and remains subject to the active player and device Picture in Picture settings. App-private episode downloads may continue through the operating system's download scheduler. trickle does not access the user's Photos or media library.
+Background audio is active for podcast playback. Web-video background audio is enabled only after the user starts system Picture in Picture and remains subject to the active player and device settings. App-private episode downloads may continue through the operating system's download scheduler. trickle does not access the user's Photos or media library.
 
 ## Private feeds
 

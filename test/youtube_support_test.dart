@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:trickle/core/youtube_support.dart';
 import 'package:trickle/features/video/video_session.dart';
 
@@ -178,8 +179,7 @@ void main() {
       title: 'Video',
       sourceUri: source,
       playbackUri: privacyYouTubePlaybackUri(source)!,
-      expanded: true,
-      externalPresentation: false,
+      presentation: VideoPresentation.expanded,
     );
 
     expect(
@@ -197,7 +197,7 @@ void main() {
     expect(VideoPlaybackSource.officialYouTube.fallbackAfterFailure, isNull);
   });
 
-  test('video stays in one session across mini-player and system PiP', () {
+  test('video presentation has one valid state through minimize and PiP', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final notifier = container.read(videoSessionProvider.notifier);
@@ -208,18 +208,69 @@ void main() {
       playbackUri: Uri.parse('https://www.yout-ube.com/watch?v=dQw4w9WgXcQ'),
     );
 
-    expect(container.read(videoSessionProvider)?.expanded, isTrue);
+    expect(
+      container.read(videoSessionProvider)?.presentation,
+      VideoPresentation.expanded,
+    );
     notifier.minimize();
-    expect(container.read(videoSessionProvider)?.expanded, isFalse);
+    expect(
+      container.read(videoSessionProvider)?.presentation,
+      VideoPresentation.minimized,
+    );
     notifier.expand();
-    expect(container.read(videoSessionProvider)?.expanded, isTrue);
+    expect(
+      container.read(videoSessionProvider)?.presentation,
+      VideoPresentation.expanded,
+    );
 
-    notifier.setExternalPresentation(true);
-    expect(container.read(videoSessionProvider)?.externalPresentation, isTrue);
-    expect(container.read(videoSessionProvider)?.expanded, isFalse);
+    notifier.enterPictureInPicture();
+    expect(
+      container.read(videoSessionProvider)?.presentation,
+      VideoPresentation.pictureInPicture,
+    );
+    notifier.expand();
+    expect(
+      container.read(videoSessionProvider)?.presentation,
+      VideoPresentation.pictureInPicture,
+    );
 
-    notifier.setExternalPresentation(false);
-    expect(container.read(videoSessionProvider)?.externalPresentation, isFalse);
-    expect(container.read(videoSessionProvider)?.expanded, isFalse);
+    notifier.leavePictureInPicture();
+    expect(
+      container.read(videoSessionProvider)?.presentation,
+      VideoPresentation.minimized,
+    );
+    notifier.close();
+    expect(container.read(videoSessionProvider), isNull);
+  });
+
+  test('only Picture in Picture can continue while the app is hidden', () {
+    for (final lifecycle in [
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.detached,
+    ]) {
+      expect(
+        shouldPauseVideoForLifecycle(lifecycle, VideoPresentation.expanded),
+        isTrue,
+      );
+      expect(
+        shouldPauseVideoForLifecycle(lifecycle, VideoPresentation.minimized),
+        isTrue,
+      );
+      expect(
+        shouldPauseVideoForLifecycle(
+          lifecycle,
+          VideoPresentation.pictureInPicture,
+        ),
+        isFalse,
+      );
+    }
+    expect(
+      shouldPauseVideoForLifecycle(
+        AppLifecycleState.inactive,
+        VideoPresentation.minimized,
+      ),
+      isFalse,
+    );
   });
 }

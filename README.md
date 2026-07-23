@@ -11,7 +11,7 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
 - Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
-- YouTube video entries with a persistent web player that minimizes to the Now Playing bar without reloading; supported background video uses WebKit Picture in Picture on iOS and activity Picture in Picture on Android, while playback tries yout-ube first and then the official YouTube link from the feed if that attempt fails
+- YouTube video entries with a persistent web player that tries yout-ube first, falls back to the official YouTube link from the feed, and minimizes to a live Now Playing preview without reloading; user-started system Picture in Picture keeps audio playing in the background while other video pauses when the app is hidden
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information

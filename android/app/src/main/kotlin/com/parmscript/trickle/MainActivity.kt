@@ -12,7 +12,8 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
     private var videoChannel: MethodChannel? = null
-    private var videoActive = false
+    private var pictureInPictureRequest: Int? = null
+    private var pictureInPictureWasActive = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -21,33 +22,41 @@ class MainActivity : AudioServiceActivity() {
             "com.parmscript.trickle/video",
         ).also { channel ->
             channel.setMethodCallHandler { call, result ->
-                if (call.method != "setVideoActive") {
+                if (call.method != "enterPictureInPicture") {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
-                videoActive = call.arguments == true
-                updatePictureInPictureParams()
-                result.success(null)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                    result.success(false)
+                    return@setMethodCallHandler
+                }
+                val request = call.arguments as? Int
+                if (request == null) {
+                    result.error("invalid_request", "Missing video session.", null)
+                    return@setMethodCallHandler
+                }
+                if (isPictureInPictureActive() || pictureInPictureRequest != null) {
+                    result.success(false)
+                    return@setMethodCallHandler
+                }
+                pictureInPictureRequest = request
+                val entered = try {
+                    enterPictureInPictureMode(pictureInPictureParams())
+                } catch (_: RuntimeException) {
+                    false
+                }
+                if (!entered) pictureInPictureRequest = null
+                result.success(entered)
             }
         }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
-        videoActive = false
-        updatePictureInPictureParams()
+        pictureInPictureRequest = null
+        pictureInPictureWasActive = false
         videoChannel?.setMethodCallHandler(null)
         videoChannel = null
         super.cleanUpFlutterEngine(flutterEngine)
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (
-            videoActive &&
-            Build.VERSION.SDK_INT in Build.VERSION_CODES.O..Build.VERSION_CODES.R
-        ) {
-            enterPictureInPictureMode(pictureInPictureParams())
-        }
     }
 
     override fun onPictureInPictureModeChanged(
@@ -55,23 +64,50 @@ class MainActivity : AudioServiceActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) pictureInPictureWasActive = true
         videoChannel?.invokeMethod(
             "pictureInPictureChanged",
-            isInPictureInPictureMode,
+            mapOf(
+                "active" to isInPictureInPictureMode,
+                "request" to pictureInPictureRequest,
+            ),
         )
     }
 
-    private fun updatePictureInPictureParams() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        setPictureInPictureParams(pictureInPictureParams())
+    override fun onResume() {
+        super.onResume()
+        if (!isPictureInPictureActive()) {
+            pictureInPictureWasActive = false
+            pictureInPictureRequest = null
+        }
     }
+
+    override fun onStop() {
+        if (pictureInPictureWasActive && !isPictureInPictureActive()) {
+            closeDismissedPictureInPicture()
+        }
+        super.onStop()
+    }
+
+    private fun closeDismissedPictureInPicture() {
+        if (!pictureInPictureWasActive) return
+        videoChannel?.invokeMethod(
+            "pictureInPictureClosed",
+            pictureInPictureRequest,
+        )
+        pictureInPictureWasActive = false
+        pictureInPictureRequest = null
+    }
+
+    private fun isPictureInPictureActive(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun pictureInPictureParams(): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(videoActive)
+            builder.setAutoEnterEnabled(false)
             builder.setSeamlessResizeEnabled(true)
             val sourceRect = Rect()
             if (window.decorView.getGlobalVisibleRect(sourceRect)) {

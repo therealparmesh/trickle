@@ -41,9 +41,9 @@ If a completed download is missing or unusable, trickle falls back to the publis
 
 Use Add YouTube for focused channel and playlist guidance, or paste a public YouTube channel, playlist, or YouTube Atom feed into Add Feed. A video shared from inside a public playlist follows that playlist. Private, members-only, and account-specific lists are not supported by public feeds.
 
-Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. Minimize the player to keep the same video playing from the Now Playing bar while navigating trickle.
+Video entries require a network connection. The in-app player tries yout-ube first. Only if that attempt fails does the same player load the official YouTube link from the feed; the official player may show ads. If neither attempt loads, use Try again or Open original. Minimize the player to keep the same live video in the Now Playing bar while navigating trickle.
 
-On iPhone, leaving trickle while a video is playing requests WebKit Picture in Picture. On Android 8 or later, leaving trickle while a video is playing requests activity Picture in Picture. Availability depends on the device settings and the active web player. While the system owns a Picture in Picture window, trickle hides its duplicate mini-player; closing Picture in Picture returns the video to the minimized player and resumes it if it had been playing. Podcast audio continues to use native background playback.
+Use the player’s Picture in Picture button to start the system window on a supported iPhone or Android 8 or later device. While Picture in Picture is active, the in-app Now Playing bar shows the video thumbnail and its close button ends the video. Dismissing the system Picture in Picture window also ends the video; returning it to the app restores the minimized live player. Video audio can continue while the app is hidden or the screen is locked only during Picture in Picture. Otherwise, hiding trickle pauses the video. Podcast audio continues to use native background playback.
 
 ### Background refresh or downloads
 
