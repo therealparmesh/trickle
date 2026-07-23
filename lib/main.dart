@@ -61,9 +61,11 @@ final class _TrickleBootstrapState extends State<_TrickleBootstrap> {
     final firstFrame = Completer<_TrickleRuntime>();
     _runtime = firstFrame.future;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<_TrickleRuntime>(
-        _createRuntime,
-      ).then(firstFrame.complete, onError: firstFrame.completeError);
+      unawaited(
+        Future<_TrickleRuntime>(
+          _createRuntime,
+        ).then(firstFrame.complete, onError: firstFrame.completeError),
+      );
     });
   }
 

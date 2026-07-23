@@ -21,8 +21,12 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
+    cancel_subscriptions: true
+    close_sinks: true
+    discarded_futures: true
     # Public constructor labels intentionally omit private field underscores.
     prefer_initializing_formals: false
+    unawaited_futures: true
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

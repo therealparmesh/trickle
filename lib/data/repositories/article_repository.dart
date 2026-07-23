@@ -86,7 +86,7 @@ final class ArticleRepository {
       return await request;
     } finally {
       if (identical(_previewRequests[article.id], request)) {
-        _previewRequests.remove(article.id);
+        final _ = _previewRequests.remove(article.id);
       }
     }
   }

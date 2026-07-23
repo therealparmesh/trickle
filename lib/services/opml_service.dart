@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
@@ -122,9 +123,11 @@ final class OpmlService {
     final future = _pickAndImport(run.reportProgress);
     run.future = future;
     _activeImport = run;
-    future.then<void>(
-      (_) => _clearActiveImport(run),
-      onError: (Object _, StackTrace _) => _clearActiveImport(run),
+    unawaited(
+      future.then<void>(
+        (_) => _clearActiveImport(run),
+        onError: (Object _, StackTrace _) => _clearActiveImport(run),
+      ),
     );
     return future;
   }

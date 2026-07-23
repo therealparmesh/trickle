@@ -102,7 +102,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 ],
                 onSubmitted: (_) {
                   _debounce?.cancel();
-                  _runSearch();
+                  unawaited(_runSearch());
                 },
               ),
             ),
@@ -126,7 +126,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                       icon: Icons.manage_search_rounded,
                       title: 'Enter at least two characters',
                       message:
-                          'Local search stays on your device. Podcast discovery queries Apple.',
+                          'Search your library or discover podcasts from Apple.',
                     )
                   : _error != null && results == 0 && !_loading
                   ? ErrorView(_error!, onRetry: _runSearch)
@@ -389,9 +389,9 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
 
   void _open(Feed? feed) {
     if (feed != null) {
-      context.push('/podcast/${feed.id}');
+      unawaited(context.push('/podcast/${feed.id}'));
     } else {
-      context.push('/podcast-preview', extra: widget.result);
+      unawaited(context.push('/podcast-preview', extra: widget.result));
     }
   }
 

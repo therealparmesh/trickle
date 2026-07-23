@@ -2,8 +2,10 @@ package com.parmscript.trickle
 
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.Build
 import android.util.Rational
+import androidx.annotation.RequiresApi
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -31,6 +33,8 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        videoActive = false
+        updatePictureInPictureParams()
         videoChannel?.setMethodCallHandler(null)
         videoChannel = null
         super.cleanUpFlutterEngine(flutterEngine)
@@ -62,12 +66,17 @@ class MainActivity : AudioServiceActivity() {
         setPictureInPictureParams(pictureInPictureParams())
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun pictureInPictureParams(): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setAutoEnterEnabled(videoActive)
             builder.setSeamlessResizeEnabled(true)
+            val sourceRect = Rect()
+            if (window.decorView.getGlobalVisibleRect(sourceRect)) {
+                builder.setSourceRectHint(sourceRect)
+            }
         }
         return builder.build()
     }

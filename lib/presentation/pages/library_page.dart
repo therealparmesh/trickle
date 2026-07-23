@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -184,7 +186,7 @@ final class LibraryPage extends ConsumerWidget {
   ) async {
     try {
       await ref.read(audioHandlerProvider).skipToQueueItem(index);
-      if (context.mounted) context.push('/player');
+      if (context.mounted) unawaited(context.push('/player'));
     } on Object catch (error) {
       if (context.mounted) showErrorSnackBar(context, error);
     }

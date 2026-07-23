@@ -201,7 +201,7 @@ final class FeedRepository {
       return await refresh;
     } finally {
       if (identical(_refreshes[feed.id], refresh)) {
-        _refreshes.remove(feed.id);
+        final _ = _refreshes.remove(feed.id);
       }
     }
   }

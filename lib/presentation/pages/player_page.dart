@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:audio_service/audio_service.dart';
@@ -115,14 +116,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               tooltip: 'More actions',
               onSelected: (action) {
                 if (action == 'bookmark') {
-                  _bookmark(
-                    context,
-                    ref,
-                    item.id,
-                    ref.read(playbackPositionProvider).value ?? Duration.zero,
+                  unawaited(
+                    _bookmark(
+                      context,
+                      ref,
+                      item.id,
+                      ref.read(playbackPositionProvider).value ?? Duration.zero,
+                    ),
                   );
                 } else if (action == 'share') {
-                  _runPlayback(() => _shareEpisode(item));
+                  unawaited(_runPlayback(() => _shareEpisode(item)));
                 }
               },
               itemBuilder: (_) => const [
@@ -486,7 +489,9 @@ class _PlaybackProgressState extends ConsumerState<_PlaybackProgress> {
               : null,
           onChangeEnd: enabled
               ? (value) {
-                  if (_scrubPositionMs != null) _commitSeek(value.round());
+                  if (_scrubPositionMs != null) {
+                    unawaited(_commitSeek(value.round()));
+                  }
                 }
               : null,
         ),

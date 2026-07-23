@@ -60,6 +60,7 @@ final class DownloadCoordinator {
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   StreamSubscription<AutoDeletePolicy>? _autoDeleteSubscription;
   Timer? _cleanupTimer;
+  Future<void>? _activeCleanup;
   final Map<String, DateTime> _lastProgressWrite = {};
   final Set<String> _startingDownloads = {};
   final Set<String> _terminalStateCommitted = {};
@@ -371,7 +372,25 @@ final class DownloadCoordinator {
     }
   }
 
-  Future<void> cleanupPlayed() async {
+  Future<void> cleanupPlayed() {
+    final active = _activeCleanup;
+    if (active != null) return active;
+    final cleanup = _cleanupPlayed();
+    _activeCleanup = cleanup;
+    unawaited(
+      cleanup.then<void>(
+        (_) => _clearActiveCleanup(cleanup),
+        onError: (Object _, StackTrace _) => _clearActiveCleanup(cleanup),
+      ),
+    );
+    return cleanup;
+  }
+
+  void _clearActiveCleanup(Future<void> cleanup) {
+    if (identical(_activeCleanup, cleanup)) _activeCleanup = null;
+  }
+
+  Future<void> _cleanupPlayed() async {
     await _ensureInitialized();
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
@@ -688,8 +707,17 @@ final class DownloadCoordinator {
     await _connectivity?.cancel();
     await _autoDeleteSubscription?.cancel();
     _cleanupTimer?.cancel();
+    final cleanup = _activeCleanup;
+    if (cleanup != null) {
+      try {
+        await cleanup;
+      } on Object {
+        // Cleanup failure does not prevent native resources being released.
+      }
+    }
     _terminalStateCommitted.clear();
     _terminalRecordPersisted.clear();
+    _activeCleanup = null;
     _initialized = false;
     _initialization = null;
   }

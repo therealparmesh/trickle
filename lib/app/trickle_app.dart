@@ -27,14 +27,16 @@ class _TrickleAppState extends ConsumerState<TrickleApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshIfNeeded());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_refreshIfNeeded());
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(widget.sync.resumeMaintenance().catchError((Object _) {}));
-      _refreshIfNeeded(notify: true);
+      unawaited(_refreshIfNeeded(notify: true));
     }
   }
 

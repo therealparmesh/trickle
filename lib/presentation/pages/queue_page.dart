@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,9 +67,11 @@ final class QueuePage extends ConsumerWidget {
                     final items = [...queue];
                     final item = items.removeAt(oldIndex);
                     items.insert(newIndex, item);
-                    _run(
-                      context,
-                      () => ref.read(audioHandlerProvider).updateQueue(items),
+                    unawaited(
+                      _run(
+                        context,
+                        () => ref.read(audioHandlerProvider).updateQueue(items),
+                      ),
                     );
                   },
                   itemBuilder: (context, index) {

@@ -27,9 +27,13 @@ void main() {
   test('declared response limit cancels the unread response body', () async {
     final canceled = Completer<void>();
     final adapter = _FakeAdapter((_, cancelFuture) async {
-      cancelFuture?.then((_) {
-        if (!canceled.isCompleted) canceled.complete();
-      });
+      if (cancelFuture != null) {
+        unawaited(
+          cancelFuture.then((_) {
+            if (!canceled.isCompleted) canceled.complete();
+          }),
+        );
+      }
       return ResponseBody(
         const Stream<Uint8List>.empty(),
         200,

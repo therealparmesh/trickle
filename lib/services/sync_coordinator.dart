@@ -58,9 +58,11 @@ final class SyncCoordinator {
     final future = _serialize(() => _runRefresh(run));
     run.future = future;
     _activeFullRefresh = run;
-    future.then<void>(
-      (_) => _clearActiveRefresh(run),
-      onError: (Object _, StackTrace _) => _clearActiveRefresh(run),
+    unawaited(
+      future.then<void>(
+        (_) => _clearActiveRefresh(run),
+        onError: (Object _, StackTrace _) => _clearActiveRefresh(run),
+      ),
     );
     return future;
   }

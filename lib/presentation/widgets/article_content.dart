@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
@@ -79,18 +80,20 @@ class _ArticleContentState extends State<ArticleContent> {
       }
       return;
     }
-    compute(_splitArticleBlocks, source).then(
-      (fragments) {
-        if (!mounted || generation != _parseGeneration) return;
-        setState(() => _installFragments(fragments));
-      },
-      onError: (Object _, StackTrace _) {
-        if (!mounted || generation != _parseGeneration) return;
-        setState(() {
-          _preparationFailed = true;
-          _installFragments(const []);
-        });
-      },
+    unawaited(
+      compute(_splitArticleBlocks, source).then(
+        (fragments) {
+          if (!mounted || generation != _parseGeneration) return;
+          setState(() => _installFragments(fragments));
+        },
+        onError: (Object _, StackTrace _) {
+          if (!mounted || generation != _parseGeneration) return;
+          setState(() {
+            _preparationFailed = true;
+            _installFragments(const []);
+          });
+        },
+      ),
     );
   }
 
