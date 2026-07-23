@@ -31,6 +31,8 @@ flutter build ios --release --no-codesign
 
 The Android bundle and iOS build commands prove both release targets compile without requiring publisher credentials. They do not produce store-uploadable signed artifacts.
 
+Use JDK 17 or 21 for Android builds and lint. JDK 26 is not supported by the current Android toolchain; GitHub Actions pins JDK 17, and local release verification uses JDK 21.
+
 Flutter 3.44.4 reports forward-compatibility warnings because `disk_space_plus` and `workmanager_android` still apply the legacy Kotlin Gradle plugin, and part of the iOS plugin set still requires CocoaPods. The current compatible dependency versions build successfully. Recheck those upstream migrations before upgrading Flutter; CocoaPods is intentionally enabled until every required iOS plugin supports Swift Package Manager.
 
 ## Android signing and upload

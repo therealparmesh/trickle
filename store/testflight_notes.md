@@ -10,14 +10,14 @@ Please test the combined podcast and feed flow:
 - Download an episode, use it offline, and test automatic cleanup after playback
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds by resetting the whole refresh interval
 - Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
-- Add a public RSS feed and test unread, read, and saved states
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
+- Rapidly alternate Play and Pause in expanded and minimized video, including while buffering; the Now Playing label and icon must always match the active video
 - On iPhone, tap Play and then the Picture in Picture button; repeat on Android 8 or later and Android 12 or later
 - During Picture in Picture, verify the in-app Now Playing bar shows the entry thumbnail rather than a duplicate video; restore the system window and verify the live minimized player returns without reloading
 - Close Picture in Picture with its system X and repeat with the in-app Now Playing X; both must end and discard the WebView so reopening starts a new player
-- Background or lock during Picture in Picture and verify audio continues; repeat from expanded and minimized playback and verify video pauses instead
+- Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews from several feeds; every image should crop cleanly without stretching
 - Block yout-ube.com and verify the existing player automatically loads the official YouTube URL from the feed without opening a second player; official-player ads must remain unmodified
 - Block both playback sources or go offline and verify the player offers Try again and Open original without obscuring the rest of the app
