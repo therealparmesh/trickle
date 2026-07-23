@@ -38,6 +38,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - run: cd android && ./gradlew :app:lintRelease
       - run: flutter build appbundle --release
 
   ios:

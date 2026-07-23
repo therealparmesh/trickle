@@ -1,6 +1,6 @@
 # TestFlight Notes
 
-Please test the combined podcast and feed-reader flow:
+Please test the combined podcast and feed flow:
 
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Open podcast search results to preview their podcast detail screen, then subscribe, unsubscribe, and resubscribe without leaving that screen

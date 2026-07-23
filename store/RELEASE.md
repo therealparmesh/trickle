@@ -24,6 +24,7 @@ oxfmt --check README.md 'docs/**/*.md' 'store/**/*.md'
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
+(cd android && ./gradlew :app:lintRelease)
 flutter build appbundle --release
 flutter build ios --release --no-codesign
 ```
