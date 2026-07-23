@@ -24,12 +24,12 @@ oxfmt --check README.md 'docs/**/*.md' 'store/**/*.md'
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
-(cd android && ./gradlew :app:lintRelease)
 flutter build appbundle --release
+(cd android && ./gradlew :app:lintRelease)
 flutter build ios --release --no-codesign
 ```
 
-The final two commands prove both release targets compile without requiring publisher credentials. They do not produce store-uploadable signed artifacts.
+The Android bundle and iOS build commands prove both release targets compile without requiring publisher credentials. They do not produce store-uploadable signed artifacts.
 
 Flutter 3.44.4 reports forward-compatibility warnings because `disk_space_plus` and `workmanager_android` still apply the legacy Kotlin Gradle plugin, and part of the iOS plugin set still requires CocoaPods. The current compatible dependency versions build successfully. Recheck those upstream migrations before upgrading Flutter; CocoaPods is intentionally enabled until every required iOS plugin supports Swift Package Manager.
 

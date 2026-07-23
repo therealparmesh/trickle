@@ -4,18 +4,13 @@ Please test the combined podcast and feed flow:
 
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Open podcast search results to preview their podcast detail screen, then subscribe, unsubscribe, and resubscribe without leaving that screen
-- Confirm an already subscribed podcast offers Unsubscribe in search without affecting other results
 - Stream, seek, pause, resume, pause while buffering, and change the global playback speed
 - Verify a failed audio source shows a clear playback message and Retry action instead of an unexplained red control; retry after restoring the network
-- Add and remove the final Up Next episode and confirm Next is enabled only when another episode exists, including on lock-screen controls
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
-- Verify played-download cleanup offers only Immediately, 1 day, and 1 week
-- Verify background refresh offers 1, 2, 4, 8, and 12 hours, 1 day, and 1 week
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds by resetting the whole refresh interval
 - Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
 - Add a public RSS feed and test unread, read, and saved states
-- Confirm Add Feed and Add YouTube use focused copy, while both create normal feed subscriptions
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and direct Atom feed URL; verify each resolves to the intended feed, identifies itself as a YouTube channel or playlist, and does not appear in Podcasts
 - Open a video entry, minimize it, navigate between tabs, expand it again, then close and reopen it from the detail screen; playback should persist without reloading until closed
