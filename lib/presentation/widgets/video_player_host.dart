@@ -38,6 +38,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   Timer? _loadTimeout;
   int _sessionGeneration = 0;
   int _controllerToken = 0;
+  int _videoObserverToken = 0;
+  int _activeVideoObserverToken = 0;
+  int _lastVideoStateRevision = 0;
   int _progress = 0;
   bool _pageLoaded = false;
   bool _ready = false;
@@ -83,6 +86,13 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _lifecycleState = state;
     if (state == AppLifecycleState.resumed) {
       _pausedForBackground = false;
+      return;
+    }
+    if (state == AppLifecycleState.detached) {
+      // The platform view is already being torn down. Calling into WebKit or
+      // Android WebView here can race engine detachment; process teardown will
+      // stop the media without another JavaScript command.
+      _pausedForBackground = true;
       return;
     }
     final session = ref.read(videoSessionProvider);
@@ -140,6 +150,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Widget _pictureInPictureBar(BuildContext context, VideoSession session) {
+    final phase = _videoPhase;
     final height = videoMiniPlayerHeight(context);
     final bottom = MediaQuery.viewInsetsOf(context).bottom > 0
         ? -height
@@ -161,7 +172,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           child: Semantics(
             container: true,
             liveRegion: true,
-            label: '${session.title}. Playing in Picture in Picture.',
+            label: '${session.title}. ${phase.label} in Picture in Picture.',
             child: Material(
               color: AppConstants.elevated.withValues(alpha: 0.97),
               clipBehavior: Clip.antiAlias,
@@ -189,7 +200,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Picture in Picture',
+                          '${phase.label} · Picture in Picture',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
@@ -603,7 +614,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     try {
-      await controller.runJavaScript(_videoPresentationObserver);
+      await controller.runJavaScript(
+        _videoPresentationObserver(_activeVideoObserverToken),
+      );
     } on Object {
       // Foreground playback remains usable if state observation is blocked.
     }
@@ -641,6 +654,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _activeRequestUri = requestUri;
     _source = source;
+    _activeVideoObserverToken = ++_videoObserverToken;
+    _lastVideoStateRevision = 0;
     _loadTimeout?.cancel();
     if (mounted) {
       setState(() {
@@ -749,6 +764,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<void> _close() async {
+    if (!mounted) return;
+    final audioHandler = ref.read(audioHandlerProvider);
     _sessionGeneration++;
     _controllerToken++;
     ref.read(videoSessionProvider.notifier).close();
@@ -762,6 +779,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _videoBuffering = false;
     _pausedForBackground = false;
     _requestingPictureInPicture = false;
+    _activeVideoObserverToken = ++_videoObserverToken;
+    _lastVideoStateRevision = 0;
     _source = VideoPlaybackSource.privacyWrapper;
     _error = null;
     final controller = _controller;
@@ -786,10 +805,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             }
           });
     await Future.wait([
-      ref
-          .read(audioHandlerProvider)
-          .deactivateWebVideoAudioSession()
-          .catchError((Object _) {}),
+      audioHandler.deactivateWebVideoAudioSession().catchError((Object _) {}),
       stopPlayback,
     ]);
   }
@@ -833,7 +849,17 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     final event = _decodeVideoEvent(message.message);
-    if (event == null || !_isActivePlaybackUri(event.sourceUri)) return;
+    if (event == null ||
+        !shouldAcceptVideoStateRevision(
+          activeObserverToken: _activeVideoObserverToken,
+          lastRevision: _lastVideoStateRevision,
+          observerToken: event.observerToken,
+          revision: event.revision,
+        ) ||
+        !_isActivePlaybackUri(event.sourceUri)) {
+      return;
+    }
+    _lastVideoStateRevision = event.revision;
     switch (event.state) {
       case 'pip-start':
         unawaited(_markPictureInPictureActive());
@@ -851,22 +877,20 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         }
       case 'pip-closed':
         unawaited(_close());
-      case 'video-playing':
+      case 'video-state':
         final session = ref.read(videoSessionProvider)!;
-        if (shouldPauseVideoForLifecycle(
-          _lifecycleState,
-          session.presentation,
-        )) {
-          unawaited(_pauseForBackground());
+        if (event.playing &&
+            shouldPauseVideoForLifecycle(
+              _lifecycleState,
+              session.presentation,
+            )) {
+          if (!_pausedForBackground) unawaited(_pauseForBackground());
         } else {
-          _updateVideoPlayback(playing: true, buffering: false);
+          _updateVideoPlayback(
+            playing: event.playing,
+            buffering: event.buffering,
+          );
         }
-      case 'video-paused' || 'video-ended':
-        _updateVideoPlayback(playing: false, buffering: false);
-      case 'video-buffering':
-        _updateVideoPlayback(playing: _videoPlaying, buffering: true);
-      case 'video-ready':
-        _updateVideoPlayback(playing: _videoPlaying, buffering: false);
       case 'video-error':
         _fallbackOrShowError();
     }
@@ -878,10 +902,29 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       if (value is! Map) return null;
       final state = value['state'];
       final url = value['url'];
-      if (state is! String || url is! String) return null;
+      final observerToken = value['observerToken'];
+      final revision = value['revision'];
+      if (state is! String ||
+          url is! String ||
+          observerToken is! int ||
+          revision is! int) {
+        return null;
+      }
       final sourceUri = Uri.tryParse(url);
       if (sourceUri == null) return null;
-      return _VideoEvent(state, sourceUri);
+      final playing = value['playing'];
+      final buffering = value['buffering'];
+      if (state == 'video-state' && (playing is! bool || buffering is! bool)) {
+        return null;
+      }
+      return _VideoEvent(
+        state: state,
+        sourceUri: sourceUri,
+        observerToken: observerToken,
+        revision: revision,
+        playing: playing == true,
+        buffering: buffering == true,
+      );
     } on FormatException {
       return null;
     }
@@ -907,13 +950,22 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<void> _pauseForBackground() async {
+    final generation = _sessionGeneration;
+    final audioHandler = ref.read(audioHandlerProvider);
+    _pausedForBackground = true;
+    if (mounted &&
+        generation == _sessionGeneration &&
+        _ready &&
+        _videoPlaying) {
+      _updateVideoPlayback(playing: false, buffering: false);
+    }
     try {
       await _sendVideoCommand('pause');
     } on Object {
       // The platform also suspends a detached WebView.
     }
     try {
-      await ref.read(audioHandlerProvider).deactivateWebVideoAudioSession();
+      await audioHandler.deactivateWebVideoAudioSession();
     } on Object {
       // Paused media cannot produce background audio without focus.
     }
@@ -940,7 +992,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             context,
             'Picture in Picture isn’t available on this device.',
           );
-        } else if (entered && generation == _sessionGeneration) {
+        } else if (entered && mounted && generation == _sessionGeneration) {
           await _markPictureInPictureActive();
         }
         return;
@@ -968,6 +1020,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<void> _markPictureInPictureActive() async {
+    if (!mounted) return;
     final session = ref.read(videoSessionProvider);
     if (session == null ||
         session.presentation == VideoPresentation.pictureInPicture) {
@@ -987,8 +1040,16 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     if (!_ready) return;
+    final generation = _sessionGeneration;
+    final pause = _videoPlaying;
     try {
-      await _sendVideoCommand(_videoPlaying ? 'pause' : 'play');
+      await _sendVideoCommand(pause ? 'pause' : 'play');
+      if (pause &&
+          mounted &&
+          generation == _sessionGeneration &&
+          ref.read(videoSessionProvider)?.articleId == session.articleId) {
+        _updateVideoPlayback(playing: false, buffering: false);
+      }
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     }
@@ -1027,17 +1088,32 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 }
 
-const _videoPresentationObserver = r'''
+String _videoPresentationObserver(int observerToken) =>
+    '''
 (() => {
-  if (window.__trickleVideoObserver) return;
-  window.__trickleVideoObserver = true;
+  const observerToken = $observerToken;
+  if (window.__trickleVideoObserverToken === observerToken) {
+    if (typeof window.__trickleVideoReportState === 'function') {
+      window.__trickleVideoReportState();
+    }
+    return;
+  }
+  if (typeof window.__trickleVideoObserverCleanup === 'function') {
+    window.__trickleVideoObserverCleanup();
+  }
+  window.__trickleVideoObserverToken = observerToken;
 
-  const send = (state) => {
+  let revision = 0;
+  const cleanups = [];
+  const send = (state, details = {}) => {
+    if (window.__trickleVideoObserverToken !== observerToken) return;
     try {
-      window.TrickleVideoState.postMessage(JSON.stringify({
+      window.TrickleVideoState.postMessage(JSON.stringify(Object.assign({
         state: state,
         url: window.location.href,
-      }));
+        observerToken: observerToken,
+        revision: ++revision,
+      }, details)));
     } catch (_) {}
   };
   const mode = (video) => {
@@ -1046,32 +1122,75 @@ const _videoPresentationObserver = r'''
         ? 'picture-in-picture'
         : 'inline';
   };
+  const area = (video) => {
+    const rect = video.getBoundingClientRect();
+    return Math.max(0, rect.width) * Math.max(0, rect.height);
+  };
+  const selectVideo = () => {
+    const videos = Array.from(document.querySelectorAll('video'))
+        .filter((video) => video.isConnected);
+    if (videos.length === 0) return null;
+    const pictureInPicture = videos.find(
+      (video) => mode(video) === 'picture-in-picture'
+    );
+    if (pictureInPicture) return pictureInPicture;
+    const playing = videos.filter((video) => !video.paused && !video.ended);
+    const candidates = playing.length > 0
+        ? playing
+        : videos.filter((video) => !video.ended);
+    const pool = candidates.length > 0 ? candidates : videos;
+    return pool.reduce(
+      (selected, video) => area(video) > area(selected) ? video : selected
+    );
+  };
+  const reportState = (forceBuffering = false) => {
+    const video = selectVideo();
+    if (!video) return;
+    const playing = !video.paused && !video.ended;
+    send('video-state', {
+      playing: playing,
+      buffering: playing && (
+        forceBuffering ||
+        video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
+      ),
+    });
+  };
+  window.__trickleVideoReportState = reportState;
+
   const observe = (video) => {
-    if (video.__trickleObserved) return;
-    video.__trickleObserved = true;
+    if (video.__trickleObservedToken === observerToken) return;
+    video.__trickleObservedToken = observerToken;
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
     let inPictureInPicture = false;
+
+    const listen = (event, callback) => {
+      video.addEventListener(event, callback);
+      cleanups.push(() => video.removeEventListener(event, callback));
+    };
 
     const updatePresentation = () => {
       const active = mode(video) === 'picture-in-picture';
       if (active === inPictureInPicture) return;
       inPictureInPicture = active;
       send(active ? 'pip-start' : (video.paused ? 'pip-closed' : 'pip-stop'));
+      reportState();
     };
-    video.addEventListener('webkitpresentationmodechanged', updatePresentation);
-    video.addEventListener('enterpictureinpicture', updatePresentation);
-    video.addEventListener('leavepictureinpicture', updatePresentation);
-    video.addEventListener('play', () => send('video-playing'));
-    video.addEventListener('playing', () => send('video-playing'));
-    video.addEventListener('pause', () =>
-      send(video.ended ? 'video-ended' : 'video-paused'));
-    video.addEventListener('waiting', () => send('video-buffering'));
-    video.addEventListener('stalled', () => send('video-buffering'));
-    video.addEventListener('canplay', () => send('video-ready'));
-    video.addEventListener('ended', () => send('video-ended'));
-    video.addEventListener('error', () => send('video-error'));
-    send(video.paused ? 'video-paused' : 'video-playing');
+    listen('webkitpresentationmodechanged', updatePresentation);
+    listen('enterpictureinpicture', updatePresentation);
+    listen('leavepictureinpicture', updatePresentation);
+    listen('play', () => reportState(true));
+    listen('playing', () => reportState());
+    listen('pause', () => reportState());
+    listen('waiting', () => reportState(true));
+    listen('stalled', () => reportState(true));
+    listen('canplay', () => reportState());
+    listen('ended', () => reportState());
+    listen('emptied', () => reportState());
+    listen('error', () => {
+      if (selectVideo() === video) send('video-error');
+    });
+    reportState();
   };
   const command = (video, action) => {
     if (action === 'play') video.play().catch(() => {});
@@ -1086,23 +1205,40 @@ const _videoPresentationObserver = r'''
     }
   };
   const dispatchCommand = (action) => {
-    document.querySelectorAll('video').forEach((video) => command(video, action));
+    if (action === 'pause') {
+      document.querySelectorAll('video').forEach((video) => video.pause());
+      setTimeout(() => reportState(), 0);
+      return;
+    }
+    const video = selectVideo();
+    if (!video) return;
+    command(video, action);
+    setTimeout(() => reportState(), 0);
+    setTimeout(() => reportState(), 250);
   };
-  window.addEventListener('message', (event) => {
+  const receiveCommand = (event) => {
     const action = event.data && event.data.__trickleVideoCommand;
     if (action === 'play' || action === 'pause' ||
         action === 'picture-in-picture') {
       dispatchCommand(action);
     }
-  });
+  };
+  window.addEventListener('message', receiveCommand);
+  cleanups.push(() => window.removeEventListener('message', receiveCommand));
   const scan = (root) => {
     if (root instanceof HTMLVideoElement) observe(root);
     if (root.querySelectorAll) root.querySelectorAll('video').forEach(observe);
   };
   scan(document);
-  new MutationObserver((changes) => {
+  const mutationObserver = new MutationObserver((changes) => {
     changes.forEach((change) => change.addedNodes.forEach(scan));
-  }).observe(document, {childList: true, subtree: true});
+  });
+  mutationObserver.observe(document, {childList: true, subtree: true});
+  window.__trickleVideoObserverCleanup = () => {
+    mutationObserver.disconnect();
+    cleanups.splice(0).forEach((cleanup) => cleanup());
+  };
+  reportState();
 })();
 ''';
 
@@ -1221,10 +1357,21 @@ String _javascriptString(String value) =>
 enum _VideoPhase { loading, buffering, playing, paused, error }
 
 final class _VideoEvent {
-  const _VideoEvent(this.state, this.sourceUri);
+  const _VideoEvent({
+    required this.state,
+    required this.sourceUri,
+    required this.observerToken,
+    required this.revision,
+    required this.playing,
+    required this.buffering,
+  });
 
   final String state;
   final Uri sourceUri;
+  final int observerToken;
+  final int revision;
+  final bool playing;
+  final bool buffering;
 }
 
 extension on _VideoPhase {

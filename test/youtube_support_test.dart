@@ -273,4 +273,22 @@ void main() {
       isFalse,
     );
   });
+
+  test('video state ignores stale pages and out-of-order callbacks', () {
+    for (final scenario in [
+      (observerToken: 7, revision: 100, expected: false),
+      (observerToken: 8, revision: 4, expected: false),
+      (observerToken: 8, revision: 5, expected: true),
+    ]) {
+      expect(
+        shouldAcceptVideoStateRevision(
+          activeObserverToken: 8,
+          lastRevision: 4,
+          observerToken: scenario.observerToken,
+          revision: scenario.revision,
+        ),
+        scenario.expected,
+      );
+    }
+  });
 }

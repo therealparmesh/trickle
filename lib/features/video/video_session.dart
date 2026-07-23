@@ -16,6 +16,13 @@ bool shouldPauseVideoForLifecycle(
         lifecycle == AppLifecycleState.detached) &&
     presentation != VideoPresentation.pictureInPicture;
 
+bool shouldAcceptVideoStateRevision({
+  required int activeObserverToken,
+  required int lastRevision,
+  required int observerToken,
+  required int revision,
+}) => observerToken == activeObserverToken && revision > lastRevision;
+
 extension VideoPlaybackSourceFallback on VideoPlaybackSource {
   VideoPlaybackSource? get fallbackAfterFailure => switch (this) {
     VideoPlaybackSource.privacyWrapper => VideoPlaybackSource.officialYouTube,

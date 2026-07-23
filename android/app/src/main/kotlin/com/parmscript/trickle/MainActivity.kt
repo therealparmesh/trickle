@@ -65,7 +65,7 @@ class MainActivity : AudioServiceActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) pictureInPictureWasActive = true
-        videoChannel?.invokeMethod(
+        notifyFlutter(
             "pictureInPictureChanged",
             mapOf(
                 "active" to isInPictureInPictureMode,
@@ -83,15 +83,29 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun onStop() {
-        if (pictureInPictureWasActive && !isPictureInPictureActive()) {
+        if (
+            pictureInPictureWasActive &&
+            !isPictureInPictureActive() &&
+            !isFinishing &&
+            !isChangingConfigurations
+        ) {
             closeDismissedPictureInPicture()
+        } else if (isFinishing || isChangingConfigurations) {
+            pictureInPictureWasActive = false
+            pictureInPictureRequest = null
         }
         super.onStop()
     }
 
+    override fun onDestroy() {
+        pictureInPictureWasActive = false
+        pictureInPictureRequest = null
+        super.onDestroy()
+    }
+
     private fun closeDismissedPictureInPicture() {
         if (!pictureInPictureWasActive) return
-        videoChannel?.invokeMethod(
+        notifyFlutter(
             "pictureInPictureClosed",
             pictureInPictureRequest,
         )
@@ -101,6 +115,14 @@ class MainActivity : AudioServiceActivity() {
 
     private fun isPictureInPictureActive(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
+
+    private fun notifyFlutter(method: String, arguments: Any?) {
+        try {
+            videoChannel?.invokeMethod(method, arguments)
+        } catch (_: RuntimeException) {
+            // Engine teardown already stops and discards the platform view.
+        }
+    }
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun pictureInPictureParams(): PictureInPictureParams {
