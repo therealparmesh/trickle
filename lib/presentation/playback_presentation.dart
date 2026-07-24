@@ -2,6 +2,54 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
+import '../data/database/app_database.dart';
+
+enum EpisodeListeningState { newEpisode, inProgress, played }
+
+EpisodeListeningState episodeListeningState(
+  Episode episode,
+  PlaybackProgressesData? progress,
+) {
+  if (episode.played || progress?.completed == true) {
+    return EpisodeListeningState.played;
+  }
+  if ((progress?.positionMs ?? 0) > 0) {
+    return EpisodeListeningState.inProgress;
+  }
+  return EpisodeListeningState.newEpisode;
+}
+
+double? episodeProgressFraction(
+  Episode episode,
+  PlaybackProgressesData? progress,
+) {
+  final position = progress?.positionMs ?? 0;
+  final duration = progress?.durationMs ?? episode.durationMs ?? 0;
+  if (position <= 0 || duration <= 0 || progress?.completed == true) {
+    return null;
+  }
+  return (position / duration).clamp(0, 1);
+}
+
+extension EpisodeListeningStatePresentation on EpisodeListeningState {
+  String get label => switch (this) {
+    EpisodeListeningState.newEpisode => 'New',
+    EpisodeListeningState.inProgress => 'In progress',
+    EpisodeListeningState.played => 'Played',
+  };
+
+  String get semanticLabel => switch (this) {
+    EpisodeListeningState.newEpisode => 'Unplayed',
+    EpisodeListeningState.inProgress => 'Partially played',
+    EpisodeListeningState.played => 'Played',
+  };
+
+  Color get color => switch (this) {
+    EpisodeListeningState.newEpisode => AppConstants.magenta,
+    EpisodeListeningState.inProgress => AppConstants.cyan,
+    EpisodeListeningState.played => AppConstants.secondaryText,
+  };
+}
 
 enum PlaybackUiPhase { loading, buffering, error, playing, paused }
 

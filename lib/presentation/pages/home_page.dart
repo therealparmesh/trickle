@@ -8,6 +8,7 @@ import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
 import '../episode_actions.dart';
+import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/design_system.dart';
@@ -21,6 +22,7 @@ final class HomePage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
+    final podcastCount = podcastFeeds.value?.length;
     final queueCount = ref.watch(queueProvider).value?.length;
     final downloadCount = ref.watch(downloadsProvider).value?.length;
     final savedEpisodeCount = ref.watch(starredEpisodeCountProvider).value;
@@ -78,7 +80,15 @@ final class HomePage extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: _HomeShortcuts(
                   title: 'Library',
+                  action: 'See all',
+                  onAction: () => context.push('/library'),
                   shortcuts: [
+                    LibraryShortcut(
+                      icon: Icons.podcasts_rounded,
+                      label: 'Podcasts',
+                      badge: visibleBadgeCount(podcastCount),
+                      onTap: () => context.push('/podcasts'),
+                    ),
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
                       label: 'Up Next',
@@ -96,11 +106,6 @@ final class HomePage extends ConsumerWidget {
                       label: 'Saved episodes',
                       badge: visibleBadgeCount(savedEpisodeCount),
                       onTap: () => context.push('/saved'),
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.grid_view_rounded,
-                      label: 'Library',
-                      onTap: () => context.push('/library'),
                     ),
                   ],
                 ),
@@ -302,11 +307,13 @@ final class _RecentEpisodeCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(currentMediaProvider).value;
     final playing = ref.watch(playbackStateProvider).value?.playing == true;
+    final progress = ref.watch(episodeProgressSnapshotProvider(episode.id));
+    final listeningState = episodeListeningState(episode, progress);
     final feed = ref.watch(feedProvider(episode.feedId)).value;
     final isCurrent = current?.id == episode.id;
     final status = isCurrent
         ? (playing ? 'playing' : 'paused')
-        : (episode.played ? 'played' : 'new');
+        : listeningState.label;
     final metadata = [
       if (feed?.title.isNotEmpty == true) feed!.title,
       relativeDate(episode.publishedAt),
@@ -315,9 +322,9 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     return SignalPanel(
       accent: isCurrent
           ? AppConstants.acid
-          : episode.played
+          : listeningState == EpisodeListeningState.played
           ? null
-          : AppConstants.magenta,
+          : listeningState.color,
       padding: EdgeInsets.zero,
       child: Semantics(
         button: true,
@@ -347,9 +354,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: isCurrent
                               ? AppConstants.acid
-                              : episode.played
-                              ? AppConstants.secondaryText
-                              : AppConstants.magenta,
+                              : listeningState.color,
                           letterSpacing: 1.1,
                         ),
                       ),
@@ -359,7 +364,9 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                         explicit: episode.explicit,
                         maxLines: 2,
                         style: TextStyle(
-                          color: episode.played && !isCurrent
+                          color:
+                              listeningState == EpisodeListeningState.played &&
+                                  !isCurrent
                               ? AppConstants.secondaryText
                               : AppConstants.primaryText,
                           fontWeight: FontWeight.w700,
@@ -417,18 +424,27 @@ final class _HomeShortcuts extends StatelessWidget {
     required this.title,
     required this.shortcuts,
     this.accent = AppConstants.cyan,
+    this.action,
+    this.onAction,
   });
 
   final String title;
   final List<Widget> shortcuts;
   final Color accent;
+  final String? action;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeader(title, accent: accent),
+        SectionHeader(
+          title,
+          accent: accent,
+          action: action,
+          onAction: onAction,
+        ),
         HorizontalShortcutStrip(children: shortcuts),
       ],
     );

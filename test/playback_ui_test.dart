@@ -16,6 +16,52 @@ import 'package:trickle/presentation/playback_presentation.dart';
 
 void main() {
   group('playback presentation', () {
+    test('distinguishes new, partially played, and completed episodes', () {
+      final now = DateTime.utc(2026, 7, 24);
+      final episode = Episode(
+        id: 'episode',
+        feedId: 'feed',
+        title: 'Episode',
+        enclosureUrl: 'https://example.test/episode.mp3',
+        durationMs: const Duration(minutes: 20).inMilliseconds,
+        discoveredAt: now,
+        explicit: false,
+        played: false,
+        starred: false,
+        automationApplied: false,
+      );
+      final partial = PlaybackProgressesData(
+        episodeId: episode.id,
+        positionMs: const Duration(minutes: 5).inMilliseconds,
+        durationMs: const Duration(minutes: 20).inMilliseconds,
+        completed: false,
+        updatedAt: now,
+      );
+      final completed = PlaybackProgressesData(
+        episodeId: episode.id,
+        positionMs: const Duration(minutes: 20).inMilliseconds,
+        durationMs: const Duration(minutes: 20).inMilliseconds,
+        completed: true,
+        completedAt: now,
+        updatedAt: now,
+      );
+
+      expect(
+        episodeListeningState(episode, null),
+        EpisodeListeningState.newEpisode,
+      );
+      expect(
+        episodeListeningState(episode, partial),
+        EpisodeListeningState.inProgress,
+      );
+      expect(episodeProgressFraction(episode, partial), 0.25);
+      expect(
+        episodeListeningState(episode, completed),
+        EpisodeListeningState.played,
+      );
+      expect(episodeProgressFraction(episode, completed), isNull);
+    });
+
     test('maps every engine state to one presentation phase', () {
       expect(playbackUiPhaseFor(null), PlaybackUiPhase.loading);
       expect(

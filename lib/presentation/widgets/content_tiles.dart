@@ -9,6 +9,7 @@ import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../../domain/feed_models.dart';
 import '../episode_actions.dart';
+import '../playback_presentation.dart';
 import 'common.dart';
 import 'design_system.dart';
 import 'episode_playback_button.dart';
@@ -24,6 +25,9 @@ final class EpisodeTile extends ConsumerWidget {
     final sourceTitle = showSource
         ? ref.watch(feedProvider(episode.feedId)).value?.title
         : null;
+    final progress = ref.watch(episodeProgressSnapshotProvider(episode.id));
+    final listeningState = episodeListeningState(episode, progress);
+    final progressFraction = episodeProgressFraction(episode, progress);
     final download = ref.watch(downloadForEpisodeProvider(episode.id));
     final downloadState = download == null
         ? null
@@ -33,13 +37,16 @@ final class EpisodeTile extends ConsumerWidget {
           )];
     final downloadMenu = episodeDownloadAction(download);
     final metadata = metadataLine([
+      listeningState.label,
       if (sourceTitle?.isNotEmpty == true) sourceTitle!,
       relativeDate(episode.publishedAt),
       compactDuration(episode.durationMs),
       if (downloadState == DownloadState.complete) 'Downloaded',
     ]);
     return _InsetListFrame(
-      accent: episode.played ? null : AppConstants.magenta,
+      accent: listeningState == EpisodeListeningState.played
+          ? null
+          : listeningState.color,
       child: Row(
         children: [
           Expanded(
@@ -49,7 +56,7 @@ final class EpisodeTile extends ConsumerWidget {
               excludeSemantics: true,
               onTap: () => context.push('/episode/${episode.id}'),
               label: [
-                '${episode.played ? 'Played' : 'Unplayed'} episode ${episode.title}',
+                '${listeningState.semanticLabel} episode ${episode.title}',
                 if (episode.explicit) 'Explicit',
                 if (episode.starred) 'Saved',
                 if (downloadState == DownloadState.complete) 'Downloaded',
@@ -72,7 +79,9 @@ final class EpisodeTile extends ConsumerWidget {
                               explicit: episode.explicit,
                               maxLines: 2,
                               style: TextStyle(
-                                color: episode.played
+                                color:
+                                    listeningState ==
+                                        EpisodeListeningState.played
                                     ? AppConstants.secondaryText
                                     : AppConstants.primaryText,
                                 fontWeight: FontWeight.w700,
@@ -82,15 +91,14 @@ final class EpisodeTile extends ConsumerWidget {
                             const SizedBox(height: 6),
                             Row(
                               children: [
-                                if (!episode.played) ...[
-                                  const _NewDot(color: AppConstants.magenta),
+                                if (listeningState !=
+                                    EpisodeListeningState.played) ...[
+                                  _NewDot(color: listeningState.color),
                                   const SizedBox(width: 7),
                                 ],
                                 Expanded(
                                   child: Text(
-                                    metadata.isEmpty
-                                        ? (episode.played ? 'Played' : 'New')
-                                        : metadata,
+                                    metadata,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -105,6 +113,14 @@ final class EpisodeTile extends ConsumerWidget {
                                 ),
                               ],
                             ),
+                            if (progressFraction case final value?) ...[
+                              const SizedBox(height: 7),
+                              LinearProgressIndicator(
+                                value: value,
+                                minHeight: 3,
+                                backgroundColor: AppConstants.hairline,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -114,7 +130,7 @@ final class EpisodeTile extends ConsumerWidget {
               ),
             ),
           ),
-          EpisodePlaybackButton(episode: episode),
+          EpisodePlaybackButton(episode: episode, progress: progress),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: PopupMenuButton<EpisodeAction>(

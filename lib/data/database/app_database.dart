@@ -455,6 +455,9 @@ class AppDatabase extends _$AppDatabase {
     )..where((row) => row.episodeId.equals(episodeId))).watchSingleOrNull();
   }
 
+  Stream<List<PlaybackProgressesData>> watchPlaybackProgresses() =>
+      select(playbackProgresses).watch();
+
   Future<Feed?> feedById(String id) {
     return (select(feeds)..where((row) => row.id.equals(id))).getSingleOrNull();
   }

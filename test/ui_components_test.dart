@@ -87,7 +87,9 @@ void main() {
               ),
             ),
           ),
-          episodeProgressProvider.overrideWith((_, _) => Stream.value(null)),
+          playbackProgressesProvider.overrideWith(
+            (_) => Stream.value(const {}),
+          ),
         ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
@@ -293,9 +295,14 @@ void main() {
     expect(find.text('Up Next'), findsOneWidget);
     expect(find.text('Downloads'), findsOneWidget);
     expect(find.text('Saved episodes'), findsOneWidget);
-    expect(find.text('Library'), findsNWidgets(2));
+    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Podcasts'), findsNWidgets(2));
     expect(find.text('Sources'), findsOneWidget);
     expect(find.text('Add YouTube'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Up Next')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Podcasts').first).dy),
+    );
     expect(
       tester.getTopLeft(find.text('Downloads')).dy,
       greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
@@ -303,10 +310,6 @@ void main() {
     expect(
       tester.getTopLeft(find.text('Saved episodes')).dy,
       greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
-    );
-    expect(
-      tester.getTopLeft(find.text('Library').last).dy,
-      greaterThan(tester.getBottomLeft(find.text('Saved episodes')).dy),
     );
     expect(tester.takeException(), isNull);
   });
@@ -351,7 +354,7 @@ void main() {
       ProviderScope(
         overrides: [
           recentEpisodesProvider.overrideWith((_) => Stream.value(episodes)),
-          podcastFeedsProvider.overrideWith((_) => Stream.value(const [])),
+          podcastFeedsProvider.overrideWith((_) => Stream.value([feed])),
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
@@ -365,6 +368,9 @@ void main() {
             (_) => Stream.value(PlaybackState()),
           ),
           feedProvider.overrideWith((_, _) => Stream.value(feed)),
+          playbackProgressesProvider.overrideWith(
+            (_) => Stream.value(const {}),
+          ),
           remoteImagesProvider.overrideWith((_) => Stream.value(false)),
         ],
         child: MaterialApp(theme: TrickleTheme.dark, home: const HomePage()),
@@ -379,6 +385,7 @@ void main() {
     expect(second.dy, greaterThan(first.dy));
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
+    expect(find.bySemanticsLabel('Podcasts, 1 item'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1186,6 +1193,75 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
     await database.close();
     await tester.pump(const Duration(milliseconds: 1));
+    semantics.dispose();
+  });
+
+  testWidgets('partially played episodes show progress and Resume', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 7, 24);
+    final episode = Episode(
+      id: 'partial',
+      feedId: 'feed',
+      title: 'Partially played episode',
+      enclosureUrl: 'https://example.test/partial.mp3',
+      durationMs: const Duration(minutes: 40).inMilliseconds,
+      discoveredAt: now,
+      explicit: false,
+      played: false,
+      starred: false,
+      automationApplied: false,
+    );
+    final progress = PlaybackProgressesData(
+      episodeId: episode.id,
+      positionMs: const Duration(minutes: 10).inMilliseconds,
+      durationMs: const Duration(minutes: 40).inMilliseconds,
+      completed: false,
+      updatedAt: now,
+    );
+    final semantics = tester.ensureSemantics();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          playbackProgressesProvider.overrideWith(
+            (_) => Stream.value({episode.id: progress}),
+          ),
+          feedProvider.overrideWith((_, _) => Stream.value(null)),
+          downloadsProvider.overrideWith((_) => Stream.value(const [])),
+          currentMediaProvider.overrideWith((_) => Stream.value(null)),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(
+              PlaybackState(processingState: AudioProcessingState.ready),
+            ),
+          ),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: Scaffold(body: EpisodeTile(episode)),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('In progress'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(
+        RegExp(r'Partially played episode Partially played episode'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('Resume Partially played episode'),
+      findsOneWidget,
+    );
+    final indicator = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(indicator.value, 0.25);
+    expect(tester.takeException(), isNull);
     semantics.dispose();
   });
 

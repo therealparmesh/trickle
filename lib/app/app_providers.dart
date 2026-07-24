@@ -155,6 +155,19 @@ final episodeProgressProvider = StreamProvider.autoDispose
       (ref, id) =>
           ref.watch(databaseProvider).watchPlaybackProgressForEpisode(id),
     );
+final playbackProgressesProvider =
+    StreamProvider<Map<String, PlaybackProgressesData>>(
+      (ref) => ref
+          .watch(databaseProvider)
+          .watchPlaybackProgresses()
+          .map((items) => {for (final item in items) item.episodeId: item}),
+    );
+final episodeProgressSnapshotProvider = Provider.autoDispose
+    .family<PlaybackProgressesData?, String>(
+      (ref, id) => ref.watch(
+        playbackProgressesProvider.select((items) => items.value?[id]),
+      ),
+    );
 final articleProvider = StreamProvider.autoDispose.family<Article?, String>(
   (ref, id) => ref.watch(databaseProvider).watchArticleById(id),
 );

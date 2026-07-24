@@ -12,11 +12,13 @@ final class EpisodePlaybackButton extends ConsumerStatefulWidget {
   const EpisodePlaybackButton({
     required this.episode,
     this.expanded = false,
+    this.progress,
     super.key,
   });
 
   final Episode episode;
   final bool expanded;
+  final PlaybackProgressesData? progress;
 
   @override
   ConsumerState<EpisodePlaybackButton> createState() =>
@@ -31,9 +33,11 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
     final current = ref.watch(currentMediaProvider).value;
     final isCurrent = current?.id == widget.episode.id;
     final state = ref.watch(playbackStateProvider).value;
-    final progress = widget.expanded
-        ? ref.watch(episodeProgressProvider(widget.episode.id)).value
-        : null;
+    final progress =
+        widget.progress ??
+        (widget.expanded
+            ? ref.watch(episodeProgressProvider(widget.episode.id)).value
+            : ref.watch(episodeProgressSnapshotProvider(widget.episode.id)));
     final playing = isCurrent && state?.playing == true;
     final phase = isCurrent
         ? playbackUiPhaseFor(state)
