@@ -58,7 +58,8 @@ void backgroundCallbackDispatcher() {
       await downloads.initialize();
       await applyPodcastAutomation(
         database: database,
-        queueEpisode: (episodeId) => _addEpisodeToQueue(database, episodeId),
+        queueEpisodes: (episodeIds) =>
+            _addEpisodesToQueue(database, episodeIds),
         downloadEpisode: (episodeId) =>
             downloads!.startDownload(episodeId, automatic: true),
       );
@@ -110,28 +111,37 @@ void backgroundCallbackDispatcher() {
   });
 }
 
-Future<void> _addEpisodeToQueue(AppDatabase database, String episodeId) async {
+Future<void> _addEpisodesToQueue(
+  AppDatabase database,
+  Iterable<String> episodeIds,
+) async {
+  final requestedIds = episodeIds.toSet();
+  if (requestedIds.isEmpty) return;
   await database.transaction(() async {
-    final existing = await (database.select(
-      database.queueEntries,
-    )..where((row) => row.episodeId.equals(episodeId))).getSingleOrNull();
-    if (existing != null) return;
-    final last =
-        await (database.select(database.queueEntries)
-              ..orderBy([(row) => OrderingTerm.desc(row.sortKey)])
-              ..limit(1))
-            .getSingleOrNull();
-    await database
-        .into(database.queueEntries)
-        .insert(
+    final existing = await database.select(database.queueEntries).get();
+    requestedIds.removeAll(existing.map((entry) => entry.episodeId));
+    if (requestedIds.isEmpty) return;
+    var sortKey = existing.fold(
+      -1024,
+      (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
+    );
+    final now = DateTime.now().toUtc();
+    const uuid = Uuid();
+    await database.batch((batch) {
+      for (final episodeId in requestedIds) {
+        sortKey += 1024;
+        batch.insert(
+          database.queueEntries,
           QueueEntriesCompanion.insert(
-            id: const Uuid().v4(),
+            id: uuid.v4(),
             episodeId: episodeId,
-            sortKey: (last?.sortKey ?? -1024) + 1024,
-            addedAt: DateTime.now().toUtc(),
+            sortKey: sortKey,
+            addedAt: now,
           ),
           mode: InsertMode.insertOrIgnore,
         );
+      }
+    });
   });
 }
 

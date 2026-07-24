@@ -23,7 +23,7 @@ final class EpisodeTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sourceTitle = showSource
-        ? ref.watch(feedProvider(episode.feedId)).value?.title
+        ? ref.watch(feedSnapshotProvider(episode.feedId))?.title
         : null;
     final progress = ref.watch(episodeProgressSnapshotProvider(episode.id));
     final listeningState = episodeListeningState(episode, progress);
@@ -277,7 +277,7 @@ final class ArticleTile extends ConsumerWidget {
     final isVideo =
         youtubeVideoId(Uri.tryParse(article.canonicalUrl ?? '')) != null;
     final sourceTitle = showSource
-        ? ref.watch(feedProvider(article.feedId)).value?.title
+        ? ref.watch(feedSnapshotProvider(article.feedId))?.title
         : null;
     final metadata = metadataLine([
       if (sourceTitle?.isNotEmpty == true) sourceTitle!,

@@ -70,11 +70,33 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>(
   (ref) => _uninitialized('syncCoordinator'),
 );
 
-final podcastFeedsProvider = StreamProvider<List<Feed>>(
-  (ref) => ref.watch(databaseProvider).watchPodcastFeeds(),
+final feedsProvider = StreamProvider<List<Feed>>(
+  (ref) => ref.watch(databaseProvider).watchFeeds(),
 );
-final readerFeedsProvider = StreamProvider<List<Feed>>(
-  (ref) => ref.watch(databaseProvider).watchReaderFeeds(),
+final podcastFeedsProvider = Provider<AsyncValue<List<Feed>>>(
+  (ref) => ref
+      .watch(feedsProvider)
+      .whenData(
+        (feeds) => feeds
+            .where((feed) => feed.kind == FeedKind.podcast.index)
+            .toList(growable: false),
+      ),
+);
+final readerFeedsProvider = Provider<AsyncValue<List<Feed>>>(
+  (ref) => ref
+      .watch(feedsProvider)
+      .whenData(
+        (feeds) => feeds
+            .where((feed) => feed.kind == FeedKind.reader.index)
+            .toList(growable: false),
+      ),
+);
+final _feedsByIdProvider = Provider<Map<String, Feed>>((ref) {
+  final feeds = ref.watch(feedsProvider).value ?? const <Feed>[];
+  return {for (final feed in feeds) feed.id: feed};
+});
+final feedSnapshotProvider = Provider.autoDispose.family<Feed?, String>(
+  (ref, id) => ref.watch(_feedsByIdProvider.select((feeds) => feeds[id])),
 );
 final recentEpisodesProvider = StreamProvider<List<Episode>>(
   (ref) => ref.watch(databaseProvider).watchRecentEpisodes(),
@@ -114,6 +136,18 @@ final starredEpisodesPageProvider = StreamProvider.autoDispose
 final downloadsProvider = StreamProvider<List<MediaDownload>>(
   (ref) => ref.watch(databaseProvider).watchDownloads(),
 );
+final downloadedEpisodesProvider = StreamProvider<Map<String, Episode>>(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchDownloadedEpisodes()
+      .map((episodes) => {for (final episode in episodes) episode.id: episode}),
+);
+final queuedEpisodesProvider = StreamProvider<Map<String, Episode>>(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchQueuedEpisodes()
+      .map((episodes) => {for (final episode in episodes) episode.id: episode}),
+);
 final episodesForFeedProvider = StreamProvider.autoDispose
     .family<List<Episode>, ({String feedId, int limit})>(
       (ref, page) => ref
@@ -141,7 +175,7 @@ final feedProvider = StreamProvider.autoDispose.family<Feed?, String>(
 );
 final privateFeedSecretProvider = FutureProvider.autoDispose
     .family<PrivateFeedSecret?, String>((ref, feedId) async {
-      final feed = await ref.watch(databaseProvider).feedById(feedId);
+      final feed = ref.watch(feedSnapshotProvider(feedId));
       if (feed?.isPrivate != true) return null;
       return ref
           .watch(privateFeedStoreProvider)
@@ -159,7 +193,7 @@ final playbackProgressesProvider =
     StreamProvider<Map<String, PlaybackProgressesData>>(
       (ref) => ref
           .watch(databaseProvider)
-          .watchPlaybackProgresses()
+          .watchIncompletePlaybackProgresses()
           .map((items) => {for (final item in items) item.episodeId: item}),
     );
 final episodeProgressSnapshotProvider = Provider.autoDispose
@@ -176,9 +210,7 @@ final articlePreviewImageProvider = FutureProvider.autoDispose
       final repository = ref.watch(articleRepositoryProvider);
       final lease = repository.retainPreview(id);
       ref.onDispose(lease.cancel);
-      final article = await ref.watch(databaseProvider).articleById(id);
-      if (article == null) return null;
-      return repository.previewImage(article, lease: lease);
+      return repository.previewImageById(id, lease: lease);
     });
 final _downloadsByEpisodeProvider = Provider<Map<String, MediaDownload>>((ref) {
   final downloads =

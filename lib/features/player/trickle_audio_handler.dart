@@ -343,11 +343,52 @@ final class TrickleAudioHandler extends BaseAudioHandler
   }
 
   Future<void> addEpisodeToQueue(String episodeId) async {
-    final item = await _mediaItemForEpisode(episodeId);
-    if (item == null || queue.value.any((entry) => entry.id == episodeId)) {
-      return;
+    await addEpisodesToQueue([episodeId]);
+  }
+
+  Future<void> addEpisodesToQueue(Iterable<String> episodeIds) async {
+    final requestedIds = episodeIds.toSet();
+    if (requestedIds.isEmpty) return;
+    final existingIds = queue.value.map((item) => item.id).toSet();
+    requestedIds.removeAll(existingIds);
+    if (requestedIds.isEmpty) return;
+
+    final itemsById = <String, MediaItem>{};
+    final ids = requestedIds.toList(growable: false);
+    for (
+      var start = 0;
+      start < ids.length;
+      start += AppDatabase.safeVariableBatchSize
+    ) {
+      final end = math.min(
+        start + AppDatabase.safeVariableBatchSize,
+        ids.length,
+      );
+      final chunk = ids.sublist(start, end);
+      final query = _database.select(_database.episodes).join([
+        leftOuterJoin(
+          _database.feeds,
+          _database.feeds.id.equalsExp(_database.episodes.feedId),
+        ),
+      ])..where(_database.episodes.id.isIn(chunk));
+      for (final row in await query.get()) {
+        final episode = row.readTable(_database.episodes);
+        itemsById[episode.id] = _mediaItem(
+          episode,
+          row.readTableOrNull(_database.feeds),
+        );
+      }
     }
-    queue.add([...queue.value, item]);
+
+    final current = queue.value;
+    final currentIds = current.map((item) => item.id).toSet();
+    final additions = <MediaItem>[];
+    for (final id in ids) {
+      final item = itemsById[id];
+      if (!currentIds.contains(id) && item != null) additions.add(item);
+    }
+    if (additions.isEmpty) return;
+    queue.add([...current, ...additions]);
     await _persistQueue();
   }
 

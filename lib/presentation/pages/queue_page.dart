@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../data/database/app_database.dart';
 import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/design_system.dart';
@@ -19,6 +20,8 @@ final class QueuePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final queueState = ref.watch(queueProvider);
     final queue = queueState.value ?? const <MediaItem>[];
+    final queuedEpisodes =
+        ref.watch(queuedEpisodesProvider).value ?? const <String, Episode>{};
     final current = ref.watch(currentMediaProvider).value;
     final playback = ref.watch(playbackStateProvider).value;
     final phase = playbackUiPhaseFor(playback);
@@ -77,6 +80,7 @@ final class QueuePage extends ConsumerWidget {
                   },
                   itemBuilder: (context, index) {
                     final item = queue[index];
+                    final episode = queuedEpisodes[item.id];
                     final active = current?.id == item.id;
                     return Dismissible(
                       key: ValueKey(item.id),
@@ -122,11 +126,12 @@ final class QueuePage extends ConsumerWidget {
                                         .read(audioHandlerProvider)
                                         .skipToQueueItem(index),
                                   ),
-                            leading: EpisodeArtworkById(
-                              episodeId: item.id,
-                              fallbackUrl: item.artUri?.toString(),
-                              size: 50,
-                            ),
+                            leading: episode == null
+                                ? Artwork(
+                                    url: item.artUri?.toString(),
+                                    size: 50,
+                                  )
+                                : EpisodeArtwork(episode: episode, size: 50),
                             title: EpisodeTitle(
                               title: item.title,
                               explicit: item.extras?['explicit'] == true,

@@ -104,6 +104,105 @@ void main() {
     expect(await database.search('signal'), hasLength(1));
   });
 
+  test('bulk search indexing scales past SQLite variable limits', () async {
+    await database.indexSearchItems([
+      for (var index = 0; index < 1100; index++)
+        SearchIndexEntry(
+          entityId: 'episode-$index',
+          kind: 'episode',
+          title: index == 1099 ? 'Unique scaling target' : 'Episode $index',
+          body: '',
+          feedTitle: 'Example Podcast',
+        ),
+    ]);
+
+    final results = await database.search('unique scaling target');
+
+    expect(results, hasLength(1));
+    expect(results.single.entityId, 'episode-1099');
+  });
+
+  test(
+    'search replacement preserves a different kind with the same id',
+    () async {
+      await database.indexSearchItems(const [
+        SearchIndexEntry(
+          entityId: 'shared',
+          kind: 'episode',
+          title: 'Episode scaling marker',
+          body: '',
+          feedTitle: 'Podcast',
+        ),
+        SearchIndexEntry(
+          entityId: 'shared',
+          kind: 'article',
+          title: 'Article scaling marker',
+          body: '',
+          feedTitle: 'Feed',
+        ),
+      ]);
+
+      await database.indexSearchItem(
+        entityId: 'shared',
+        kind: 'article',
+        title: 'Updated article marker',
+        body: '',
+        feedTitle: 'Feed',
+      );
+
+      expect(await database.search('episode scaling marker'), hasLength(1));
+      expect(await database.search('article scaling marker'), isEmpty);
+      expect(await database.search('updated article marker'), hasLength(1));
+    },
+  );
+
+  test('shared playback progress excludes completed history', () async {
+    final now = DateTime.utc(2026, 7, 24);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'feed',
+            title: 'Feed',
+            feedUrl: 'https://example.com/feed.xml',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    for (final id in const ['partial', 'complete']) {
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: id,
+              feedId: 'feed',
+              title: id,
+              enclosureUrl: 'https://example.com/$id.mp3',
+              discoveredAt: now,
+            ),
+          );
+    }
+    await database.batch((batch) {
+      batch.insertAll(database.playbackProgresses, [
+        PlaybackProgressesCompanion.insert(
+          episodeId: 'partial',
+          positionMs: const Value(1000),
+          updatedAt: now,
+        ),
+        PlaybackProgressesCompanion.insert(
+          episodeId: 'complete',
+          positionMs: const Value(2000),
+          completed: const Value(true),
+          updatedAt: now,
+        ),
+      ]);
+    });
+
+    final progresses = await database.watchIncompletePlaybackProgresses().first;
+
+    expect(progresses.map((progress) => progress.episodeId), ['partial']);
+  });
+
   test('version 1 mixed feeds migrate into exactly one library', () async {
     await database.close();
     final underlying = sqlite3.openInMemory();

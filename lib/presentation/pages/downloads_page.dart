@@ -16,6 +16,7 @@ final class DownloadsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final downloads = ref.watch(downloadsProvider);
+    final episodes = ref.watch(downloadedEpisodesProvider);
     return Scaffold(
       appBar: AppBar(title: const PageTitle('Downloads')),
       body: AppBackdrop(
@@ -27,10 +28,23 @@ final class DownloadsPage extends ConsumerWidget {
                   message:
                       'Download episodes for playback without a connection.',
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: items.length,
-                  itemBuilder: (context, index) => _DownloadRow(items[index]),
+              : episodes.when(
+                  data: (episodes) => ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final download = items[index];
+                      return _DownloadRow(
+                        download,
+                        episode: episodes[download.episodeId],
+                      );
+                    },
+                  ),
+                  loading: () => const LoadingView(label: 'Loading downloads'),
+                  error: (error, _) => ErrorView(
+                    friendlyError(error),
+                    onRetry: () => ref.invalidate(downloadedEpisodesProvider),
+                  ),
                 ),
           loading: () => const LoadingView(),
           error: (error, _) => ErrorView(
@@ -44,9 +58,10 @@ final class DownloadsPage extends ConsumerWidget {
 }
 
 final class _DownloadRow extends ConsumerStatefulWidget {
-  const _DownloadRow(this.download);
+  const _DownloadRow(this.download, {required this.episode});
 
   final MediaDownload download;
+  final Episode? episode;
 
   @override
   ConsumerState<_DownloadRow> createState() => _DownloadRowState();
@@ -58,7 +73,7 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
   @override
   Widget build(BuildContext context) {
     final download = widget.download;
-    final episode = ref.watch(episodeProvider(download.episodeId));
+    final episode = widget.episode;
     final state = DownloadState
         .values[download.status.clamp(0, DownloadState.values.length - 1)];
     final total = download.totalBytes ?? 0;
@@ -139,19 +154,7 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
         ],
       ),
     );
-    return episode.when(
-      data: row,
-      loading: () => Semantics(
-        label: 'Loading download',
-        child: ExcludeSemantics(
-          child: ListTile(
-            leading: Artwork(size: 52),
-            title: LinearProgressIndicator(),
-          ),
-        ),
-      ),
-      error: (_, _) => row(null, fallbackTitle: 'Couldn’t load episode'),
-    );
+    return row(episode, fallbackTitle: 'Unavailable episode');
   }
 
   Future<void> _runAction(String action, MediaDownload download) async {

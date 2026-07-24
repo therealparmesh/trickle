@@ -93,7 +93,7 @@ final class SyncCoordinator {
     await applyPodcastAutomation(
       database: _database,
       feedIds: {feed.id},
-      queueEpisode: _audio.addEpisodeToQueue,
+      queueEpisodes: _audio.addEpisodesToQueue,
       downloadEpisode: (id) => _downloads.startDownload(id, automatic: true),
     );
     await _downloads.cleanupPlayed();
@@ -106,7 +106,7 @@ final class SyncCoordinator {
     );
     await applyPodcastAutomation(
       database: _database,
-      queueEpisode: _audio.addEpisodeToQueue,
+      queueEpisodes: _audio.addEpisodesToQueue,
       downloadEpisode: (id) => _downloads.startDownload(id, automatic: true),
     );
     await _downloads.cleanupPlayed();
@@ -154,60 +154,94 @@ final class SyncCoordinator {
 
 Future<void> applyPodcastAutomation({
   required AppDatabase database,
-  required Future<void> Function(String episodeId) queueEpisode,
+  required Future<void> Function(Iterable<String> episodeIds) queueEpisodes,
   required Future<void> Function(String episodeId) downloadEpisode,
   Set<String>? feedIds,
 }) async {
   final query = database.select(database.feeds);
   if (feedIds != null) query.where((row) => row.id.isIn(feedIds));
   final feeds = await query.get();
-  for (final feed in feeds) {
-    final pending =
-        await (database.select(database.episodes)
-              ..where(
-                (row) =>
-                    row.feedId.equals(feed.id) &
-                    row.automationApplied.equals(false),
-              )
-              ..orderBy([
-                (row) => OrderingTerm.desc(row.publishedAt),
-                (row) => OrderingTerm.desc(row.discoveredAt),
-              ]))
+  if (feeds.isEmpty) return;
+  final feedsById = {for (final feed in feeds) feed.id: feed};
+  final pendingQuery = database.select(database.episodes)
+    ..where(
+      (row) =>
+          row.automationApplied.equals(false) &
+          (feedIds == null
+              ? const Constant(true)
+              : row.feedId.isIn(feedsById.keys)),
+    )
+    ..orderBy([
+      (row) => OrderingTerm.asc(row.feedId),
+      (row) => OrderingTerm.desc(row.publishedAt),
+      (row) => OrderingTerm.desc(row.discoveredAt),
+    ]);
+  final pendingByFeed = <String, List<Episode>>{};
+  for (final episode in await pendingQuery.get()) {
+    pendingByFeed.putIfAbsent(episode.feedId, () => []).add(episode);
+  }
+  if (pendingByFeed.isEmpty) return;
+  final downloadCandidateIds = <String>{
+    for (final feed in feeds)
+      if (feed.autoDownload)
+        for (final episode in pendingByFeed[feed.id] ?? const <Episode>[])
+          episode.id,
+  };
+  final downloadsByEpisode = <String, MediaDownload>{};
+  final candidateIds = downloadCandidateIds.toList(growable: false);
+  for (
+    var start = 0;
+    start < candidateIds.length;
+    start += AppDatabase.safeVariableBatchSize
+  ) {
+    final end = (start + AppDatabase.safeVariableBatchSize).clamp(
+      0,
+      candidateIds.length,
+    );
+    final downloads =
+        await (database.select(database.mediaDownloads)..where(
+              (row) => row.episodeId.isIn(candidateIds.sublist(start, end)),
+            ))
             .get();
+    for (final download in downloads) {
+      downloadsByEpisode[download.episodeId] = download;
+    }
+  }
+  final queueIds = [
+    for (final feed in feeds)
+      if (feed.autoQueue)
+        for (final episode in pendingByFeed[feed.id] ?? const <Episode>[])
+          episode.id,
+  ];
+  var queueSucceeded = true;
+  if (queueIds.isNotEmpty) {
+    try {
+      await queueEpisodes(queueIds);
+    } on Object {
+      queueSucceeded = false;
+    }
+  }
+  final appliedIds = <String>[];
+  for (final feed in feeds) {
+    final pending = pendingByFeed[feed.id] ?? const <Episode>[];
     if (pending.isEmpty) continue;
     final limit = feed.autoDownloadLimit.clamp(1, 10);
     final downloadIds = <String>{};
     if (feed.autoDownload) {
       downloadIds.addAll(pending.take(limit).map((episode) => episode.id));
-      final retryQuery =
-          database.select(database.mediaDownloads).join([
-            innerJoin(
-              database.episodes,
-              database.episodes.id.equalsExp(database.mediaDownloads.episodeId),
-            ),
-          ])..where(
-            database.episodes.feedId.equals(feed.id) &
-                database.episodes.automationApplied.equals(false) &
-                database.mediaDownloads.status.isIn([
-                  DownloadState.failed.index,
-                  DownloadState.canceled.index,
-                ]),
-          );
-      downloadIds.addAll(
-        (await retryQuery.get()).map(
-          (row) => row.readTable(database.mediaDownloads).episodeId,
-        ),
-      );
+      for (final episode in pending) {
+        final existing = downloadsByEpisode[episode.id];
+        if (existing?.status == DownloadState.failed.index ||
+            existing?.status == DownloadState.canceled.index) {
+          downloadIds.add(episode.id);
+        }
+      }
     }
-    final appliedIds = <String>[];
     for (final episode in pending) {
+      if (feed.autoQueue && !queueSucceeded) continue;
       try {
-        if (feed.autoQueue) await queueEpisode(episode.id);
         if (downloadIds.contains(episode.id)) {
-          final existing =
-              await (database.select(database.mediaDownloads)
-                    ..where((row) => row.episodeId.equals(episode.id)))
-                  .getSingleOrNull();
+          final existing = downloadsByEpisode[episode.id];
           if (existing == null ||
               existing.status == DownloadState.failed.index ||
               existing.status == DownloadState.canceled.index) {
@@ -222,9 +256,19 @@ Future<void> applyPodcastAutomation({
         // A failed action stays pending for the next refresh.
       }
     }
-    if (appliedIds.isNotEmpty) {
+  }
+  if (appliedIds.isNotEmpty) {
+    for (
+      var start = 0;
+      start < appliedIds.length;
+      start += AppDatabase.safeVariableBatchSize
+    ) {
+      final end = (start + AppDatabase.safeVariableBatchSize).clamp(
+        0,
+        appliedIds.length,
+      );
       await (database.update(database.episodes)
-            ..where((row) => row.id.isIn(appliedIds)))
+            ..where((row) => row.id.isIn(appliedIds.sublist(start, end))))
           .write(const EpisodesCompanion(automationApplied: Value(true)));
     }
   }

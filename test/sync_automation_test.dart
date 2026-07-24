@@ -46,13 +46,18 @@ void main() {
     }
     final queued = <String>[];
     final downloaded = <String>[];
+    var queueBatches = 0;
 
     await applyPodcastAutomation(
       database: database,
-      queueEpisode: (id) async => queued.add(id),
+      queueEpisodes: (ids) async {
+        queueBatches++;
+        queued.addAll(ids);
+      },
       downloadEpisode: (id) async => downloaded.add(id),
     );
 
+    expect(queueBatches, 1);
     expect(queued, ['episode-3', 'episode-2', 'episode-1', 'episode-0']);
     expect(downloaded, ['episode-3', 'episode-2']);
     expect(
@@ -97,7 +102,7 @@ void main() {
 
       await applyPodcastAutomation(
         database: database,
-        queueEpisode: (_) => throw StateError('queue unavailable'),
+        queueEpisodes: (_) => throw StateError('queue unavailable'),
         downloadEpisode: (_) async {},
       );
 
@@ -160,7 +165,7 @@ void main() {
 
     await applyPodcastAutomation(
       database: database,
-      queueEpisode: (_) async {},
+      queueEpisodes: (_) async {},
       downloadEpisode: (id) async => retried.add(id),
     );
 
@@ -212,7 +217,7 @@ void main() {
 
     await applyPodcastAutomation(
       database: database,
-      queueEpisode: (_) async {},
+      queueEpisodes: (_) async {},
       downloadEpisode: (_) => throw StateError('enqueue failed'),
     );
 

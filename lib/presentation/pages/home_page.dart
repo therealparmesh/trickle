@@ -139,7 +139,7 @@ final class HomePage extends ConsumerWidget {
                 error: (error, _) => SliverToBoxAdapter(
                   child: ErrorView(
                     friendlyError(error),
-                    onRetry: () => ref.invalidate(podcastFeedsProvider),
+                    onRetry: () => ref.invalidate(feedsProvider),
                   ),
                 ),
               ),
@@ -309,7 +309,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     final playing = ref.watch(playbackStateProvider).value?.playing == true;
     final progress = ref.watch(episodeProgressSnapshotProvider(episode.id));
     final listeningState = episodeListeningState(episode, progress);
-    final feed = ref.watch(feedProvider(episode.feedId)).value;
+    final feed = ref.watch(feedSnapshotProvider(episode.feedId));
     final isCurrent = current?.id == episode.id;
     final status = isCurrent
         ? (playing ? 'playing' : 'paused')

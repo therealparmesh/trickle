@@ -67,7 +67,7 @@ final class PodcastsPage extends ConsumerWidget {
                 error: (error, _) => SliverToBoxAdapter(
                   child: ErrorView(
                     friendlyError(error),
-                    onRetry: () => ref.invalidate(podcastFeedsProvider),
+                    onRetry: () => ref.invalidate(feedsProvider),
                   ),
                 ),
               ),

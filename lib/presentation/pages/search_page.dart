@@ -13,16 +13,18 @@ import '../../domain/feed_models.dart';
 import '../subscription_actions.dart';
 import '../widgets/common.dart';
 
+final _catalogSubscriptionsProvider = Provider<Map<String, Feed>>((ref) {
+  final feeds = ref.watch(podcastFeedsProvider).value ?? const <Feed>[];
+  return {
+    for (final feed in feeds)
+      if (!feed.isPrivate) _feedUrlIdentity(feed.feedUrl): feed,
+  };
+});
+
 final _catalogSubscriptionProvider = Provider.autoDispose.family<Feed?, String>(
-  (ref, identity) {
-    final feeds = ref.watch(podcastFeedsProvider).value ?? const <Feed>[];
-    for (final feed in feeds) {
-      if (!feed.isPrivate && _feedUrlIdentity(feed.feedUrl) == identity) {
-        return feed;
-      }
-    }
-    return null;
-  },
+  (ref, identity) => ref.watch(
+    _catalogSubscriptionsProvider.select((feeds) => feeds[identity]),
+  ),
 );
 
 final class SearchPage extends ConsumerStatefulWidget {

@@ -267,14 +267,13 @@ void main() {
       ProviderScope(
         overrides: [
           recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
-          podcastFeedsProvider.overrideWith((_) => Stream.value(const [])),
+          feedsProvider.overrideWith((_) => Stream.value(const [])),
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
           queueProvider.overrideWith((_) => Stream.value(const [])),
           downloadsProvider.overrideWith((_) => Stream.value(const [])),
           starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
-          readerFeedsProvider.overrideWith((_) => Stream.value(const [])),
           starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
         ],
         child: MaterialApp(
@@ -354,14 +353,13 @@ void main() {
       ProviderScope(
         overrides: [
           recentEpisodesProvider.overrideWith((_) => Stream.value(episodes)),
-          podcastFeedsProvider.overrideWith((_) => Stream.value([feed])),
+          feedsProvider.overrideWith((_) => Stream.value([feed])),
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
           queueProvider.overrideWith((_) => Stream.value(const [])),
           downloadsProvider.overrideWith((_) => Stream.value(const [])),
           starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
-          readerFeedsProvider.overrideWith((_) => Stream.value(const [])),
           starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
           currentMediaProvider.overrideWith((_) => Stream.value(null)),
           playbackStateProvider.overrideWith(

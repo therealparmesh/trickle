@@ -44,6 +44,7 @@ final class FeedRepository {
   final Uuid _uuid = const Uuid();
   final Map<String, Completer<bool>> _feedDeletions = {};
   final Map<String, Future<bool>> _refreshes = {};
+  Future<Map<String, Feed>>? _privateFeedsByIdentity;
 
   /// Loads and parses a podcast without creating or changing a subscription.
   Future<ParsedFeed> loadPodcastPreview(
@@ -140,7 +141,16 @@ final class FeedRepository {
       }
       rethrow;
     }
-    return (await _database.feedById(feedId))!;
+    final storedFeed = (await _database.feedById(feedId))!;
+    if (isPrivate) {
+      final privateFeeds = await _privateFeedIndex();
+      privateFeeds[_privateFeedIdentity(
+            resolved.refreshUrl,
+            resolved.refreshHeaders,
+          )] =
+          storedFeed;
+    }
+    return storedFeed;
   }
 
   Future<void> updatePrivateAccess(
@@ -180,6 +190,13 @@ final class FeedRepository {
         document: resolved.document,
         requireExisting: true,
         expectedRevision: feed.updatedAt,
+      );
+      await _replaceCachedPrivateFeed(
+        feed,
+        currentSecret: PrivateFeedSecret(
+          url: resolved.refreshUrl,
+          headers: resolved.refreshHeaders,
+        ),
       );
     } on Object catch (error, stackTrace) {
       try {
@@ -394,6 +411,7 @@ final class FeedRepository {
           _database.feeds,
         )..where((row) => row.id.equals(feedId))).go();
       });
+      await _removeCachedPrivateFeed(feedId);
       deletion.complete(true);
       // External cleanup happens only after the database commit. If the
       // transaction fails, the subscription and all credentials remain usable.
@@ -588,18 +606,23 @@ final class FeedRepository {
         currentFeed?.updatedAt != expectedRevision) {
       throw const _StaleFeedRefresh();
     }
-    final currentEpisodes = {
-      for (final episode in await (_database.select(
-        _database.episodes,
-      )..where((row) => row.feedId.equals(feedId))).get())
-        episode.id: episode,
-    };
-    final currentArticles = {
-      for (final article in await (_database.select(
-        _database.articles,
-      )..where((row) => row.feedId.equals(feedId))).get())
-        article.id: article,
-    };
+    var hasStoredItems = false;
+    if (currentFeed != null) {
+      hasStoredItems =
+          await (_database.select(_database.episodes)
+                ..where((row) => row.feedId.equals(feedId))
+                ..limit(1))
+              .getSingleOrNull() !=
+          null;
+      if (!hasStoredItems) {
+        hasStoredItems =
+            await (_database.select(_database.articles)
+                  ..where((row) => row.feedId.equals(feedId))
+                  ..limit(1))
+                .getSingleOrNull() !=
+            null;
+      }
+    }
     final currentKind =
         currentFeed != null &&
             currentFeed.kind >= 0 &&
@@ -609,9 +632,7 @@ final class FeedRepository {
     // A temporary publisher-side feed regression must not move a populated
     // subscription to the other library or erase its local history. Empty
     // subscriptions may adopt a type once their first entries arrive.
-    final kind =
-        currentKind != null &&
-            (currentEpisodes.isNotEmpty || currentArticles.isNotEmpty)
+    final kind = currentKind != null && hasStoredItems
         ? currentKind
         : parsed.kind;
     final parsedEpisodes = kind == FeedKind.podcast
@@ -637,6 +658,15 @@ final class FeedRepository {
         }
       }
       await _database.transaction(() async {
+        final searchItems = <SearchIndexEntry>[
+          SearchIndexEntry(
+            entityId: feedId,
+            kind: 'feed',
+            title: parsed.title,
+            body: prepared.feedBody,
+            feedTitle: parsed.title,
+          ),
+        ];
         if (requireExisting &&
             (_feedDeletions.containsKey(feedId) ||
                 await _database.feedById(feedId) == null)) {
@@ -651,6 +681,25 @@ final class FeedRepository {
         final updatedAt = effectiveFeed == null
             ? now
             : _nextFeedRevision(now, effectiveFeed.updatedAt);
+        // Re-read mutable item state inside the transaction. The earlier maps
+        // decide feed classification, while these snapshots preserve a play,
+        // save, read, or preview update that raced feed preparation.
+        final storedEpisodes = kind == FeedKind.podcast
+            ? {
+                for (final episode in await (_database.select(
+                  _database.episodes,
+                )..where((row) => row.feedId.equals(feedId))).get())
+                  episode.id: episode,
+              }
+            : const <String, Episode>{};
+        final storedArticles = kind == FeedKind.reader
+            ? {
+                for (final article in await (_database.select(
+                  _database.articles,
+                )..where((row) => row.feedId.equals(feedId))).get())
+                  article.id: article,
+              }
+            : const <String, Article>{};
         await _database
             .into(_database.feeds)
             .insertOnConflictUpdate(
@@ -679,14 +728,6 @@ final class FeedRepository {
                 updatedAt: updatedAt,
               ),
             );
-        await _database.indexSearchItem(
-          entityId: feedId,
-          kind: 'feed',
-          title: parsed.title,
-          body: prepared.feedBody,
-          feedTitle: parsed.title,
-        );
-
         if (kind == FeedKind.podcast) {
           await _database.customStatement(
             "DELETE FROM search_index WHERE kind = 'article' AND entity_id "
@@ -718,8 +759,7 @@ final class FeedRepository {
             isPrivate: isPrivate,
           );
           final id = stableContentId(feedId, identity);
-          final existing =
-              await _database.episodeById(id) ?? currentEpisodes[id];
+          final existing = storedEpisodes[id];
           if (existing != null &&
               existing.chaptersUrl != parsedEpisode.chaptersUrl?.toString()) {
             await (_database.delete(
@@ -783,12 +823,14 @@ final class FeedRepository {
                       : row.id.isNotIn(transcriptIds)),
             );
           await staleTranscripts.go();
-          await _database.indexSearchItem(
-            entityId: id,
-            kind: 'episode',
-            title: parsedEpisode.title,
-            body: prepared.episodeBodies[episodeIndex],
-            feedTitle: parsed.title,
+          searchItems.add(
+            SearchIndexEntry(
+              entityId: id,
+              kind: 'episode',
+              title: parsedEpisode.title,
+              body: prepared.episodeBodies[episodeIndex],
+              feedTitle: parsed.title,
+            ),
           );
         }
 
@@ -803,8 +845,7 @@ final class FeedRepository {
             isPrivate: isPrivate,
           );
           final id = stableContentId(feedId, identity);
-          final existing =
-              await _database.articleById(id) ?? currentArticles[id];
+          final existing = storedArticles[id];
           await _database
               .into(_database.articles)
               .insertOnConflictUpdate(
@@ -837,14 +878,17 @@ final class FeedRepository {
                   starred: Value(existing?.starred ?? false),
                 ),
               );
-          await _database.indexSearchItem(
-            entityId: id,
-            kind: 'article',
-            title: parsedArticle.title,
-            body: prepared.articleBodies[articleIndex],
-            feedTitle: parsed.title,
+          searchItems.add(
+            SearchIndexEntry(
+              entityId: id,
+              kind: 'article',
+              title: parsedArticle.title,
+              body: prepared.articleBodies[articleIndex],
+              feedTitle: parsed.title,
+            ),
           );
         }
+        await _database.indexSearchItems(searchItems);
       });
     } on Object catch (error, stackTrace) {
       var feedStillExists = true;
@@ -922,20 +966,79 @@ final class FeedRepository {
     Uri url,
     Map<String, String> headers,
   ) async {
+    return (await _privateFeedIndex())[_privateFeedIdentity(url, headers)];
+  }
+
+  Future<Map<String, Feed>> _privateFeedIndex() async {
+    final active = _privateFeedsByIdentity;
+    if (active != null) return active;
+    final load = _loadPrivateFeedIndex();
+    _privateFeedsByIdentity = load;
+    try {
+      return await load;
+    } on Object {
+      if (identical(_privateFeedsByIdentity, load)) {
+        _privateFeedsByIdentity = null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<Map<String, Feed>> _loadPrivateFeedIndex() async {
     final privateFeeds = await (_database.select(
       _database.feeds,
     )..where((row) => row.isPrivate.equals(true))).get();
+    final result = <String, Feed>{};
     for (final feed in privateFeeds) {
       final secret = await _privateFeeds.read(feed.credentialRef ?? '');
-      if (secret != null &&
-          (secret.url == url ||
-              credentialAgnosticUrl(secret.url) ==
-                  credentialAgnosticUrl(url)) &&
-          mapEquals(secret.headers, headers)) {
-        return feed;
-      }
+      if (secret == null) continue;
+      result.putIfAbsent(
+        _privateFeedIdentity(secret.url, secret.headers),
+        () => feed,
+      );
     }
-    return null;
+    return result;
+  }
+
+  Future<void> _replaceCachedPrivateFeed(
+    Feed feed, {
+    required PrivateFeedSecret currentSecret,
+  }) async {
+    final active = _privateFeedsByIdentity;
+    if (active == null) return;
+    try {
+      final feeds = await active;
+      feeds.removeWhere((_, cachedFeed) => cachedFeed.id == feed.id);
+      feeds[_privateFeedIdentity(currentSecret.url, currentSecret.headers)] =
+          feed;
+    } on Object {
+      // A later lookup will retry a failed cache load from secure storage.
+    }
+  }
+
+  Future<void> _removeCachedPrivateFeed(String feedId) async {
+    final active = _privateFeedsByIdentity;
+    if (active == null) return;
+    try {
+      (await active).removeWhere((_, feed) => feed.id == feedId);
+    } on Object {
+      // Database deletion remains authoritative if cache loading failed.
+    }
+  }
+
+  String _privateFeedIdentity(Uri url, Map<String, String> headers) {
+    final headerEntries = headers.entries.toList()
+      ..sort((left, right) {
+        final keyOrder = left.key.compareTo(right.key);
+        return keyOrder != 0 ? keyOrder : left.value.compareTo(right.value);
+      });
+    return stableContentId(
+      'private-feed',
+      jsonEncode([
+        credentialAgnosticUrl(url),
+        for (final entry in headerEntries) [entry.key, entry.value],
+      ]),
+    );
   }
 
   Map<String, String> _authenticationHeaders({

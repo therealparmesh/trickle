@@ -197,6 +197,11 @@ final class BackupService {
     final existingQueueIds = {
       for (final entry in existingQueue) entry.episodeId: entry.id,
     };
+    final existingFeeds = await _database.select(_database.feeds).get();
+    final existingFeedsById = {for (final feed in existingFeeds) feed.id: feed};
+    final existingFeedsByUrl = {
+      for (final feed in existingFeeds) feed.feedUrl: feed,
+    };
     final backupFeedsWithEpisodes = {
       for (final episode in episodes)
         if (episode['feedId'] case final String feedId) feedId,
@@ -205,6 +210,7 @@ final class BackupService {
         ? 0
         : existingQueue.last.sortKey + 1024;
     await _database.transaction(() async {
+      final searchItems = <SearchIndexEntry>[];
       for (final json in feeds) {
         final feed = Feed.fromJson(json);
         final url = Uri.tryParse(feed.feedUrl);
@@ -217,8 +223,8 @@ final class BackupService {
             feed.kind > 2) {
           continue;
         }
-        final sameUrl = await _database.feedByUrl(feed.feedUrl);
-        final idCollision = await _database.feedById(feed.id);
+        final sameUrl = existingFeedsByUrl[feed.feedUrl];
+        final idCollision = existingFeedsById[feed.id];
         final actualFeedId =
             sameUrl?.id ??
             (idCollision == null
@@ -248,15 +254,19 @@ final class BackupService {
           outroSkipMs: feed.outroSkipMs.clamp(0, 600000),
         );
         await _database.into(_database.feeds).insertOnConflictUpdate(sanitized);
+        existingFeedsById[actualFeedId] = sanitized;
+        existingFeedsByUrl[feed.feedUrl] = sanitized;
         acceptedFeeds[feed.id] = actualFeedId;
         feedTitles[actualFeedId] = feed.title;
         feedKinds[actualFeedId] = kind;
-        await _database.indexSearchItem(
-          entityId: actualFeedId,
-          kind: 'feed',
-          title: feed.title,
-          body: '${feed.author ?? ''} ${plainText(feed.description)}',
-          feedTitle: feed.title,
+        searchItems.add(
+          SearchIndexEntry(
+            entityId: actualFeedId,
+            kind: 'feed',
+            title: feed.title,
+            body: '${feed.author ?? ''} ${plainText(feed.description)}',
+            feedTitle: feed.title,
+          ),
         );
       }
       for (final json in episodes) {
@@ -309,12 +319,14 @@ final class BackupService {
             .into(_database.episodes)
             .insertOnConflictUpdate(sanitized);
         acceptedEpisodes[episode.id] = actualEpisodeId;
-        await _database.indexSearchItem(
-          entityId: actualEpisodeId,
-          kind: 'episode',
-          title: episode.title,
-          body: plainText(episode.description),
-          feedTitle: feedTitles[actualFeedId] ?? '',
+        searchItems.add(
+          SearchIndexEntry(
+            entityId: actualEpisodeId,
+            kind: 'episode',
+            title: episode.title,
+            body: plainText(episode.description),
+            feedTitle: feedTitles[actualFeedId] ?? '',
+          ),
         );
       }
       for (final json in articles) {
@@ -348,15 +360,18 @@ final class BackupService {
             .into(_database.articles)
             .insertOnConflictUpdate(sanitized);
         acceptedArticles.add(actualArticleId);
-        await _database.indexSearchItem(
-          entityId: actualArticleId,
-          kind: 'article',
-          title: article.title,
-          body:
-              '${article.author ?? ''} ${plainText(article.contentHtml ?? article.summary)}',
-          feedTitle: feedTitles[actualFeedId] ?? '',
+        searchItems.add(
+          SearchIndexEntry(
+            entityId: actualArticleId,
+            kind: 'article',
+            title: article.title,
+            body:
+                '${article.author ?? ''} ${plainText(article.contentHtml ?? article.summary)}',
+            feedTitle: feedTitles[actualFeedId] ?? '',
+          ),
         );
       }
+      await _database.indexSearchItems(searchItems);
       for (final json in _maps(data['progress'])) {
         final progress = PlaybackProgressesData.fromJson({
           ...json,

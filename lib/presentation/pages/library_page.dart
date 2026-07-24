@@ -8,6 +8,7 @@ import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/formatters.dart';
+import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 
 final class LibraryPage extends ConsumerWidget {
@@ -17,6 +18,8 @@ final class LibraryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final queueState = ref.watch(queueProvider);
     final queue = queueState.value ?? const [];
+    final queuedEpisodes =
+        ref.watch(queuedEpisodesProvider).value ?? const <String, Episode>{};
     final podcastCount = ref.watch(podcastFeedsProvider).value?.length;
     final feedCount = ref.watch(readerFeedsProvider).value?.length;
     final downloadCount = ref.watch(downloadsProvider).value?.length;
@@ -120,14 +123,13 @@ final class LibraryPage extends ConsumerWidget {
                 itemCount: queue.take(5).length,
                 itemBuilder: (context, index) {
                   final item = queue[index];
+                  final episode = queuedEpisodes[item.id];
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     onTap: () => _openQueueItem(context, ref, index),
-                    leading: EpisodeArtworkById(
-                      episodeId: item.id,
-                      fallbackUrl: item.artUri?.toString(),
-                      size: 52,
-                    ),
+                    leading: episode == null
+                        ? Artwork(url: item.artUri?.toString(), size: 52)
+                        : EpisodeArtwork(episode: episode, size: 52),
                     title: EpisodeTitle(
                       title: item.title,
                       explicit: item.extras?['explicit'] == true,

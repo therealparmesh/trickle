@@ -34,6 +34,7 @@ The visual system uses clipped control geometry, functional state rails, and a s
 - Flutter 3.44.4 stable with Dart 3.12.2
 - oxfmt 0.57.0 for Markdown formatting
 - Android SDK 36 for Android builds
+- JDK 17 or 21 for Android builds; JDK 26 is not supported by the current Android toolchain
 - Xcode 26 or later and CocoaPods for iOS builds
 
 ## Getting started
@@ -75,7 +76,7 @@ The unsigned build commands verify compilation without requiring publisher crede
 - `lib/services`: refresh scheduling, feed automation, notifications, OPML, and local backup
 - `lib/presentation`: Riverpod-driven screens, the shared visual system, reusable content components, and the persistent player shell
 
-The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Potentially expensive feed and article parsing runs away from the UI isolate. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
+The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Feed refreshes and restores preload identity maps, update search data in bounded batches, and preserve mutable item state with one transactional snapshot instead of per-item queries. Shared library snapshots prevent each visible row from opening its own database stream. Potentially expensive feed and article parsing runs away from the UI isolate, and reader extraction and fragmentation use linear passes over the document. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
 
 ## Project layout
 
@@ -97,4 +98,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in screenshots were regenerated from the current visual system on July 23, 2026.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in screenshots were regenerated from the current visual system on July 24, 2026.

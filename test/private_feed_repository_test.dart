@@ -124,6 +124,11 @@ void main() {
       updatedSecret?.url.queryParameters['access_token'],
       'REPLACEMENT_SECRET',
     );
+
+    await repository.deleteFeed(rotated.id);
+    final resubscribed = await repository.subscribe(secretUrl);
+    expect(resubscribed.id, isNot(rotated.id));
+    expect(await database.select(database.feeds).get(), hasLength(1));
   });
 
   test('bounded refresh selects only feeds due before the cutoff', () async {
@@ -207,8 +212,12 @@ void main() {
     expect(feed.kind, FeedKind.podcast.index);
     expect(await database.select(database.episodes).get(), hasLength(1));
     expect(await database.select(database.articles).get(), isEmpty);
-    expect(await database.watchPodcastFeeds().first, hasLength(1));
-    expect(await database.watchReaderFeeds().first, isEmpty);
+    final feeds = await database.watchFeeds().first;
+    expect(
+      feeds.where((feed) => feed.kind == FeedKind.podcast.index),
+      hasLength(1),
+    );
+    expect(feeds.where((feed) => feed.kind == FeedKind.reader.index), isEmpty);
   });
 
   test('a malformed refresh cannot erase or reclassify a podcast', () async {

@@ -66,27 +66,43 @@ final class ArticleRepository {
     }
     final stored = await _database.articleById(article.id);
     if (stored == null) return null;
+    return _previewImageForStored(stored, lease: lease);
+  }
+
+  Future<String?> previewImageById(
+    String articleId, {
+    PreviewLease? lease,
+  }) async {
+    final stored = await _database.articleById(articleId);
+    if (stored == null) return null;
+    return _previewImageForStored(stored, lease: lease);
+  }
+
+  Future<String?> _previewImageForStored(
+    Article stored, {
+    PreviewLease? lease,
+  }) async {
     if (stored.imageUrl?.trim().isNotEmpty == true) {
       return stored.imageUrl!.trim();
     }
     if (stored.canonicalUrl?.trim().isNotEmpty != true ||
-        _previewMisses.contains(article.id)) {
+        _previewMisses.contains(stored.id)) {
       return null;
     }
-    final existing = _previewRequests[article.id];
+    final existing = _previewRequests[stored.id];
     if (existing != null) return existing;
     final request = _discoverPreviewImage(
       stored,
       lease == null
           ? null
-          : () => _previewInterest[article.id]?.isNotEmpty != true,
+          : () => _previewInterest[stored.id]?.isNotEmpty != true,
     );
-    _previewRequests[article.id] = request;
+    _previewRequests[stored.id] = request;
     try {
       return await request;
     } finally {
-      if (identical(_previewRequests[article.id], request)) {
-        final _ = _previewRequests.remove(article.id);
+      if (identical(_previewRequests[stored.id], request)) {
+        final _ = _previewRequests.remove(stored.id);
       }
     }
   }
@@ -265,18 +281,32 @@ ExtractedArticle _extractArticle((String, String) input) {
       ? baseUrl
       : (_safeWebUri(baseHref, page) ?? page).toString();
   _removeReaderJunk(document.querySelectorAll('*'));
-  final articles = document.querySelectorAll('article')
-    ..sort((a, b) => _articleScore(b).compareTo(_articleScore(a)));
-  final bestArticle = articles.where(_looksLikeArticleBody).firstOrNull;
+  final metrics = _measureArticleElements(document);
+  Element? bestArticle;
+  var bestArticleScore = -1;
+  for (final article in document.querySelectorAll('article')) {
+    if (!_looksLikeArticleBody(article, metrics)) continue;
+    final score = _articleScore(article, metrics);
+    if (score > bestArticleScore) {
+      bestArticle = article;
+      bestArticleScore = score;
+    }
+  }
   final main = document.querySelector('main');
   Element? candidate =
-      bestArticle ?? (main == null ? null : _articleBody(main));
+      bestArticle ?? (main == null ? null : _articleBody(main, metrics));
   if (candidate == null) {
     final candidates = document.querySelectorAll('div, section');
-    candidates.sort((a, b) => _articleScore(b).compareTo(_articleScore(a)));
-    candidate = candidates.isEmpty
-        ? document.body
-        : _articleBody(candidates.first);
+    Element? best;
+    var bestScore = -1;
+    for (final element in candidates) {
+      final score = _articleScore(element, metrics);
+      if (score > bestScore) {
+        best = element;
+        bestScore = score;
+      }
+    }
+    candidate = best == null ? document.body : _articleBody(best, metrics);
   }
   return _sanitizeArticle(
     candidate?.innerHtml ?? document.body?.innerHtml ?? '',
@@ -284,27 +314,36 @@ ExtractedArticle _extractArticle((String, String) input) {
   );
 }
 
-Element _articleBody(Element root) {
-  final paragraphCount = root.querySelectorAll('p').length;
+Element _articleBody(
+  Element root,
+  Map<Element, _ArticleElementMetrics> metrics,
+) {
+  final paragraphCount = metrics[root]?.descendantParagraphs ?? 0;
   if (paragraphCount < 2) return root;
   final containers = root
       .querySelectorAll('div, section')
       .where(
-        (element) => element.querySelectorAll('p').length == paragraphCount,
+        (element) => metrics[element]?.descendantParagraphs == paragraphCount,
       );
   var body = containers.fold(
     root,
     (smallest, element) =>
-        element.text.length < smallest.text.length ? element : smallest,
+        _articleTextLength(element, metrics) <
+            _articleTextLength(smallest, metrics)
+        ? element
+        : smallest,
   );
   if (identical(body, root)) return root;
   var ancestor = body.parent;
   while (ancestor is Element && !identical(ancestor, root)) {
-    if (ancestor.querySelectorAll('p').length != paragraphCount ||
-        ancestor.querySelector('h1') != null) {
+    final ancestorMetrics = metrics[ancestor];
+    if (ancestorMetrics?.descendantParagraphs != paragraphCount ||
+        ancestorMetrics!.descendantHeadings > 0) {
       break;
     }
-    final addsContent = ancestor.text.trim().length > body.text.trim().length;
+    final addsContent =
+        _articleTextLength(ancestor, metrics) >
+        _articleTextLength(body, metrics);
     body = ancestor;
     if (addsContent) break;
     ancestor = body.parent;
@@ -312,15 +351,161 @@ Element _articleBody(Element root) {
   return body;
 }
 
-int _articleScore(Element element) {
-  final text = element.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-  return text.length + element.querySelectorAll('p').length * 120;
+int _articleScore(
+  Element element,
+  Map<Element, _ArticleElementMetrics> metrics,
+) {
+  final elementMetrics = metrics[element];
+  if (elementMetrics == null) return 0;
+  return elementMetrics.text.normalizedLength +
+      elementMetrics.descendantParagraphs * 120;
 }
 
-bool _looksLikeArticleBody(Element element) {
-  if (element.querySelectorAll('p').length >= 2) return true;
-  return element.text.replaceAll(RegExp(r'\s+'), ' ').trim().length >=
-      _completeArticleTextLength;
+bool _looksLikeArticleBody(
+  Element element,
+  Map<Element, _ArticleElementMetrics> metrics,
+) {
+  final elementMetrics = metrics[element];
+  if (elementMetrics == null) return false;
+  return elementMetrics.descendantParagraphs >= 2 ||
+      elementMetrics.text.normalizedLength >= _completeArticleTextLength;
+}
+
+int _articleTextLength(
+  Element element,
+  Map<Element, _ArticleElementMetrics> metrics,
+) {
+  return metrics[element]?.text.normalizedLength ?? 0;
+}
+
+Map<Element, _ArticleElementMetrics> _measureArticleElements(
+  Document document,
+) {
+  final metrics = <Element, _ArticleElementMetrics>{};
+  final elements = document.querySelectorAll('*');
+  for (final element in elements.reversed) {
+    var text = const _NormalizedText.empty();
+    var descendantParagraphs = 0;
+    var descendantHeadings = 0;
+    for (final node in element.nodes) {
+      if (node is Text) {
+        text = text.combine(_NormalizedText.from(node.data));
+      } else if (node is Element) {
+        final child = metrics[node];
+        if (child == null) continue;
+        text = text.combine(child.text);
+        descendantParagraphs +=
+            child.descendantParagraphs +
+            (node.localName?.toLowerCase() == 'p' ? 1 : 0);
+        descendantHeadings +=
+            child.descendantHeadings +
+            (node.localName?.toLowerCase() == 'h1' ? 1 : 0);
+      }
+    }
+    metrics[element] = _ArticleElementMetrics(
+      text: text,
+      descendantParagraphs: descendantParagraphs,
+      descendantHeadings: descendantHeadings,
+    );
+  }
+  return metrics;
+}
+
+final class _ArticleElementMetrics {
+  const _ArticleElementMetrics({
+    required this.text,
+    required this.descendantParagraphs,
+    required this.descendantHeadings,
+  });
+
+  final _NormalizedText text;
+  final int descendantParagraphs;
+  final int descendantHeadings;
+}
+
+final class _NormalizedText {
+  const _NormalizedText.empty()
+    : normalizedLength = 0,
+      hasNonWhitespace = false,
+      hasWhitespace = false,
+      leadingWhitespace = false,
+      trailingWhitespace = false;
+
+  const _NormalizedText._({
+    required this.normalizedLength,
+    required this.hasNonWhitespace,
+    required this.hasWhitespace,
+    required this.leadingWhitespace,
+    required this.trailingWhitespace,
+  });
+
+  factory _NormalizedText.from(String source) {
+    if (source.isEmpty) return const _NormalizedText.empty();
+    final collapsed = source.replaceAll(RegExp(r'\s+'), ' ');
+    final trimmed = collapsed.trim();
+    if (trimmed.isEmpty) {
+      return const _NormalizedText._(
+        normalizedLength: 0,
+        hasNonWhitespace: false,
+        hasWhitespace: true,
+        leadingWhitespace: true,
+        trailingWhitespace: true,
+      );
+    }
+    return _NormalizedText._(
+      normalizedLength: trimmed.length,
+      hasNonWhitespace: true,
+      hasWhitespace:
+          collapsed.length != trimmed.length || trimmed.contains(' '),
+      leadingWhitespace: collapsed.startsWith(' '),
+      trailingWhitespace: collapsed.endsWith(' '),
+    );
+  }
+
+  final int normalizedLength;
+  final bool hasNonWhitespace;
+  final bool hasWhitespace;
+  final bool leadingWhitespace;
+  final bool trailingWhitespace;
+
+  _NormalizedText combine(_NormalizedText other) {
+    if (!hasNonWhitespace) {
+      if (!other.hasNonWhitespace) {
+        return _NormalizedText._(
+          normalizedLength: 0,
+          hasNonWhitespace: false,
+          hasWhitespace: hasWhitespace || other.hasWhitespace,
+          leadingWhitespace: hasWhitespace || other.hasWhitespace,
+          trailingWhitespace: hasWhitespace || other.hasWhitespace,
+        );
+      }
+      return _NormalizedText._(
+        normalizedLength: other.normalizedLength,
+        hasNonWhitespace: true,
+        hasWhitespace: hasWhitespace || other.hasWhitespace,
+        leadingWhitespace: hasWhitespace || other.leadingWhitespace,
+        trailingWhitespace: other.trailingWhitespace,
+      );
+    }
+    if (!other.hasNonWhitespace) {
+      return _NormalizedText._(
+        normalizedLength: normalizedLength,
+        hasNonWhitespace: true,
+        hasWhitespace: hasWhitespace || other.hasWhitespace,
+        leadingWhitespace: leadingWhitespace,
+        trailingWhitespace: trailingWhitespace || other.hasWhitespace,
+      );
+    }
+    final separated = trailingWhitespace || other.leadingWhitespace;
+    return _NormalizedText._(
+      normalizedLength:
+          normalizedLength + other.normalizedLength + (separated ? 1 : 0),
+      hasNonWhitespace: true,
+      hasWhitespace: hasWhitespace || other.hasWhitespace,
+      leadingWhitespace: leadingWhitespace,
+      trailingWhitespace: other.trailingWhitespace,
+    );
+  }
 }
 
 const _completeArticleTextLength = 400;
@@ -532,21 +717,28 @@ void _unwrap(Element element) {
   element.remove();
 }
 
-void _separateAdjacentTextElements(Node root) {
+bool _separateAdjacentTextElements(Node root) {
   final nodes = root.nodes.toList();
+  Node? previous;
+  var previousHasText = false;
+  var hasText = false;
   for (final node in nodes) {
-    if (node is Element) _separateAdjacentTextElements(node);
-  }
-  for (var index = 1; index < nodes.length; index++) {
-    final previous = nodes[index - 1];
-    final next = nodes[index];
+    final nodeHasText = switch (node) {
+      Text() => node.data.trim().isNotEmpty,
+      Element() => _separateAdjacentTextElements(node),
+      _ => false,
+    };
+    hasText = hasText || nodeHasText;
     if (previous is Element &&
-        next is Element &&
-        previous.text.trim().isNotEmpty &&
-        next.text.trim().isNotEmpty) {
-      root.insertBefore(Text(' '), next);
+        node is Element &&
+        previousHasText &&
+        nodeHasText) {
+      root.insertBefore(Text(' '), node);
     }
+    previous = node;
+    previousHasText = nodeHasText;
   }
+  return hasText;
 }
 
 Uri? _safeWebUri(String raw, Uri? base) {

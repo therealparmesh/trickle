@@ -771,13 +771,13 @@ List<String> _splitList(dom.Element source) {
     firstIndex: firstIndex,
     lastIndex: lastIndex,
   );
+  var chunkLength = chunk.outerHtml.length;
 
   for (final part in parts) {
-    chunk.append(part.element);
-    final tooLarge = chunk.outerHtml.length > _maxArticleFragmentLength;
-    final tooMany = chunk.children.length > _maxListItemsPerFragment;
-    if ((tooLarge || tooMany) && chunk.children.length > 1) {
-      part.element.remove();
+    final partLength = part.element.outerHtml.length;
+    final tooLarge = chunkLength + partLength > _maxArticleFragmentLength;
+    final tooMany = chunk.children.length >= _maxListItemsPerFragment;
+    if ((tooLarge || tooMany) && chunk.children.isNotEmpty) {
       result.add(chunk.outerHtml);
       chunk = _newListChunk(
         source,
@@ -785,8 +785,11 @@ List<String> _splitList(dom.Element source) {
         start: _listPartStart(firstIndex, part),
         firstIndex: firstIndex,
         lastIndex: lastIndex,
-      )..append(part.element);
+      );
+      chunkLength = chunk.outerHtml.length;
     }
+    chunk.append(part.element);
+    chunkLength += partLength;
   }
   if (chunk.children.isNotEmpty) result.add(chunk.outerHtml);
   return result;
@@ -812,64 +815,86 @@ dom.Element _newListChunk(
 }
 
 List<dom.Element> _splitElement(dom.Element source, int maxLength) {
-  final boundedSource = _boundElementAttributes(source, maxLength);
-  if (boundedSource == null) return const [];
-  final chunks = <dom.Element>[];
-  var chunk = boundedSource.clone(false);
-  final emptyLength = chunk.outerHtml.length;
-  final childLimit = math.max(64, maxLength - emptyLength).toInt();
+  final lengths = _SerializedNodeLengths();
+  return _splitElementWithLengths(source, maxLength, lengths);
+}
 
-  for (final child in boundedSource.nodes) {
-    for (final part in _splitNode(child, childLimit)) {
-      chunk.append(part);
-      if (chunk.outerHtml.length > maxLength && chunk.nodes.length > 1) {
-        part.remove();
+List<dom.Element> _splitElementWithLengths(
+  dom.Element source,
+  int maxLength,
+  _SerializedNodeLengths lengths,
+) {
+  final shell = _boundedElementShell(source, maxLength);
+  if (shell == null) return const [];
+  final chunks = <dom.Element>[];
+  var chunk = shell.clone(false);
+  final emptyLength = shell.outerHtml.length;
+  final childLimit = math.max(64, maxLength - emptyLength).toInt();
+  var chunkLength = emptyLength;
+
+  for (final child in source.nodes) {
+    for (final part in _splitNode(child, childLimit, lengths)) {
+      final partLength = lengths.of(part);
+      if (chunk.nodes.isNotEmpty && chunkLength + partLength > maxLength) {
         chunks.add(chunk);
-        chunk = boundedSource.clone(false)..append(part);
+        chunk = shell.clone(false);
+        chunkLength = emptyLength;
       }
+      chunk.append(part);
+      chunkLength += partLength;
     }
   }
   if (chunk.nodes.isNotEmpty) chunks.add(chunk);
-  return chunks.isEmpty ? [boundedSource.clone(false)] : chunks;
+  return chunks.isEmpty ? [shell] : chunks;
 }
 
-List<dom.Node> _splitNode(dom.Node source, int maxLength) {
-  dom.Node boundedSource = source;
-  if (source is dom.Element) {
-    final bounded = _boundElementAttributes(source, maxLength);
-    if (bounded == null) return const [];
-    boundedSource = bounded;
+List<dom.Node> _splitNode(
+  dom.Node source,
+  int maxLength,
+  _SerializedNodeLengths lengths,
+) {
+  if (source is dom.Text) {
+    return lengths.of(source) <= maxLength
+        ? [source.clone(true)]
+        : _splitText(source.data, maxLength);
   }
-  if (_serializedNodeLength(boundedSource) <= maxLength) {
-    return [boundedSource.clone(true)];
+  if (source is! dom.Element) return const [];
+  final shell = _boundedElementShell(source, maxLength);
+  if (shell == null) return const [];
+  final serializedLength =
+      shell.outerHtml.length +
+      source.nodes.fold(0, (total, child) => total + lengths.of(child));
+  if (serializedLength <= maxLength) {
+    for (final child in source.nodes) {
+      shell.append(child.clone(true));
+    }
+    return [shell];
   }
-  if (boundedSource is dom.Text) {
-    return _splitText(boundedSource.data, maxLength);
-  }
-  if (boundedSource is! dom.Element || boundedSource.nodes.isEmpty) {
-    return [boundedSource.clone(true)];
-  }
+  if (source.nodes.isEmpty) return [shell];
 
   final chunks = <dom.Node>[];
-  var chunk = boundedSource.clone(false);
-  final emptyLength = chunk.outerHtml.length;
+  var chunk = shell.clone(false);
+  final emptyLength = shell.outerHtml.length;
   final childLimit = math.max(64, maxLength - emptyLength).toInt();
-  for (final child in boundedSource.nodes) {
-    for (final part in _splitNode(child, childLimit)) {
-      chunk.append(part);
-      if (chunk.outerHtml.length > maxLength && chunk.nodes.length > 1) {
-        part.remove();
+  var chunkLength = emptyLength;
+  for (final child in source.nodes) {
+    for (final part in _splitNode(child, childLimit, lengths)) {
+      final partLength = lengths.of(part);
+      if (chunk.nodes.isNotEmpty && chunkLength + partLength > maxLength) {
         chunks.add(chunk);
-        chunk = boundedSource.clone(false)..append(part);
+        chunk = shell.clone(false);
+        chunkLength = emptyLength;
       }
+      chunk.append(part);
+      chunkLength += partLength;
     }
   }
   if (chunk.nodes.isNotEmpty) chunks.add(chunk);
-  return chunks.isEmpty ? [boundedSource.clone(false)] : chunks;
+  return chunks.isEmpty ? [shell] : chunks;
 }
 
-dom.Element? _boundElementAttributes(dom.Element source, int maxLength) {
-  final clone = source.clone(true);
+dom.Element? _boundedElementShell(dom.Element source, int maxLength) {
+  final clone = source.clone(false);
   if (clone.clone(false).outerHtml.length <= maxLength) return clone;
   switch (clone.localName?.toLowerCase()) {
     case 'img':
@@ -889,6 +914,24 @@ dom.Element? _boundElementAttributes(dom.Element source, int maxLength) {
   return clone.clone(false).outerHtml.length <= maxLength ? clone : null;
 }
 
+final class _SerializedNodeLengths {
+  final Map<dom.Node, int> _lengths = {};
+
+  int of(dom.Node source) {
+    final cached = _lengths[source];
+    if (cached != null) return cached;
+    final length = switch (source) {
+      dom.Element() =>
+        source.clone(false).outerHtml.length +
+            source.nodes.fold<int>(0, (total, child) => total + of(child)),
+      dom.Text() => _escapedTextLength(source.data),
+      _ => 0,
+    };
+    _lengths[source] = length;
+    return length;
+  }
+}
+
 String _safePrefix(String source, int maxCodeUnits) {
   var end = math.min(source.length, maxCodeUnits);
   if (end < source.length &&
@@ -900,32 +943,27 @@ String _safePrefix(String source, int maxCodeUnits) {
   return source.substring(0, end);
 }
 
-int _serializedNodeLength(dom.Node source) {
-  if (source is dom.Element) return source.outerHtml.length;
-  if (source is dom.Text) {
-    return const HtmlEscape(HtmlEscapeMode.element).convert(source.data).length;
-  }
-  return 0;
-}
-
 List<dom.Node> _splitText(String source, int maxLength) {
   final chunks = <dom.Node>[];
   var start = 0;
   while (start < source.length) {
-    var low = start + 1;
-    var high = source.length;
-    var end = low;
-    while (low <= high) {
-      final middle = low + ((high - low) >> 1);
-      final escapedLength = const HtmlEscape(
-        HtmlEscapeMode.element,
-      ).convert(source.substring(start, middle)).length;
-      if (escapedLength <= maxLength) {
-        end = middle;
-        low = middle + 1;
-      } else {
-        high = middle - 1;
-      }
+    var end = start;
+    var escapedLength = 0;
+    while (end < source.length) {
+      final codeUnit = source.codeUnitAt(end);
+      final codeUnits =
+          _isHighSurrogate(codeUnit) &&
+              end + 1 < source.length &&
+              _isLowSurrogate(source.codeUnitAt(end + 1))
+          ? 2
+          : 1;
+      final nextLength = _escapedCodeUnitLength(codeUnit, codeUnits);
+      if (escapedLength + nextLength > maxLength) break;
+      escapedLength += nextLength;
+      end += codeUnits;
+    }
+    if (end == start) {
+      end = math.min(start + 1, source.length);
     }
     if (end < source.length) {
       final minimumBreak = start + ((end - start) ~/ 2);
@@ -947,6 +985,28 @@ List<dom.Node> _splitText(String source, int maxLength) {
   }
   return chunks;
 }
+
+int _escapedTextLength(String source) {
+  var length = 0;
+  for (var index = 0; index < source.length; index++) {
+    final codeUnit = source.codeUnitAt(index);
+    if (_isHighSurrogate(codeUnit) &&
+        index + 1 < source.length &&
+        _isLowSurrogate(source.codeUnitAt(index + 1))) {
+      length += 2;
+      index++;
+    } else {
+      length += _escapedCodeUnitLength(codeUnit, 1);
+    }
+  }
+  return length;
+}
+
+int _escapedCodeUnitLength(int codeUnit, int codeUnits) => switch (codeUnit) {
+  0x26 => 5, // &amp;
+  0x3C || 0x3E => 4, // &lt; / &gt;
+  _ => codeUnits,
+};
 
 bool _isWhitespace(int codeUnit) =>
     codeUnit == 0x20 ||

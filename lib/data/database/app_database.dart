@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -8,6 +9,22 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/constants.dart';
 
 part 'app_database.g.dart';
+
+final class SearchIndexEntry {
+  const SearchIndexEntry({
+    required this.entityId,
+    required this.kind,
+    required this.title,
+    required this.body,
+    required this.feedTitle,
+  });
+
+  final String entityId;
+  final String kind;
+  final String title;
+  final String body;
+  final String feedTitle;
+}
 
 class Feeds extends Table {
   TextColumn get id => text()();
@@ -197,6 +214,8 @@ class SearchCaches extends Table {
   ],
 )
 class AppDatabase extends _$AppDatabase {
+  static const safeVariableBatchSize = 400;
+
   AppDatabase() : super(_openConnection());
 
   AppDatabase.forTesting(super.executor);
@@ -292,6 +311,11 @@ class AppDatabase extends _$AppDatabase {
       'ON episodes(feed_id, automation_applied, published_at DESC)',
     );
     await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_episodes_pending_automation '
+      'ON episodes(feed_id, published_at DESC, discovered_at DESC) '
+      'WHERE automation_applied = 0',
+    );
+    await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_downloads_status '
       'ON media_downloads(status, updated_at DESC)',
     );
@@ -320,23 +344,11 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Stream<List<Feed>> watchPodcastFeeds() {
-    return (select(feeds)
-          ..where((row) => row.kind.equals(FeedKind.podcast.index))
-          ..orderBy([
-            (row) => OrderingTerm.asc(row.title),
-            (row) => OrderingTerm.asc(row.id),
-          ]))
-        .watch();
-  }
-
-  Stream<List<Feed>> watchReaderFeeds() {
-    return (select(feeds)
-          ..where((row) => row.kind.equals(FeedKind.reader.index))
-          ..orderBy([
-            (row) => OrderingTerm.asc(row.title),
-            (row) => OrderingTerm.asc(row.id),
-          ]))
+  Stream<List<Feed>> watchFeeds() {
+    return (select(feeds)..orderBy([
+          (row) => OrderingTerm.asc(row.title),
+          (row) => OrderingTerm.asc(row.id),
+        ]))
         .watch();
   }
 
@@ -440,6 +452,27 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  Stream<List<Episode>> watchDownloadedEpisodes() {
+    final query = select(episodes).join([
+      innerJoin(
+        mediaDownloads,
+        mediaDownloads.episodeId.equalsExp(episodes.id),
+      ),
+    ]);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
+    );
+  }
+
+  Stream<List<Episode>> watchQueuedEpisodes() {
+    final query = select(episodes).join([
+      innerJoin(queueEntries, queueEntries.episodeId.equalsExp(episodes.id)),
+    ]);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
+    );
+  }
+
   Stream<List<Bookmark>> watchBookmarksForEpisode(String episodeId) {
     return (select(bookmarks)
           ..where((row) => row.episodeId.equals(episodeId))
@@ -455,8 +488,13 @@ class AppDatabase extends _$AppDatabase {
     )..where((row) => row.episodeId.equals(episodeId))).watchSingleOrNull();
   }
 
-  Stream<List<PlaybackProgressesData>> watchPlaybackProgresses() =>
-      select(playbackProgresses).watch();
+  Stream<List<PlaybackProgressesData>> watchIncompletePlaybackProgresses() {
+    return (select(playbackProgresses)..where(
+          (row) =>
+              row.completed.equals(false) & row.positionMs.isBiggerThanValue(0),
+        ))
+        .watch();
+  }
 
   Future<Feed?> feedById(String id) {
     return (select(feeds)..where((row) => row.id.equals(id))).getSingleOrNull();
@@ -563,16 +601,53 @@ class AppDatabase extends _$AppDatabase {
     required String title,
     required String body,
     required String feedTitle,
-  }) async {
-    await customStatement(
-      'DELETE FROM search_index WHERE entity_id = ? AND kind = ?',
-      [entityId, kind],
-    );
-    await customStatement(
-      'INSERT INTO search_index(entity_id, kind, title, body, feed_title) '
-      'VALUES (?, ?, ?, ?, ?)',
-      [entityId, kind, title, body, feedTitle],
-    );
+  }) {
+    return indexSearchItems([
+      SearchIndexEntry(
+        entityId: entityId,
+        kind: kind,
+        title: title,
+        body: body,
+        feedTitle: feedTitle,
+      ),
+    ]);
+  }
+
+  Future<void> indexSearchItems(Iterable<SearchIndexEntry> items) async {
+    final entries = <String, SearchIndexEntry>{};
+    for (final item in items) {
+      entries['${item.kind}\u0000${item.entityId}'] = item;
+    }
+    if (entries.isEmpty) return;
+    final values = entries.values.toList(growable: false);
+    final entityIdsByKind = <String, Set<String>>{};
+    for (final item in values) {
+      entityIdsByKind.putIfAbsent(item.kind, () => {}).add(item.entityId);
+    }
+    // FTS5 cannot index its UNINDEXED identity column. Passing every identity
+    // through json_each removes old rows in one scan per content kind instead
+    // of scanning the virtual table once per refreshed feed item.
+    for (final entry in entityIdsByKind.entries) {
+      await customStatement(
+        'DELETE FROM search_index WHERE kind = ? AND entity_id IN '
+        '(SELECT CAST(value AS TEXT) FROM json_each(?))',
+        [entry.key, jsonEncode(entry.value.toList())],
+      );
+    }
+    // Keep large backup imports from building one enormous platform message.
+    for (var start = 0; start < values.length; start += 500) {
+      final end = (start + 500).clamp(0, values.length);
+      await batch((batch) {
+        for (final item in values.sublist(start, end)) {
+          batch.customStatement(
+            'INSERT INTO search_index'
+            '(entity_id, kind, title, body, feed_title) '
+            'VALUES (?, ?, ?, ?, ?)',
+            [item.entityId, item.kind, item.title, item.body, item.feedTitle],
+          );
+        }
+      });
+    }
   }
 
   Future<List<SearchHit>> search(String rawQuery, {int limit = 50}) async {

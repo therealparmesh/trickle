@@ -828,44 +828,35 @@ final class EpisodeArtwork extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final feed = ref.watch(feedSnapshotProvider(episode.feedId));
+    if (feed == null) {
+      return Artwork(url: null, size: size, radius: radius);
+    }
+    final episodeUrl = episode.imageUrl?.trim();
+    final feedUrl = feed.imageUrl?.trim();
+    final url = episodeUrl?.isNotEmpty == true
+        ? episodeUrl
+        : (feedUrl?.isNotEmpty == true ? feedUrl : null);
+    if (!feed.isPrivate || url == null) {
+      return Artwork(url: url, size: size, radius: radius);
+    }
     return ref
-        .watch(feedProvider(episode.feedId))
+        .watch(privateFeedSecretProvider(feed.id))
         .when(
-          data: (feed) {
-            if (feed == null) {
+          data: (secret) {
+            if (secret == null) {
               return Artwork(url: null, size: size, radius: radius);
             }
-            final episodeUrl = episode.imageUrl?.trim();
-            final feedUrl = feed.imageUrl?.trim();
-            final url = episodeUrl?.isNotEmpty == true
-                ? episodeUrl
-                : (feedUrl?.isNotEmpty == true ? feedUrl : null);
-            if (!feed.isPrivate || url == null) {
-              return Artwork(url: url, size: size, radius: radius);
-            }
-            return ref
-                .watch(privateFeedSecretProvider(feed.id))
-                .when(
-                  data: (secret) {
-                    if (secret == null) {
-                      return Artwork(url: null, size: size, radius: radius);
-                    }
-                    final imageUri = Uri.tryParse(url);
-                    final headers =
-                        imageUri != null && sameOrigin(imageUri, secret.url)
-                        ? secret.headers
-                        : const <String, String>{};
-                    return Artwork(
-                      url: url,
-                      headers: headers,
-                      size: size,
-                      radius: radius,
-                    );
-                  },
-                  loading: () => Artwork(url: null, size: size, radius: radius),
-                  error: (_, _) =>
-                      Artwork(url: null, size: size, radius: radius),
-                );
+            final imageUri = Uri.tryParse(url);
+            final headers = imageUri != null && sameOrigin(imageUri, secret.url)
+                ? secret.headers
+                : const <String, String>{};
+            return Artwork(
+              url: url,
+              headers: headers,
+              size: size,
+              radius: radius,
+            );
           },
           loading: () => Artwork(url: null, size: size, radius: radius),
           error: (_, _) => Artwork(url: null, size: size, radius: radius),
@@ -930,48 +921,40 @@ final class ArticleArtwork extends ConsumerWidget {
       radius: radius,
       icon: Icons.article_outlined,
     );
+    final feed = ref.watch(feedSnapshotProvider(article.feedId));
+    if (feed == null) return placeholder();
+    final feedUrl = feed.imageUrl?.trim();
+    final url = hasArticleUrl
+        ? articleUrl
+        : (preview?.trim().isNotEmpty == true
+              ? preview!.trim()
+              : (feedUrl?.isNotEmpty == true ? feedUrl : null));
+    if (!feed.isPrivate || url == null) {
+      return Artwork(
+        url: url,
+        size: size,
+        aspectRatio: aspectRatio,
+        radius: radius,
+        icon: Icons.article_outlined,
+      );
+    }
     return ref
-        .watch(feedProvider(article.feedId))
+        .watch(privateFeedSecretProvider(feed.id))
         .when(
-          data: (feed) {
-            if (feed == null) return placeholder();
-            final feedUrl = feed.imageUrl?.trim();
-            final url = hasArticleUrl
-                ? articleUrl
-                : (preview?.trim().isNotEmpty == true
-                      ? preview!.trim()
-                      : (feedUrl?.isNotEmpty == true ? feedUrl : null));
-            if (!feed.isPrivate || url == null) {
-              return Artwork(
-                url: url,
-                size: size,
-                aspectRatio: aspectRatio,
-                radius: radius,
-                icon: Icons.article_outlined,
-              );
-            }
-            return ref
-                .watch(privateFeedSecretProvider(feed.id))
-                .when(
-                  data: (secret) {
-                    if (secret == null) return placeholder();
-                    final imageUri = Uri.tryParse(url);
-                    final headers =
-                        imageUri != null && sameOrigin(imageUri, secret.url)
-                        ? secret.headers
-                        : const <String, String>{};
-                    return Artwork(
-                      url: url,
-                      headers: headers,
-                      size: size,
-                      aspectRatio: aspectRatio,
-                      radius: radius,
-                      icon: Icons.article_outlined,
-                    );
-                  },
-                  loading: placeholder,
-                  error: (_, _) => placeholder(),
-                );
+          data: (secret) {
+            if (secret == null) return placeholder();
+            final imageUri = Uri.tryParse(url);
+            final headers = imageUri != null && sameOrigin(imageUri, secret.url)
+                ? secret.headers
+                : const <String, String>{};
+            return Artwork(
+              url: url,
+              headers: headers,
+              size: size,
+              aspectRatio: aspectRatio,
+              radius: radius,
+              icon: Icons.article_outlined,
+            );
           },
           loading: placeholder,
           error: (_, _) => placeholder(),

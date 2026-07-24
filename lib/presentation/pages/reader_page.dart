@@ -254,7 +254,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         loading: () => const LoadingView(),
         error: (error, _) => ErrorView(
           friendlyError(error),
-          onRetry: () => ref.invalidate(readerFeedsProvider),
+          onRetry: () => ref.invalidate(feedsProvider),
         ),
       ),
     );
