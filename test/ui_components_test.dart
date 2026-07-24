@@ -1059,6 +1059,70 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('four shortcuts fit an iPhone width with even spacing', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 300));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const keys = [
+      ValueKey('podcasts shortcut'),
+      ValueKey('up-next shortcut'),
+      ValueKey('downloads shortcut'),
+      ValueKey('youtube shortcut'),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: const Scaffold(
+          body: HorizontalShortcutStrip(
+            children: [
+              LibraryShortcut(
+                key: ValueKey('podcasts shortcut'),
+                icon: Icons.podcasts_rounded,
+                label: 'Podcasts',
+                onTap: _noop,
+              ),
+              LibraryShortcut(
+                key: ValueKey('up-next shortcut'),
+                icon: Icons.queue_music_rounded,
+                label: 'Up Next',
+                onTap: _noop,
+              ),
+              LibraryShortcut(
+                key: ValueKey('downloads shortcut'),
+                icon: Icons.arrow_downward_rounded,
+                label: 'Downloads',
+                onTap: _noop,
+              ),
+              LibraryShortcut(
+                key: ValueKey('youtube shortcut'),
+                icon: Icons.video_call_outlined,
+                label: 'Add YouTube',
+                onTap: _noop,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final rects = [for (final key in keys) tester.getRect(find.byKey(key))];
+    expect(rects.map((rect) => rect.width).toSet().length, 1);
+    for (var index = 1; index < rects.length; index++) {
+      expect(rects[index].left - rects[index - 1].right, closeTo(6, 0.01));
+    }
+    expect(rects.first.left, 10);
+    expect(rects.last.right, 383);
+    expect(
+      find.descendant(
+        of: find.byType(HorizontalShortcutStrip),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('mini player separates open and playback actions', (
     tester,
   ) async {

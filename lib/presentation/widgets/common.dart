@@ -77,9 +77,9 @@ final class HorizontalShortcutStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
-    if (textScale > 1.5) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (textScale > 1.5) {
           const horizontalPadding = 10.0;
           const spacing = 6.0;
           final columns = textScale > 2 ? 1 : 2;
@@ -99,20 +99,35 @@ final class HorizontalShortcutStrip extends StatelessWidget {
               ],
             ),
           );
-        },
-      );
-    }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          for (var index = 0; index < children.length; index++) ...[
-            if (index > 0) const SizedBox(width: 6),
-            children[index],
-          ],
-        ],
-      ),
+        }
+        if (children.length == 4 &&
+            constraints.hasBoundedWidth &&
+            constraints.maxWidth >= 360) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                for (var index = 0; index < children.length; index++) ...[
+                  if (index > 0) const SizedBox(width: 6),
+                  Expanded(child: children[index]),
+                ],
+              ],
+            ),
+          );
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(
+            children: [
+              for (var index = 0; index < children.length; index++) ...[
+                if (index > 0) const SizedBox(width: 6),
+                children[index],
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
