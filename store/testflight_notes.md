@@ -6,7 +6,7 @@ Please test the combined podcast and feed flow:
 - On Home, verify recent podcast episodes form a two-row horizontal shelf and one-line or two-line collection shortcuts remain equally aligned and tappable
 - Verify badge rules: Podcasts and Sources count subscriptions; other collection shortcuts count their own items; zero counts and Add actions show no badge
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
-- With a large library, scroll Home, Podcasts, Feeds, Search, Downloads, and Up Next; rows should remain responsive while refresh or queue automation runs
+- With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Open a podcast result and verify its description, art, dates, durations, and summaries appear before subscription and after unsubscribing
 - Partially play an episode; verify lists change from New to In Progress, show saved progress and Resume, then change to Played after completion
@@ -19,7 +19,6 @@ Please test the combined podcast and feed flow:
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed
 - Rapidly alternate Play and Pause while expanded, minimized, and buffering; Now Playing must match the active video
-- Tap Play and then the Picture in Picture button
 - During Picture in Picture, verify Now Playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading
 - Close Picture in Picture with its system X and repeat with the Now Playing X; both must discard the player so reopening starts fresh
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
