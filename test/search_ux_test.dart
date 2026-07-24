@@ -138,7 +138,7 @@ void main() {
           of: firstRow,
           matching: find.byType(CircularProgressIndicator),
         ),
-        findsNothing,
+        findsOneWidget,
       );
       final firstButton = tester.widget<TextButton>(
         find.descendant(of: firstRow, matching: find.byType(TextButton)),
@@ -146,7 +146,7 @@ void main() {
       expect(firstButton.onPressed, isNull);
       expect(
         find.descendant(of: firstRow, matching: find.text('Subscribe')),
-        findsOneWidget,
+        findsNothing,
       );
       final secondButton = tester.widget<TextButton>(
         find.descendant(of: secondRow, matching: find.byType(TextButton)),
@@ -306,6 +306,12 @@ void main() {
     await tester.tap(find.text('Subscribed'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Unsubscribe'));
+    await tester.pump();
+
+    expect(find.text('Subscription unavailable'), findsNothing);
+    expect(find.text('Stored show description'), findsOneWidget);
+    expect(find.text('Stored episode'), findsOneWidget);
+
     await tester.pumpAndSettle();
 
     expect(find.text('Subscribe'), findsOneWidget);

@@ -25,7 +25,7 @@ Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally ou
 
 ## Interface
 
-The home flow puts recent episodes first, followed by Up Next, downloads, saved items, subscriptions, and unread feed entries. A persistent mini player keeps the current episode or video reachable without taking over navigation.
+The home flow starts with a horizontally scrolling two-row shelf of recent episodes, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Shortcut badges always count the items in their destination, hide at zero, and never appear on actions such as Add Feed. The Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
 
 The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 

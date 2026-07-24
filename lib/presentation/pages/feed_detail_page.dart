@@ -33,6 +33,8 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   late String? _feedId = widget.feedId;
   late PodcastSearchResult? _podcast = widget.podcast;
   Future<ParsedFeed>? _catalogPreview;
+  ParsedFeed? _catalogPreviewSnapshot;
+  Feed? _transitionFeed;
   int _limit = _pageSize;
   bool _subscribing = false;
   bool _unsubscribing = false;
@@ -50,14 +52,23 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     if (_feedId != null || podcast == null) return null;
     return ref
         .read(feedRepositoryProvider)
-        .loadPodcastPreview(podcast.feedUrl.toString());
+        .loadPodcastPreview(podcast.feedUrl.toString())
+        .then((preview) {
+          _catalogPreviewSnapshot = preview;
+          return preview;
+        });
   }
 
   @override
   Widget build(BuildContext context) {
     final feedId = _feedId;
-    if (feedId == null) return _catalogPodcast(context);
+    if (feedId == null) {
+      return _catalogPodcast(context, subscribedFeed: _transitionFeed);
+    }
     final feed = ref.watch(feedProvider(feedId));
+    if (feed.isLoading && _transitionFeed != null && _catalogPreview != null) {
+      return _catalogPodcast(context, subscribedFeed: _transitionFeed);
+    }
     final page = (feedId: feedId, limit: _limit);
     final kind = feed.value == null
         ? null
@@ -241,12 +252,9 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
 
   Future<void> _unsubscribe(Feed feed) async {
     if (_unsubscribing) return;
-    setState(() => _unsubscribing = true);
     final confirmed = await confirmUnsubscribe(context, feed);
-    if (!confirmed || !mounted) {
-      if (mounted) setState(() => _unsubscribing = false);
-      return;
-    }
+    if (!confirmed || !mounted) return;
+    setState(() => _unsubscribing = true);
     try {
       final kind =
           FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
@@ -275,14 +283,21 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       final retainedPreview = podcast == null
           ? null
           : _storedPodcastPreview(feed, episodes);
+      if (podcast != null) {
+        setState(() {
+          _podcast = podcast;
+          _catalogPreviewSnapshot = retainedPreview;
+          _catalogPreview = Future.value(retainedPreview!);
+          _transitionFeed = feed;
+          _feedId = null;
+          _forcePrivateResubscribe = feed.isPrivate;
+        });
+      }
       await removeSubscription(ref, feed);
       if (!mounted) return;
       if (podcast != null) {
         setState(() {
-          _feedId = null;
-          _podcast = podcast;
-          _catalogPreview = Future.value(retainedPreview!);
-          _forcePrivateResubscribe = feed.isPrivate;
+          _transitionFeed = null;
           _unsubscribing = false;
         });
       } else if (context.canPop()) {
@@ -291,13 +306,19 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
         context.go('/');
       }
     } on Object catch (error) {
-      if (mounted) showErrorSnackBar(context, error);
+      if (mounted) {
+        setState(() {
+          _feedId = feed.id;
+          _transitionFeed = null;
+        });
+        showErrorSnackBar(context, error);
+      }
     } finally {
       if (mounted) setState(() => _unsubscribing = false);
     }
   }
 
-  Widget _catalogPodcast(BuildContext context) {
+  Widget _catalogPodcast(BuildContext context, {Feed? subscribedFeed}) {
     final podcast = _podcast;
     if (podcast == null) {
       return Scaffold(
@@ -313,9 +334,11 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     }
     final control = _SubscriptionControl(
       feedTitle: podcast.name,
-      subscribed: false,
-      busy: _subscribing,
-      onPressed: _subscribe,
+      subscribed: subscribedFeed != null,
+      busy: _subscribing || _unsubscribing,
+      onPressed: subscribedFeed == null
+          ? _subscribe
+          : () => _unsubscribe(subscribedFeed),
     );
     return Scaffold(
       appBar: AppBar(
@@ -328,6 +351,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       body: AppBackdrop(
         child: FutureBuilder<ParsedFeed>(
           future: _catalogPreview,
+          initialData: _catalogPreviewSnapshot,
           builder: (context, snapshot) {
             final details = snapshot.data;
             final episodes = details?.episodes ?? const <ParsedEpisode>[];
@@ -414,6 +438,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   void _retryCatalogPreview() {
     setState(() {
       _limit = _pageSize;
+      _catalogPreviewSnapshot = null;
       _catalogPreview = _loadCatalogPreview();
     });
   }
@@ -432,7 +457,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       if (!mounted) return;
       setState(() {
         _feedId = feed.id;
-        _catalogPreview = null;
+        _transitionFeed = feed;
         _forcePrivateResubscribe = false;
         _subscribing = false;
       });
@@ -706,7 +731,9 @@ final class _SubscriptionControl extends StatelessWidget {
       onTap: busy ? null : onPressed,
       child: Tooltip(
         message: busy
-            ? label
+            ? subscribed
+                  ? 'Unsubscribing'
+                  : 'Subscribing'
             : subscribed
             ? 'Unsubscribe'
             : label,
@@ -733,10 +760,21 @@ final class _SubscriptionControl extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          subscribed ? Icons.check_rounded : Icons.add_rounded,
-                          size: 14,
-                        ),
+                        if (busy)
+                          SizedBox.square(
+                            dimension: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: color,
+                            ),
+                          )
+                        else
+                          Icon(
+                            subscribed
+                                ? Icons.check_rounded
+                                : Icons.add_rounded,
+                            size: 14,
+                          ),
                         const SizedBox(width: 5),
                         Text(
                           label,

@@ -24,12 +24,12 @@ final class PodcastSearchRepository {
   ) async {
     final query = rawQuery.trim();
     if (query.length < 2) return const [];
+    final normalizedQuery = query.toLowerCase();
     final candidateRegion = region.trim().toUpperCase();
     final normalizedRegion = RegExp(r'^[A-Z]{2}$').hasMatch(candidateRegion)
         ? candidateRegion
         : 'US';
-    final key =
-        'apple:${normalizedRegion.toLowerCase()}:${query.toLowerCase()}';
+    final key = 'apple:${normalizedRegion.toLowerCase()}:$normalizedQuery';
     final now = DateTime.now().toUtc();
     await (_database.delete(_database.searchCaches)..where(
           (row) =>
@@ -49,7 +49,7 @@ final class PodcastSearchRepository {
 
     await _waitForRateSlot();
     final uri = Uri.https('itunes.apple.com', '/search', {
-      'term': query,
+      'term': normalizedQuery,
       'media': 'podcast',
       'entity': 'podcast',
       'country': normalizedRegion,

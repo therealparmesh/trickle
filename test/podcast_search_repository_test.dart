@@ -53,10 +53,26 @@ void main() {
     expect(results, hasLength(1));
     expect(adapter.requests, 1);
   });
+
+  test(
+    'catalog queries are case insensitive and share one cache entry',
+    () async {
+      final upper = await repository.search('SiGnAl', 'us');
+      final lower = await repository.search('signal', 'US');
+
+      expect(
+        upper.map((result) => result.feedUrl),
+        lower.map((result) => result.feedUrl),
+      );
+      expect(adapter.requests, 1);
+      expect(adapter.terms, ['signal']);
+    },
+  );
 }
 
 final class _SearchAdapter implements HttpClientAdapter {
   int requests = 0;
+  final terms = <String>[];
 
   @override
   Future<ResponseBody> fetch(
@@ -65,6 +81,7 @@ final class _SearchAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests++;
+    terms.add(options.uri.queryParameters['term']!);
     return ResponseBody.fromString(
       '''
       {

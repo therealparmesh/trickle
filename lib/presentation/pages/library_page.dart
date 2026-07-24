@@ -9,7 +9,6 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../widgets/common.dart';
-import '../widgets/design_system.dart';
 
 final class LibraryPage extends ConsumerWidget {
   const LibraryPage({super.key});
@@ -18,6 +17,11 @@ final class LibraryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final queueState = ref.watch(queueProvider);
     final queue = queueState.value ?? const [];
+    final podcastCount = ref.watch(podcastFeedsProvider).value?.length;
+    final feedCount = ref.watch(readerFeedsProvider).value?.length;
+    final downloadCount = ref.watch(downloadsProvider).value?.length;
+    final savedEpisodeCount = ref.watch(starredEpisodeCountProvider).value;
+    final savedArticleCount = ref.watch(starredArticleCountProvider).value;
     return Scaffold(
       appBar: AppBar(
         title: const PageTitle('Library'),
@@ -36,24 +40,40 @@ final class LibraryPage extends ConsumerWidget {
               child: HorizontalShortcutStrip(
                 children: [
                   LibraryShortcut(
+                    icon: Icons.podcasts_rounded,
+                    label: 'Podcasts',
+                    badge: visibleBadgeCount(podcastCount),
+                    onTap: () => context.push('/podcasts'),
+                  ),
+                  LibraryShortcut(
+                    icon: Icons.dynamic_feed_outlined,
+                    label: 'Feeds',
+                    badge: visibleBadgeCount(feedCount),
+                    color: AppConstants.magenta,
+                    onTap: () => context.push('/reader?tab=feeds'),
+                  ),
+                  LibraryShortcut(
                     icon: Icons.queue_music_rounded,
                     label: 'Up Next',
+                    badge: visibleBadgeCount(queueState.value?.length),
                     onTap: () => context.push('/queue'),
                   ),
                   LibraryShortcut(
                     icon: Icons.arrow_downward_rounded,
                     label: 'Downloads',
+                    badge: visibleBadgeCount(downloadCount),
                     onTap: () => context.push('/downloads'),
                   ),
                   LibraryShortcut(
                     icon: Icons.bookmark_outline_rounded,
-                    label: 'Episodes',
-                    color: AppConstants.magenta,
+                    label: 'Saved episodes',
+                    badge: visibleBadgeCount(savedEpisodeCount),
                     onTap: () => context.push('/saved'),
                   ),
                   LibraryShortcut(
                     icon: Icons.bookmark_outline_rounded,
-                    label: 'Articles',
+                    label: 'Saved articles',
+                    badge: visibleBadgeCount(savedArticleCount),
                     color: AppConstants.magenta,
                     onTap: () => context.push('/saved?tab=articles'),
                   ),
@@ -126,48 +146,7 @@ final class LibraryPage extends ConsumerWidget {
                   );
                 },
               ),
-            const SliverToBoxAdapter(child: SectionHeader('Storage')),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: AppCard(
-                  accent: AppConstants.acid,
-                  onTap: () => context.push('/downloads'),
-                  child: Row(
-                    children: [
-                      const SignalIcon(
-                        icon: Icons.offline_bolt_rounded,
-                        color: AppConstants.acid,
-                        size: 52,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Downloaded episodes on this device',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            const Text(
-                              'Pause, resume, and listen offline.',
-                              style: TextStyle(
-                                color: AppConstants.secondaryText,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right_rounded),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
           ],
         ),
       ),

@@ -23,8 +23,8 @@ appId: com.parmscript.trickle
     index: 1
 - assertVisible: "Unread"
 - takeScreenshot: "store/apple/screenshots/04-unread"
-- tapOn: "Feeds"
-- tapOn: "Hacker News: Front Page"
+- tapOn: "Feeds\nTab 2 of 2"
+- tapOn: "(?s)Hacker News: Front Page.*"
 - tapOn: "Unread article .*"
 - assertVisible: ".*Hacker News: Front Page.*"
 - swipe:

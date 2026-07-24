@@ -459,7 +459,15 @@ final class _CatalogSubscriptionButton extends StatelessWidget {
     final button = SizedBox(
       width: largeText ? 224 : 108,
       height: largeText ? 64 : 48,
-      child: TextButton(onPressed: busy ? null : onPressed, child: Text(label)),
+      child: TextButton(
+        onPressed: busy ? null : onPressed,
+        child: busy
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(label),
+      ),
     );
     return Semantics(
       button: true,

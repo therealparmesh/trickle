@@ -270,7 +270,10 @@ void main() {
             5,
           ).overrideWith((_) => Stream.value(const [])),
           queueProvider.overrideWith((_) => Stream.value(const [])),
-          unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
+          downloadsProvider.overrideWith((_) => Stream.value(const [])),
+          starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
+          readerFeedsProvider.overrideWith((_) => Stream.value(const [])),
+          starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
         ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
@@ -290,9 +293,9 @@ void main() {
     expect(find.text('Up Next'), findsOneWidget);
     expect(find.text('Downloads'), findsOneWidget);
     expect(find.text('Saved episodes'), findsOneWidget);
-    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Library'), findsNWidgets(2));
     expect(find.text('Sources'), findsOneWidget);
-    expect(find.text('Add YouTube feed'), findsOneWidget);
+    expect(find.text('Add YouTube'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Downloads')).dy,
       greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
@@ -302,9 +305,80 @@ void main() {
       greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
     );
     expect(
-      tester.getTopLeft(find.text('Library')).dy,
+      tester.getTopLeft(find.text('Library').last).dy,
       greaterThan(tester.getBottomLeft(find.text('Saved episodes')).dy),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home recent episodes form a horizontal two-row shelf', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final now = DateTime.utc(2026, 7, 23);
+    final feed = Feed(
+      id: 'feed',
+      title: 'Example Podcast',
+      feedUrl: 'https://example.test/feed.xml',
+      kind: FeedKind.podcast.index,
+      isPrivate: false,
+      autoDownload: false,
+      autoDownloadLimit: 3,
+      notifications: false,
+      introSkipMs: 0,
+      outroSkipMs: 0,
+      autoQueue: false,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final episodes = List.generate(
+      4,
+      (index) => Episode(
+        id: 'episode-$index',
+        feedId: feed.id,
+        title: 'Episode ${index + 1}',
+        enclosureUrl: 'https://example.test/$index.mp3',
+        discoveredAt: now.subtract(Duration(hours: index)),
+        explicit: false,
+        played: false,
+        starred: false,
+        automationApplied: false,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentEpisodesProvider.overrideWith((_) => Stream.value(episodes)),
+          podcastFeedsProvider.overrideWith((_) => Stream.value(const [])),
+          readerUnreadArticlesProvider(
+            5,
+          ).overrideWith((_) => Stream.value(const [])),
+          queueProvider.overrideWith((_) => Stream.value(const [])),
+          downloadsProvider.overrideWith((_) => Stream.value(const [])),
+          starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
+          readerFeedsProvider.overrideWith((_) => Stream.value(const [])),
+          starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
+          currentMediaProvider.overrideWith((_) => Stream.value(null)),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(PlaybackState()),
+          ),
+          feedProvider.overrideWith((_, _) => Stream.value(feed)),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(theme: TrickleTheme.dark, home: const HomePage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final first = tester.getTopLeft(find.text('Episode 1'));
+    final second = tester.getTopLeft(find.text('Episode 2'));
+    final third = tester.getTopLeft(find.text('Episode 3'));
+    expect(second.dx, closeTo(first.dx, 1));
+    expect(second.dy, greaterThan(first.dy));
+    expect(third.dx, greaterThan(first.dx));
+    expect(third.dy, closeTo(first.dy, 1));
     expect(tester.takeException(), isNull);
   });
 
@@ -807,16 +881,18 @@ void main() {
                   tooltip: 'Search',
                   onPressed: () => pressed = true,
                 ),
-                const HorizontalShortcutStrip(
+                HorizontalShortcutStrip(
                   children: [
                     LibraryShortcut(
                       icon: Icons.download_rounded,
                       label: 'Downloads',
+                      badge: 3,
                       onTap: _noop,
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
                       label: 'Saved',
+                      badge: visibleBadgeCount(0),
                       onTap: _noop,
                     ),
                   ],
@@ -842,13 +918,17 @@ void main() {
           .hasAction(SemanticsAction.tap),
       isTrue,
     );
-    expect(find.bySemanticsLabel('Downloads'), findsOneWidget);
+    expect(find.bySemanticsLabel('Downloads, 3 items'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
     expect(
       tester.getTopLeft(find.text('Saved')).dy,
       greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
     );
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
-    final shortcut = tester.getSemantics(find.bySemanticsLabel('Downloads'));
+    final shortcut = tester.getSemantics(
+      find.bySemanticsLabel('Downloads, 3 items'),
+    );
     expect(shortcut.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byType(GlassIconButton));
     expect(pressed, isTrue);

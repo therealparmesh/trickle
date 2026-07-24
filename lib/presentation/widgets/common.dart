@@ -22,6 +22,9 @@ void showMessageSnackBar(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
+int? visibleBadgeCount(int? value) =>
+    value == null || value <= 0 ? null : value;
+
 final class PageTitle extends StatelessWidget {
   const PageTitle(this.title, {super.key});
 
@@ -494,15 +497,21 @@ final class _SpeedCell extends StatelessWidget {
 }
 
 final class SectionHeader extends StatelessWidget {
-  const SectionHeader(this.title, {this.action, this.onAction, super.key})
-    : assert(
-        (action == null) == (onAction == null),
-        'action and onAction must either both be set or both be null',
-      );
+  const SectionHeader(
+    this.title, {
+    this.action,
+    this.onAction,
+    this.accent = AppConstants.cyan,
+    super.key,
+  }) : assert(
+         (action == null) == (onAction == null),
+         'action and onAction must either both be set or both be null',
+       );
 
   final String title;
   final String? action;
   final VoidCallback? onAction;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -525,7 +534,7 @@ final class SectionHeader extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const _SectionSignal(),
+                      _SectionSignal(accent),
                       const SizedBox(width: 9),
                       Expanded(child: titleWidget),
                     ],
@@ -536,7 +545,7 @@ final class SectionHeader extends StatelessWidget {
               )
             : Row(
                 children: [
-                  const _SectionSignal(),
+                  _SectionSignal(accent),
                   const SizedBox(width: 9),
                   Expanded(child: titleWidget),
                   ?actionWidget,
@@ -548,15 +557,23 @@ final class SectionHeader extends StatelessWidget {
 }
 
 final class _SectionSignal extends StatelessWidget {
-  const _SectionSignal();
+  const _SectionSignal(this.accent);
+
+  final Color accent;
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: Column(
       children: [
-        Container(width: 3, height: 13, color: AppConstants.cyan),
+        Container(width: 3, height: 13, color: accent),
         const SizedBox(height: 2),
-        Container(width: 3, height: 5, color: AppConstants.magenta),
+        Container(
+          width: 3,
+          height: 5,
+          color: accent == AppConstants.magenta
+              ? AppConstants.cyan
+              : AppConstants.magenta,
+        ),
       ],
     ),
   );
@@ -622,6 +639,7 @@ final class LibraryShortcut extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.color = AppConstants.cyan,
+    this.badge,
     super.key,
   });
 
@@ -629,15 +647,83 @@ final class LibraryShortcut extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color color;
+  final int? badge;
 
   @override
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(
       context,
     ).scale(1).clamp(1.0, 3.2).toDouble();
+    final badgeText = switch (badge) {
+      final count? when count > 99 => '99+',
+      final count? => '$count',
+      null => null,
+    };
     return SizedBox(
-      width: (162 + (textScale - 1) * 42).clamp(162.0, 224.0),
-      child: CommandTile(icon: icon, label: label, color: color, onTap: onTap),
+      width: (94 + (textScale - 1) * 32).clamp(94.0, 164.0),
+      child: Semantics(
+        button: true,
+        label: badge == null
+            ? label
+            : '$label, $badge ${badge == 1 ? 'item' : 'items'}',
+        excludeSemantics: true,
+        onTap: onTap,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    SignalIcon(icon: icon, color: color, size: 54),
+                    if (badgeText case final text?)
+                      Positioned(
+                        top: -5,
+                        right: -7,
+                        child: MediaQuery.withNoTextScaling(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              child: Text(
+                                text,
+                                style: const TextStyle(
+                                  color: AppConstants.background,
+                                  fontFamily: 'SpaceGrotesk',
+                                  fontSize: 10,
+                                  height: 1,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

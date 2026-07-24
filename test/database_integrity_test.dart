@@ -91,6 +91,19 @@ void main() {
     await expectLater(insert, throwsA(anything));
   });
 
+  test('library search is case insensitive', () async {
+    await database.indexSearchItem(
+      entityId: 'episode',
+      kind: 'episode',
+      title: 'Mixed Case Signal',
+      body: 'Technology',
+      feedTitle: 'Example Podcast',
+    );
+
+    expect(await database.search('SIGNAL'), hasLength(1));
+    expect(await database.search('signal'), hasLength(1));
+  });
+
   test('version 1 mixed feeds migrate into exactly one library', () async {
     await database.close();
     final underlying = sqlite3.openInMemory();
