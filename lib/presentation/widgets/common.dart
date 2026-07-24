@@ -654,6 +654,12 @@ final class LibraryShortcut extends StatelessWidget {
     final textScale = MediaQuery.textScalerOf(
       context,
     ).scale(1).clamp(1.0, 3.2).toDouble();
+    final labelStyle = Theme.of(context).textTheme.labelLarge!;
+    final labelHeight =
+        (labelStyle.fontSize ?? 14) *
+        (labelStyle.height ?? 1.2) *
+        textScale *
+        2;
     final badgeText = switch (badge) {
       final count? when count > 99 => '99+',
       final count? => '$count',
@@ -712,12 +718,21 @@ final class LibraryShortcut extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 7),
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelLarge,
+                SizedBox(
+                  height: labelHeight,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: MediaQuery.withClampedTextScaling(
+                      maxScaleFactor: 3.2,
+                      child: Text(
+                        label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: labelStyle,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

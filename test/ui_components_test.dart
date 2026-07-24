@@ -936,6 +936,49 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('library shortcuts align one-line and two-line labels', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: const Scaffold(
+          body: HorizontalShortcutStrip(
+            children: [
+              LibraryShortcut(
+                key: ValueKey('one-line shortcut'),
+                icon: Icons.dynamic_feed_outlined,
+                label: 'Sources',
+                onTap: _noop,
+              ),
+              LibraryShortcut(
+                key: ValueKey('two-line shortcut'),
+                icon: Icons.bookmark_outline_rounded,
+                label: 'Saved articles',
+                onTap: _noop,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final oneLine = find.byKey(const ValueKey('one-line shortcut'));
+    final twoLine = find.byKey(const ValueKey('two-line shortcut'));
+    expect(tester.getTopLeft(oneLine).dy, tester.getTopLeft(twoLine).dy);
+    expect(tester.getSize(oneLine).height, tester.getSize(twoLine).height);
+
+    final labels = find.descendant(
+      of: find.byType(HorizontalShortcutStrip),
+      matching: find.byType(Text),
+    );
+    expect(
+      tester.getTopLeft(labels.at(0)).dy,
+      tester.getTopLeft(labels.at(1)).dy,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('mini player separates open and playback actions', (
     tester,
   ) async {
