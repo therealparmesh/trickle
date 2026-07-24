@@ -274,6 +274,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> _createIndexes() async {
     await customStatement('DROP INDEX IF EXISTS idx_articles_unread');
+    await customStatement('DROP INDEX IF EXISTS idx_episodes_automation');
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_feeds_last_refresh '
       'ON feeds(last_refresh)',
@@ -305,10 +306,6 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_articles_starred '
       'ON articles(starred, published_at DESC)',
-    );
-    await customStatement(
-      'CREATE INDEX IF NOT EXISTS idx_episodes_automation '
-      'ON episodes(feed_id, automation_applied, published_at DESC)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_episodes_pending_automation '

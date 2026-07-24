@@ -203,6 +203,30 @@ void main() {
     expect(progresses.map((progress) => progress.episodeId), ['partial']);
   });
 
+  test('podcast automation uses one targeted pending-item index', () async {
+    final indexes = await database
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND name LIKE 'idx_episodes_%automation'",
+        )
+        .get();
+    final plan = await database
+        .customSelect(
+          'EXPLAIN QUERY PLAN SELECT * FROM episodes '
+          'WHERE automation_applied = 0 '
+          'ORDER BY feed_id, published_at DESC, discovered_at DESC',
+        )
+        .get();
+
+    expect(indexes.map((row) => row.read<String>('name')), [
+      'idx_episodes_pending_automation',
+    ]);
+    expect(
+      plan.map((row) => row.read<String>('detail')).join('\n'),
+      contains('idx_episodes_pending_automation'),
+    );
+  });
+
   test('version 1 mixed feeds migrate into exactly one library', () async {
     await database.close();
     final underlying = sqlite3.openInMemory();
