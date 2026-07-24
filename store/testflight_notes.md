@@ -13,7 +13,7 @@ Please test the combined podcast and feed flow:
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds
-- Pause, resume, retry, keep, and remove downloads; only the selected download row should show progress while its command runs
+- Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, share it, and open it in the browser
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed
@@ -35,4 +35,4 @@ Please test the combined podcast and feed flow:
 - Try large system text and VoiceOver or TalkBack on the primary views
 - Cold-launch the app and confirm the logo appears directly on the dark background without a light square
 
-Please include the device model, operating-system version, network state, and the feed or episode involved when reporting a problem. Never include private-feed credentials or complete private-feed URLs.
+Report the device model, OS version, network state, and affected feed or episode. Never include private-feed credentials or complete private-feed URLs.
