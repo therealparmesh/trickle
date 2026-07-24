@@ -387,6 +387,77 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Feeds See all opens the complete reader', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(393, 3000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomePage()),
+        GoRoute(
+          path: '/reader',
+          builder: (_, _) => const Scaffold(body: Text('Complete reader')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+          feedsProvider.overrideWith((_) => Stream.value(const [])),
+          readerUnreadArticlesProvider(
+            5,
+          ).overrideWith((_) => Stream.value(const [])),
+          queueProvider.overrideWith((_) => Stream.value(const [])),
+          downloadsProvider.overrideWith((_) => Stream.value(const [])),
+          starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
+          starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
+        ],
+        child: MaterialApp.router(
+          theme: TrickleTheme.dark,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final feedsHeader = find.byWidgetPredicate(
+      (widget) => widget is SectionHeader && widget.title == 'Feeds',
+    );
+    final seeAll = find.descendant(
+      of: feedsHeader,
+      matching: find.text('See all'),
+    );
+    expect(seeAll, findsOneWidget);
+    expect(find.bySemanticsLabel('See all Feeds'), findsOneWidget);
+
+    await tester.tap(seeAll);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Complete reader'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('section actions stay separated from long titles', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: const Scaffold(
+          body: SectionHeader('Podcasts', action: 'See all', onAction: _noop),
+        ),
+      ),
+    );
+
+    final titleRect = tester.getRect(find.text('Podcasts'));
+    final actionRect = tester.getRect(find.text('See all'));
+    expect(actionRect.left - titleRect.right, greaterThanOrEqualTo(8));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('content stays readable instead of stretching across a tablet', (
     tester,
   ) async {
@@ -972,6 +1043,10 @@ void main() {
     final twoLine = find.byKey(const ValueKey('two-line shortcut'));
     expect(tester.getTopLeft(oneLine).dy, tester.getTopLeft(twoLine).dy);
     expect(tester.getSize(oneLine).height, tester.getSize(twoLine).height);
+    expect(
+      tester.getTopLeft(twoLine).dx - tester.getTopRight(oneLine).dx,
+      greaterThanOrEqualTo(6),
+    );
 
     final labels = find.descendant(
       of: find.byType(HorizontalShortcutStrip),

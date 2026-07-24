@@ -147,6 +147,8 @@ final class HomePage extends ConsumerWidget {
                 child: _HomeShortcuts(
                   title: 'Feeds',
                   accent: AppConstants.magenta,
+                  action: 'See all',
+                  onAction: () => context.push('/reader'),
                   shortcuts: [
                     LibraryShortcut(
                       icon: Icons.dynamic_feed_outlined,

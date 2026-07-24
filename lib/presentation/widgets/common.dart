@@ -105,7 +105,14 @@ final class HorizontalShortcutStrip extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(children: children),
+      child: Row(
+        children: [
+          for (var index = 0; index < children.length; index++) ...[
+            if (index > 0) const SizedBox(width: 6),
+            children[index],
+          ],
+        ],
+      ),
     );
   }
 }
@@ -523,7 +530,14 @@ final class SectionHeader extends StatelessWidget {
     );
     final actionWidget = action == null
         ? null
-        : TextButton(onPressed: onAction, child: Text(action!));
+        : Semantics(
+            container: true,
+            label: '$action $title',
+            button: true,
+            onTap: onAction,
+            excludeSemantics: true,
+            child: TextButton(onPressed: onAction, child: Text(action!)),
+          );
     return Semantics(
       header: true,
       child: Padding(
@@ -548,7 +562,10 @@ final class SectionHeader extends StatelessWidget {
                   _SectionSignal(accent),
                   const SizedBox(width: 9),
                   Expanded(child: titleWidget),
-                  ?actionWidget,
+                  if (actionWidget != null) ...[
+                    const SizedBox(width: 8),
+                    actionWidget,
+                  ],
                 ],
               ),
       ),

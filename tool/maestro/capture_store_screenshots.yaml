@@ -18,9 +18,7 @@ appId: com.parmscript.trickle
 - takeScreenshot: "store/apple/screenshots/03-episode"
 - tapOn: "Back"
 - tapOn: "Back"
-- tapOn:
-    text: "See all"
-    index: 1
+- tapOn: "See all Unread"
 - assertVisible: "Unread"
 - takeScreenshot: "store/apple/screenshots/04-unread"
 - tapOn: "Feeds\nTab 2 of 2"
