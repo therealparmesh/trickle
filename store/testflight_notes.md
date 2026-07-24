@@ -3,7 +3,7 @@
 Please test the combined podcast and feed flow:
 
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
-- On Home, verify the two-row episode shelf, aligned collection shortcuts, and that Feeds See all opens the complete reader
+- On Home, verify four-button collections are evenly spaced, Add YouTube is fully visible, and Feeds See all opens the reader
 - Verify badge rules: Podcasts and Sources count subscriptions; other collection shortcuts count their own items; zero counts and Add actions show no badge
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive

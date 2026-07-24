@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 26
+- Build: 27
 
 ## Name
 
@@ -80,6 +80,8 @@ Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app t
 Browse recent podcast episodes in a compact two-row shelf, then move directly into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Subscription counts stay attached to their exact destinations, and podcast details remain visible throughout subscribe and unsubscribe actions.
 
 The Feeds collection now includes a consistent See all action that opens the complete reader.
+
+Four-button Home collections now use even spacing, and longer actions such as Add YouTube remain fully visible.
 
 Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists, while the Podcasts shortcut mirrors Sources with a subscription-count badge.
 
