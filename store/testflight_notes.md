@@ -6,6 +6,7 @@ Please test the combined podcast and feed flow:
 - On Home, verify recent podcast episodes form a two-row horizontal shelf and one-line or two-line collection shortcuts remain equally aligned and tappable
 - Verify badge rules: Podcasts and Sources count subscriptions; other collection shortcuts count their own items; zero counts and Add actions show no badge
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
+- With a large library, scroll Home, Podcasts, Feeds, Search, Downloads, and Up Next; rows should remain responsive while refresh or queue automation runs
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Open a podcast result and verify its description, art, dates, durations, and summaries appear before subscription and after unsubscribing
 - Partially play an episode; verify lists change from New to In Progress, show saved progress and Resume, then change to Played after completion

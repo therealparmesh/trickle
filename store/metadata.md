@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 24
+- Build: 25
 
 ## Name
 
@@ -82,6 +82,8 @@ Browse recent podcast episodes in a compact two-row shelf, then move directly in
 Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists, while the Podcasts shortcut mirrors Sources with a subscription-count badge.
 
 One-line and two-line collection shortcuts now keep identical icon, label, and touch-target alignment.
+
+Large libraries, feed refreshes, queue automation, search indexing, and long reader pages now avoid repeated work and stay responsive as content grows.
 
 Video entries play in a persistent player with a live minimized preview and user-started system Picture in Picture on supported devices.
 
