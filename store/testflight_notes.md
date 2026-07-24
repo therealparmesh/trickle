@@ -4,11 +4,11 @@ Please test the combined podcast and feed flow:
 
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
 - On Home, verify recent podcast episodes form a two-row horizontal shelf and one-line or two-line collection shortcuts remain equally aligned and tappable
-- Verify badges match their destination: Sources counts feed subscriptions, while zero counts and Add actions show no badge
+- Verify badge rules: Podcasts and Sources count subscriptions; other collection shortcuts count their own items; zero counts and Add actions show no badge
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Open a podcast result and verify its description, art, dates, durations, and summaries appear before subscription and after unsubscribing
-- Stream, seek, pause, resume, pause while buffering, and change the global playback speed
+- Partially play an episode; verify lists change from New to In Progress, show saved progress and Resume, then change to Played after completion
 - Verify a failed audio source shows a clear message and Retry action; retry after restoring the network
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback

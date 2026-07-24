@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 23
+- Build: 24
 
 ## Name
 
@@ -29,7 +29,7 @@ Podcasts and feeds in one fast, focused cyberpunk interface.
 
 trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
 
-Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. Podcast episodes distinguish New, In Progress, and Played, with saved progress and Resume available for partial listening. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
 trickle does not collect your information. Import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and create a local backup whenever you want.
 
@@ -58,7 +58,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-Five 1320×2868 iPhone screenshots were regenerated from the current visual system on July 23, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
+Five 1320×2868 iPhone screenshots were regenerated from the current visual system on July 24, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
 
 1. Home
 2. Podcast
@@ -78,6 +78,8 @@ Five 1320×2868 iPhone screenshots were regenerated from the current visual syst
 Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, follow public YouTube channels and playlists as feeds, stream or download episodes, build a queue, import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and read articles in a clean reader view.
 
 Browse recent podcast episodes in a compact two-row shelf, then move directly into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Subscription counts stay attached to their exact destinations, and podcast details remain visible throughout subscribe and unsubscribe actions.
+
+Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists, while the Podcasts shortcut mirrors Sources with a subscription-count badge.
 
 One-line and two-line collection shortcuts now keep identical icon, label, and touch-target alignment.
 

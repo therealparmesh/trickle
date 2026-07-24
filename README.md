@@ -10,7 +10,7 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
-- Episode details with full show notes, explicit Play/Resume controls, no play-on-open side effect, and separate quick-play buttons throughout episode lists
+- New, in-progress, and played episode states; partial-progress bars and Resume actions; full show notes; no play-on-open side effect; and separate quick-play buttons throughout episode lists
 - YouTube video entries with a persistent web player, official-source fallback, and a live minimized Now Playing preview that does not reload; user-started system Picture in Picture keeps audio playing in the background while other video pauses when the app is hidden
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
@@ -25,7 +25,7 @@ Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally ou
 
 ## Interface
 
-The home flow starts with a horizontally scrolling two-row shelf of recent episodes, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Shortcut badges always count the items in their destination, hide at zero, and never appear on actions such as Add Feed. The Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
+The home flow starts with a horizontally scrolling two-row shelf of recent episodes, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Episodes distinguish New, In Progress, and Played at a glance. Shortcut badges always count the items in their destination: Podcasts and Sources count subscriptions, while Up Next, Downloads, and Saved count their own items. Badges hide at zero and never appear on actions such as Add Feed. The Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
 
 The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 

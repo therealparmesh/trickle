@@ -35,6 +35,8 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
+Episode lists label untouched episodes New, partially listened episodes In Progress, and completed episodes Played. In-progress rows show saved progress and Resume. Playback resumes from a saved position after at least 10 seconds of listening.
+
 If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
 
 ### Video feeds
