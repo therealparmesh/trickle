@@ -3,7 +3,7 @@
 Please test the combined podcast and feed flow:
 
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
-- On Home, verify recent podcast episodes form a two-row horizontal shelf and the collection shortcuts remain compact and tappable
+- On Home, verify recent podcast episodes form a two-row horizontal shelf and one-line or two-line collection shortcuts remain equally aligned and tappable
 - Verify badges match their destination: Sources counts feed subscriptions, while zero counts and Add actions show no badge
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
