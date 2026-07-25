@@ -274,6 +274,49 @@ void main() {
     );
   });
 
+  test('Picture in Picture exit follows foreground and background intent', () {
+    for (final lifecycle in [
+      AppLifecycleState.resumed,
+      AppLifecycleState.inactive,
+    ]) {
+      expect(
+        videoPictureInPictureExitAction(
+          lifecycle: lifecycle,
+          exit: VideoPictureInPictureExit.dismissed,
+        ),
+        VideoPictureInPictureExitAction.resumeInMiniPlayer,
+      );
+    }
+    for (final lifecycle in [
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.detached,
+    ]) {
+      expect(
+        videoPictureInPictureExitAction(
+          lifecycle: lifecycle,
+          exit: VideoPictureInPictureExit.dismissed,
+        ),
+        VideoPictureInPictureExitAction.close,
+      );
+      expect(
+        videoPictureInPictureExitAction(
+          lifecycle: lifecycle,
+          exit: VideoPictureInPictureExit.restored,
+        ),
+        VideoPictureInPictureExitAction.minimize,
+      );
+    }
+    expect(
+      videoPictureInPictureExitAction(
+        lifecycle: AppLifecycleState.resumed,
+        exit: VideoPictureInPictureExit.dismissed,
+        backgroundedAtExit: true,
+      ),
+      VideoPictureInPictureExitAction.close,
+    );
+  });
+
   test('video state ignores stale pages and out-of-order callbacks', () {
     for (final scenario in [
       (observerToken: 7, revision: 100, expected: false),

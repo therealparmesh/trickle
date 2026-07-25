@@ -21,9 +21,106 @@ import 'package:trickle/domain/feed_models.dart';
 import 'package:trickle/presentation/pages/podcasts_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/search_page.dart';
+import 'package:trickle/services/opml_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('OPML podcast, including a URL token, matches catalog search', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final privateFeeds = PrivateFeedStore(
+      storage: const FlutterSecureStorage(),
+    );
+    final searchNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _CatalogAdapter(),
+      addressValidator: (_) async {},
+    );
+    final feedNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = _ImmediateFeedAdapter(),
+      addressValidator: (_) async {},
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: feedNetwork,
+      privateFeeds: privateFeeds,
+    );
+    addTearDown(() async {
+      searchNetwork.close();
+      feedNetwork.close();
+      await database.close();
+    });
+    final result = await tester.runAsync(
+      () => importOpmlSubscriptions(
+        '''
+        <opml version="2.0"><body>
+          <outline
+            type="rss"
+            text="Explicit Signal"
+            xmlUrl="HTTP://EXAMPLE.TEST/feed.xml?token=secret#catalog"
+          />
+        </body></opml>
+        ''',
+        subscribe: (url) async {
+          await repository.subscribe(url);
+        },
+      ),
+    );
+    expect(result, isNotNull);
+    expect(result!.imported, 1);
+    expect(result.failed, 0);
+    final imported = (await database.select(database.feeds).get()).single;
+    expect(imported.kind, FeedKind.podcast.index);
+    expect(imported.isPrivate, isTrue);
+    expect(imported.feedUrl, startsWith('private://'));
+
+    final router = GoRouter(
+      initialLocation: '/search',
+      routes: [
+        GoRoute(
+          path: '/search',
+          builder: (_, _) => const SearchPage(initialCatalog: true),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          podcastSearchProvider.overrideWithValue(
+            PodcastSearchRepository(database, searchNetwork),
+          ),
+          feedRepositoryProvider.overrideWithValue(repository),
+          privateFeedStoreProvider.overrideWithValue(privateFeeds),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp.router(
+          theme: TrickleTheme.dark,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(EditableText), 'signal');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    final importedRow = find.ancestor(
+      of: find.text('Explicit Signal'),
+      matching: find.byType(ListTile),
+    );
+    expect(
+      find.descendant(of: importedRow, matching: find.text('Unsubscribe')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    router.dispose();
+  });
 
   testWidgets(
     'catalog subscription affects only its row and keeps search usable',

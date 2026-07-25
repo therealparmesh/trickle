@@ -49,6 +49,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   bool _videoBuffering = false;
   bool _pausedForBackground = false;
   bool _requestingPictureInPicture = false;
+  bool _pictureInPictureBackgrounded = false;
   AppLifecycleState _lifecycleState =
       WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
   VideoPlaybackSource _source = VideoPlaybackSource.privacyWrapper;
@@ -85,6 +86,16 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lifecycleState = state;
+    final session = ref.read(videoSessionProvider);
+    if ((state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.paused ||
+            state == AppLifecycleState.detached) &&
+        session?.presentation == VideoPresentation.pictureInPicture) {
+      // WebKit can deliver its PiP-exit callback only after the app resumes.
+      // Remember that PiP was backgrounded so a system close cannot be
+      // mistaken for a foreground dismissal when that callback is drained.
+      _pictureInPictureBackgrounded = true;
+    }
     if (state == AppLifecycleState.resumed) {
       _pausedForBackground = false;
       return;
@@ -96,7 +107,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       _pausedForBackground = true;
       return;
     }
-    final session = ref.read(videoSessionProvider);
     if (session != null &&
         shouldPauseVideoForLifecycle(state, session.presentation) &&
         !_pausedForBackground) {
@@ -782,6 +792,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _videoBuffering = false;
     _pausedForBackground = false;
     _requestingPictureInPicture = false;
+    _pictureInPictureBackgrounded = false;
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
     _source = VideoPlaybackSource.privacyWrapper;
@@ -789,7 +800,10 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     final controller = _controller;
     _controller = null;
     _controllerInitialization = null;
-    final stopPlayback = controller == null
+    final canStopWebViewSynchronously =
+        _lifecycleState == AppLifecycleState.resumed ||
+        _lifecycleState == AppLifecycleState.inactive;
+    final stopPlayback = controller == null || !canStopWebViewSynchronously
         ? Future<void>.value()
         : _serializeNavigation(() async {
             try {
@@ -828,6 +842,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   Future<Object?> _handlePlatformCall(MethodCall call) async {
     if (!mounted) return null;
     if (call.method == 'pictureInPictureClosed') {
+      // Android emits this only from onStop after the system PiP window has
+      // been dismissed, so the user explicitly ended background playback.
       if (call.arguments == _sessionGeneration) await _close();
       return null;
     }
@@ -840,7 +856,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (active) {
       await _markPictureInPictureActive();
     } else {
-      ref.read(videoSessionProvider.notifier).leavePictureInPicture();
+      await _handlePictureInPictureExit(VideoPictureInPictureExit.restored);
     }
     return null;
   }
@@ -866,20 +882,17 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     switch (event.state) {
       case 'pip-start':
         unawaited(_markPictureInPictureActive());
-      case 'pip-stop':
-        if (ref.read(videoSessionProvider)?.presentation !=
-            VideoPresentation.pictureInPicture) {
-          return;
-        }
-        if (_lifecycleState == AppLifecycleState.hidden ||
-            _lifecycleState == AppLifecycleState.paused ||
-            _lifecycleState == AppLifecycleState.detached) {
-          unawaited(_close());
-        } else {
-          ref.read(videoSessionProvider.notifier).leavePictureInPicture();
-        }
-      case 'pip-closed':
-        unawaited(_close());
+      case 'pip-restored':
+        unawaited(
+          _handlePictureInPictureExit(VideoPictureInPictureExit.restored),
+        );
+      case 'pip-dismissed':
+        unawaited(
+          _handlePictureInPictureExit(
+            VideoPictureInPictureExit.dismissed,
+            backgroundedAtExit: event.backgrounded,
+          ),
+        );
       case 'video-state':
         final session = ref.read(videoSessionProvider)!;
         if (event.playing &&
@@ -896,6 +909,41 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         }
       case 'video-error':
         _fallbackOrShowError();
+    }
+  }
+
+  Future<void> _handlePictureInPictureExit(
+    VideoPictureInPictureExit exit, {
+    bool? backgroundedAtExit,
+  }) async {
+    if (!mounted || ref.read(videoSessionProvider) == null) return;
+    final wasBackgrounded =
+        _pictureInPictureBackgrounded || backgroundedAtExit == true
+        ? true
+        : null;
+    _pictureInPictureBackgrounded = false;
+    switch (videoPictureInPictureExitAction(
+      lifecycle: _lifecycleState,
+      exit: exit,
+      backgroundedAtExit: wasBackgrounded,
+    )) {
+      case VideoPictureInPictureExitAction.close:
+        await _close();
+      case VideoPictureInPictureExitAction.minimize:
+        ref.read(videoSessionProvider.notifier).leavePictureInPicture();
+      case VideoPictureInPictureExitAction.resumeInMiniPlayer:
+        ref.read(videoSessionProvider.notifier).leavePictureInPicture();
+        _pausedForBackground = false;
+        if (_ready) {
+          _updateVideoPlayback(playing: true, buffering: true);
+        }
+        try {
+          await _sendVideoCommand('play');
+        } on Object {
+          if (mounted && _ready) {
+            _updateVideoPlayback(playing: false, buffering: false);
+          }
+        }
     }
   }
 
@@ -927,6 +975,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         revision: revision,
         playing: playing == true,
         buffering: buffering == true,
+        backgrounded: value['backgrounded'] == true,
       );
     } on FormatException {
       return null;
@@ -981,6 +1030,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     final generation = _sessionGeneration;
+    _pictureInPictureBackgrounded = false;
     setState(() => _requestingPictureInPicture = true);
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
@@ -1116,6 +1166,7 @@ String _videoPresentationObserver(int observerToken) =>
         url: window.location.href,
         observerToken: observerToken,
         revision: ++revision,
+        backgrounded: document.visibilityState === 'hidden',
       }, details)));
     } catch (_) {}
   };
@@ -1176,8 +1227,15 @@ String _videoPresentationObserver(int observerToken) =>
       const active = mode(video) === 'picture-in-picture';
       if (active === inPictureInPicture) return;
       inPictureInPicture = active;
-      send(active ? 'pip-start' : (video.paused ? 'pip-closed' : 'pip-stop'));
-      reportState();
+      if (active) {
+        send('pip-start');
+        reportState();
+      } else if (video.paused) {
+        send('pip-dismissed');
+      } else {
+        send('pip-restored');
+        reportState();
+      }
     };
     listen('webkitpresentationmodechanged', updatePresentation);
     listen('enterpictureinpicture', updatePresentation);
@@ -1367,6 +1425,7 @@ final class _VideoEvent {
     required this.revision,
     required this.playing,
     required this.buffering,
+    required this.backgrounded,
   });
 
   final String state;
@@ -1375,6 +1434,7 @@ final class _VideoEvent {
   final int revision;
   final bool playing;
   final bool buffering;
+  final bool backgrounded;
 }
 
 extension on _VideoPhase {

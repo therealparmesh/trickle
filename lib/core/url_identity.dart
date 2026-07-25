@@ -25,6 +25,21 @@ String credentialAgnosticUrl(Uri uri) {
       : normalized;
 }
 
+String feedUrlIdentity(String value) {
+  final trimmed = value.trim();
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null || uri.host.isEmpty) return trimmed;
+  return uri
+      .replace(
+        scheme: uri.scheme.toLowerCase() == 'http'
+            ? 'https'
+            : uri.scheme.toLowerCase(),
+        host: uri.host.toLowerCase(),
+      )
+      .removeFragment()
+      .toString();
+}
+
 bool sameOrigin(Uri left, Uri right) {
   return left.scheme == right.scheme &&
       left.host.toLowerCase() == right.host.toLowerCase() &&

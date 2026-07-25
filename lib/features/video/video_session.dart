@@ -7,6 +7,31 @@ enum VideoPlaybackSource { privacyWrapper, officialYouTube }
 
 enum VideoPresentation { expanded, minimized, pictureInPicture }
 
+enum VideoPictureInPictureExit { restored, dismissed }
+
+enum VideoPictureInPictureExitAction { minimize, resumeInMiniPlayer, close }
+
+VideoPictureInPictureExitAction videoPictureInPictureExitAction({
+  required AppLifecycleState lifecycle,
+  required VideoPictureInPictureExit exit,
+  bool? backgroundedAtExit,
+}) {
+  if (exit == VideoPictureInPictureExit.restored) {
+    return VideoPictureInPictureExitAction.minimize;
+  }
+  final backgrounded =
+      backgroundedAtExit ??
+      switch (lifecycle) {
+        AppLifecycleState.resumed || AppLifecycleState.inactive => false,
+        AppLifecycleState.hidden ||
+        AppLifecycleState.paused ||
+        AppLifecycleState.detached => true,
+      };
+  return backgrounded
+      ? VideoPictureInPictureExitAction.close
+      : VideoPictureInPictureExitAction.resumeInMiniPlayer;
+}
+
 bool shouldPauseVideoForLifecycle(
   AppLifecycleState lifecycle,
   VideoPresentation presentation,

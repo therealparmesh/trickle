@@ -13,6 +13,7 @@ import 'package:xml/xml.dart';
 
 import '../core/constants.dart';
 import '../core/errors.dart';
+import '../core/url_identity.dart';
 import '../data/database/app_database.dart';
 import '../data/repositories/feed_repository.dart';
 import '../data/security/private_feed_store.dart';
@@ -175,15 +176,7 @@ final class OpmlService {
   Future<void> _subscribeIfMissing(String url) async {
     final parsed = Uri.parse(url.trim());
     if (!parsed.hasQuery) {
-      final normalized = parsed
-          .replace(
-            scheme: parsed.scheme.toLowerCase() == 'http'
-                ? 'https'
-                : parsed.scheme.toLowerCase(),
-            host: parsed.host.toLowerCase(),
-          )
-          .removeFragment()
-          .toString();
+      final normalized = feedUrlIdentity(url);
       if (await _database.feedByUrl(normalized) != null) return;
     }
     await _feeds.subscribe(
@@ -426,20 +419,8 @@ List<String> extractOpmlUrls(String source) {
         .map((attribute) => attribute.value.trim())
         .firstOrNull;
     if (value == null || value.isEmpty) continue;
-    if (identities.add(_opmlUrlIdentity(value))) urls.add(value);
+    if (identities.add(feedUrlIdentity(value))) urls.add(value);
     if (urls.length == 1000) break;
   }
   return List.unmodifiable(urls);
-}
-
-String _opmlUrlIdentity(String value) {
-  final uri = Uri.tryParse(value);
-  if (uri == null || uri.host.isEmpty) return value;
-  final scheme = uri.scheme.toLowerCase() == 'http'
-      ? 'https'
-      : uri.scheme.toLowerCase();
-  return uri
-      .replace(scheme: scheme, host: uri.host.toLowerCase())
-      .removeFragment()
-      .toString();
 }

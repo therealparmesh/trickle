@@ -8,24 +8,65 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/url_identity.dart';
 import '../../data/database/app_database.dart';
 import '../../domain/feed_models.dart';
 import '../subscription_actions.dart';
 import '../widgets/common.dart';
 
-final _catalogSubscriptionsProvider = Provider<Map<String, Feed>>((ref) {
+typedef _CatalogSubscriptionState = ({Feed? feed, bool resolving});
+
+final _publicCatalogSubscriptionsProvider =
+    Provider<({Map<String, Feed> feeds, bool loading})>((ref) {
+      final value = ref.watch(podcastFeedsProvider);
+      final feeds = value.value ?? const <Feed>[];
+      return (
+        feeds: {
+          for (final feed in feeds)
+            if (!feed.isPrivate) feedUrlIdentity(feed.feedUrl): feed,
+        },
+        loading: value.isLoading,
+      );
+    });
+
+final _privateCatalogSubscriptionsProvider = FutureProvider<Map<String, Feed>>((
+  ref,
+) async {
   final feeds = ref.watch(podcastFeedsProvider).value ?? const <Feed>[];
+  final privateFeeds = feeds.where((feed) => feed.isPrivate).toList();
+  if (privateFeeds.isEmpty) return const <String, Feed>{};
+  final store = ref.watch(privateFeedStoreProvider);
+  final entries = await Future.wait(
+    privateFeeds.map((feed) async {
+      try {
+        final secret = await store.read(feed.credentialRef ?? '');
+        if (secret == null) return null;
+        return MapEntry(
+          feedUrlIdentity(credentialAgnosticUrl(secret.url)),
+          feed,
+        );
+      } on Object {
+        return null;
+      }
+    }),
+  );
   return {
-    for (final feed in feeds)
-      if (!feed.isPrivate) _feedUrlIdentity(feed.feedUrl): feed,
+    for (final entry in entries)
+      if (entry != null) entry.key: entry.value,
   };
 });
 
-final _catalogSubscriptionProvider = Provider.autoDispose.family<Feed?, String>(
-  (ref, identity) => ref.watch(
-    _catalogSubscriptionsProvider.select((feeds) => feeds[identity]),
-  ),
-);
+final _catalogSubscriptionProvider = Provider.autoDispose
+    .family<_CatalogSubscriptionState, String>((ref, identity) {
+      final public = ref.watch(_publicCatalogSubscriptionsProvider);
+      final publicFeed = public.feeds[identity];
+      if (publicFeed != null) return (feed: publicFeed, resolving: false);
+      final privateFeeds = ref.watch(_privateCatalogSubscriptionsProvider);
+      return (
+        feed: privateFeeds.value?[identity],
+        resolving: public.loading || privateFeeds.isLoading,
+      );
+    });
 
 final class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({this.initialCatalog = false, super.key});
@@ -302,10 +343,11 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
 
   @override
   Widget build(BuildContext context) {
-    final identity = _feedUrlIdentity(widget.result.feedUrl.toString());
+    final identity = feedUrlIdentity(widget.result.feedUrl.toString());
     final provider = _catalogSubscriptionProvider(identity);
-    ref.listen(provider, (_, feed) {
+    ref.listen(provider, (_, subscription) {
       if (!mounted) return;
+      final feed = subscription.feed;
       final confirmedSubscription =
           _optimisticFeed != null && _optimisticFeed!.id == feed?.id;
       final confirmedRemoval = _removedFeedId != null && feed == null;
@@ -316,7 +358,8 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
         });
       }
     });
-    final storedFeed = ref.watch(provider);
+    final subscription = ref.watch(provider);
+    final storedFeed = subscription.feed;
     final feed = storedFeed?.id == _removedFeedId
         ? null
         : storedFeed ?? _optimisticFeed;
@@ -338,7 +381,7 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
     final action = _CatalogSubscriptionButton(
       podcastName: widget.result.name,
       subscribed: feed != null,
-      busy: _busy,
+      busy: _busy || subscription.resolving,
       largeText: widget.largeText,
       onPressed: () => _toggleSubscription(feed),
     );
@@ -346,9 +389,9 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
       return Semantics(
         button: true,
         label: 'Open ${widget.result.name}',
-        onTap: _busy ? null : () => _open(feed),
+        onTap: _busy || subscription.resolving ? null : () => _open(feed),
         child: InkWell(
-          onTap: _busy ? null : () => _open(feed),
+          onTap: _busy || subscription.resolving ? null : () => _open(feed),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
             child: Column(
@@ -383,7 +426,7 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
       title: title,
       subtitle: subtitle,
       trailing: action,
-      onTap: _busy ? null : () => _open(feed),
+      onTap: _busy || subscription.resolving ? null : () => _open(feed),
     );
   }
 
@@ -412,10 +455,10 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
             .subscribe(widget.result.feedUrl.toString());
         if (!mounted) return;
         final provider = _catalogSubscriptionProvider(
-          _feedUrlIdentity(widget.result.feedUrl.toString()),
+          feedUrlIdentity(widget.result.feedUrl.toString()),
         );
         setState(() {
-          _optimisticFeed = ref.read(provider)?.id == subscribed.id
+          _optimisticFeed = ref.read(provider).feed?.id == subscribed.id
               ? null
               : subscribed;
         });
@@ -424,11 +467,11 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
         await removeSubscription(ref, feed);
         if (!mounted) return;
         final provider = _catalogSubscriptionProvider(
-          _feedUrlIdentity(widget.result.feedUrl.toString()),
+          feedUrlIdentity(widget.result.feedUrl.toString()),
         );
         setState(() {
           _optimisticFeed = null;
-          _removedFeedId = ref.read(provider) == null ? null : feed.id;
+          _removedFeedId = ref.read(provider).feed == null ? null : feed.id;
         });
         showMessageSnackBar(context, 'Unsubscribed from ${widget.result.name}');
       }
@@ -485,18 +528,4 @@ final class _CatalogSubscriptionButton extends StatelessWidget {
           : button,
     );
   }
-}
-
-String _feedUrlIdentity(String value) {
-  final uri = Uri.tryParse(value.trim());
-  if (uri == null || uri.host.isEmpty) return value.trim();
-  return uri
-      .replace(
-        scheme: uri.scheme.toLowerCase() == 'http'
-            ? 'https'
-            : uri.scheme.toLowerCase(),
-        host: uri.host.toLowerCase(),
-      )
-      .removeFragment()
-      .toString();
 }

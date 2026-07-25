@@ -98,7 +98,7 @@ final class FeedRepository {
     PrivateFeedSecret? previousSecret;
     // Keep the stable address the user entered (or the feed URL discovered in
     // that page), not a transient redirect target such as a signed CDN URL.
-    var storedUrl = resolved.refreshUrl.toString();
+    var storedUrl = feedUrlIdentity(resolved.refreshUrl.toString());
     if (isPrivate) {
       existing = await _privateFeedBySecret(
         resolved.refreshUrl,
