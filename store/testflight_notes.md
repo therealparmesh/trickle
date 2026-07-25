@@ -20,12 +20,15 @@ Please test the combined podcast and feed flow:
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed
 - Rapidly alternate Play and Pause while expanded, minimized, and buffering; Now Playing must match the active video
 - During Picture in Picture, verify Now Playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading
-- Close Picture in Picture with its system X and repeat with the Now Playing X; both must discard the player so reopening starts fresh
+- With trickle visible, close Picture in Picture with its system X; the same live video and timestamp must continue in the minimized player
+- With trickle backgrounded or locked, close Picture in Picture with its system X; playback and the stored video session must end
+- Close the in-app Now Playing bar with its X; it must discard the player so reopening starts fresh
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews; images should crop without stretching
 - Fail the initial video page and verify the same player loads the official feed URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
+- Import a public podcast through OPML, repeat with a query-token feed URL, search for the same podcasts, and verify their catalog rows show Unsubscribe
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
 - During refresh or OPML import, confirm the row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker

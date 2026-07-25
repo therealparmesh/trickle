@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 27
+- Build: 28
 
 ## Name
 
@@ -90,6 +90,10 @@ One-line and two-line collection shortcuts now keep identical icon, label, and t
 Large libraries, feed refreshes, queue automation, search indexing, and long reader pages now avoid repeated work and stay responsive as content grows.
 
 Video entries play in a persistent player with a live minimized preview and user-started system Picture in Picture on supported devices.
+
+Closing Picture in Picture while trickle is visible returns the same video and timestamp to the minimized player. Closing it while trickle is backgrounded ends playback cleanly.
+
+Podcasts imported through OPML are recognized as subscribed in catalog search, including feeds whose query credentials stay in secure device storage.
 
 Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 

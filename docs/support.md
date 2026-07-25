@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: July 24, 2026_
+_Last updated: July 25, 2026_
 
 ## Contact
 
@@ -45,7 +45,7 @@ Use Add YouTube for focused channel and playlist guidance, or paste a public You
 
 Video entries require a network connection. If the initial video page cannot load, the same in-app player falls back to the official source URL from the feed. If neither attempt loads, use Try again or Open original. Minimize the player to keep the same live video in the Now Playing bar while navigating trickle.
 
-Use the player’s Picture in Picture button to start the system window on a supported iPhone or Android 8 or later device. While Picture in Picture is active, the in-app Now Playing bar shows the video thumbnail and its close button ends the video. Dismissing the system Picture in Picture window also ends the video; returning it to the app restores the minimized live player. Video audio can continue while the app is hidden or the screen is locked only during Picture in Picture. Otherwise, hiding trickle pauses the video. Podcast audio continues to use native background playback.
+Use the player’s Picture in Picture button to start the system window on a supported iPhone or Android 8 or later device. While Picture in Picture is active, the in-app Now Playing bar shows the video thumbnail and its close button ends the video. If trickle is visible, closing or restoring the system window returns the same video and timestamp to the live minimized player. Closing the system window while trickle is in the background or the screen is locked ends playback. Video audio can continue while the app is hidden or locked only during Picture in Picture. Otherwise, hiding trickle pauses the video. Podcast audio continues to use native background playback.
 
 ### Background refresh or downloads
 
@@ -61,7 +61,7 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 
 ## Backup and migration
 
-Settings can import standard OPML and export podcast subscriptions, RSS and YouTube subscriptions, or all subscriptions as OPML. It also provides a local ZIP backup for subscriptions, article and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
+Settings can import standard OPML and export podcast subscriptions, RSS and YouTube subscriptions, or all subscriptions as OPML. Imported public podcasts are recognized as subscribed when the same feed appears in podcast search. Settings also provides a local ZIP backup for subscriptions, article and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
 
 Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data.
 
