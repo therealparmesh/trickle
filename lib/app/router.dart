@@ -25,24 +25,40 @@ GoRouter createRouter() {
         builder: (_, _, child) => AppShell(child: child),
         routes: [
           GoRoute(path: '/', builder: (_, _) => const HomePage()),
-          GoRoute(path: '/podcasts', builder: (_, _) => const PodcastsPage()),
+          GoRoute(
+            path: '/podcasts',
+            pageBuilder: (context, state) =>
+                _signalPage(context, state, const PodcastsPage()),
+          ),
           GoRoute(
             path: '/reader',
-            builder: (_, state) => ReaderPage(
-              initialFeeds: state.uri.queryParameters['tab'] == 'feeds',
-              initialFilter: state.uri.queryParameters['filter'] ?? 'unread',
+            pageBuilder: (context, state) => _signalPage(
+              context,
+              state,
+              ReaderPage(
+                initialFeeds: state.uri.queryParameters['tab'] == 'feeds',
+                initialFilter: state.uri.queryParameters['filter'] ?? 'unread',
+              ),
             ),
           ),
-          GoRoute(path: '/library', builder: (_, _) => const LibraryPage()),
+          GoRoute(
+            path: '/library',
+            pageBuilder: (context, state) =>
+                _signalPage(context, state, const LibraryPage()),
+          ),
           GoRoute(
             path: '/search',
-            builder: (_, state) => SearchPage(
-              initialCatalog: state.uri.queryParameters['tab'] == 'podcasts',
+            pageBuilder: (context, state) => _signalPage(
+              context,
+              state,
+              SearchPage(
+                initialCatalog: state.uri.queryParameters['tab'] == 'podcasts',
+              ),
             ),
           ),
           GoRoute(
             path: '/podcast/:id',
-            pageBuilder: (context, state) => _detailPage(
+            pageBuilder: (context, state) => _signalPage(
               context,
               state,
               FeedDetailPage(feedId: state.pathParameters['id']!),
@@ -51,7 +67,7 @@ GoRouter createRouter() {
           GoRoute(
             path: '/podcast-preview',
             pageBuilder: (context, state) =>
-                _detailPage(context, state, switch (state.extra) {
+                _signalPage(context, state, switch (state.extra) {
                   final PodcastSearchResult podcast => FeedDetailPage.catalog(
                     podcast: podcast,
                   ),
@@ -60,7 +76,7 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/feed/:id',
-            pageBuilder: (context, state) => _detailPage(
+            pageBuilder: (context, state) => _signalPage(
               context,
               state,
               FeedDetailPage(feedId: state.pathParameters['id']!),
@@ -73,23 +89,39 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/episode/:id',
-            pageBuilder: (context, state) => _detailPage(
+            pageBuilder: (context, state) => _signalPage(
               context,
               state,
               EpisodePage(episodeId: state.pathParameters['id']!),
             ),
           ),
-          GoRoute(path: '/queue', builder: (_, _) => const QueuePage()),
-          GoRoute(path: '/downloads', builder: (_, _) => const DownloadsPage()),
+          GoRoute(
+            path: '/queue',
+            pageBuilder: (context, state) =>
+                _signalPage(context, state, const QueuePage()),
+          ),
+          GoRoute(
+            path: '/downloads',
+            pageBuilder: (context, state) =>
+                _signalPage(context, state, const DownloadsPage()),
+          ),
           GoRoute(
             path: '/saved',
-            builder: (_, state) => SavedPage(
-              initialTab: state.uri.queryParameters['tab'] == 'articles'
-                  ? 1
-                  : 0,
+            pageBuilder: (context, state) => _signalPage(
+              context,
+              state,
+              SavedPage(
+                initialTab: state.uri.queryParameters['tab'] == 'articles'
+                    ? 1
+                    : 0,
+              ),
             ),
           ),
-          GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+          GoRoute(
+            path: '/settings',
+            pageBuilder: (context, state) =>
+                _signalPage(context, state, const SettingsPage()),
+          ),
         ],
       ),
       GoRoute(path: '/player', builder: (_, _) => const PlayerPage()),
@@ -97,7 +129,7 @@ GoRouter createRouter() {
   );
 }
 
-Page<void> _detailPage(
+Page<void> _signalPage(
   BuildContext context,
   GoRouterState state,
   Widget child,
