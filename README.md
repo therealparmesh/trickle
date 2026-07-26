@@ -4,8 +4,9 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 
 ## Features
 
-- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, standard OPML import, and separate OPML exports for podcasts, feeds (RSS and YouTube), or all subscriptions
+- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, Nostr profile feeds, standard OPML import, and separate OPML exports for podcasts, feeds (RSS and YouTube), or all compatible subscriptions
 - RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or article-feed classification
+- Verified Nostr profile posts from secure relays, with replies and reposts excluded; Markdown, content warnings, images, native audio, and direct video are supported when supplied by a post
 - Streaming, resumable app-private downloads, persistent Up Next, automatic download cleanup, and per-feed automation
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
@@ -13,7 +14,7 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 - New, in-progress, and played episode states; partial-progress bars and Resume actions; full show notes; no play-on-open side effect; and separate quick-play buttons throughout episode lists
 - YouTube video entries with a persistent web player, official-source fallback, and a live minimized Now Playing preview that does not reload; foreground Picture in Picture dismissal returns to that preview, while closing it in the background ends playback
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
-- Local ZIP backup/restore, local notifications, and best-effort operating-system background refresh
+- Local ZIP backup/restore for portable subscriptions and local state, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information
 
 ## Supported platforms
@@ -25,7 +26,7 @@ Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally ou
 
 ## Interface
 
-The home flow starts with a horizontally scrolling two-row shelf of recent episodes, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Four-button collections divide the available width evenly, with longer labels wrapping inside their cell. Section-level See all actions open the complete library or reader destination. Episodes distinguish New, In Progress, and Played at a glance. Shortcut badges always count the items in their destination: Podcasts and Sources count subscriptions, while Up Next, Downloads, and Saved count their own items. Badges hide at zero and never appear on actions such as Add Feed. The Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
+The home flow starts with a horizontally scrolling two-row shelf of recent episodes with direct Play and Resume controls, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Four-button collections divide the available width evenly, with longer labels wrapping inside their cell. Section-level See all actions open the complete library or reader destination. Episodes distinguish New, In Progress, and Played at a glance. Shortcut badges always count the items in their destination: Podcasts and Sources count subscriptions, while Up Next, Downloads, and Saved count their own items. Badges hide at zero and never appear on actions such as Add Feed. The Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
 
 The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Navigation uses standard platform behavior so playback, Picture in Picture, article reading, and in-place controls remain stable. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 
@@ -71,12 +72,12 @@ The unsigned build commands verify compilation without requiring publisher crede
 ## Architecture
 
 - `lib/core`: product rules, constants, formatting, URL identity, and user-safe errors
-- `lib/data`: Drift/SQLite persistence, hardened HTTPS networking, feed parsing, private-feed storage, and repositories
+- `lib/data`: Drift/SQLite persistence, hardened HTTPS and secure WebSocket networking, feed and verified Nostr parsing, private-feed storage, and repositories
 - `lib/features`: background downloads, long-lived audio handling, and the active video session
 - `lib/services`: refresh scheduling, feed automation, notifications, OPML, and local backup
 - `lib/presentation`: Riverpod-driven screens, the shared visual system, reusable content components, and the persistent player shell
 
-The SQLite database uses WAL mode, indexed timeline queries, foreign keys, and FTS5. Feed refreshes and restores preload identity maps, update search data in bounded batches, and preserve mutable item state with one transactional snapshot instead of per-item queries. Shared library snapshots prevent each visible row from opening its own database stream. Potentially expensive feed and article parsing runs away from the UI isolate, and reader extraction and fragmentation use linear passes over the document. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
+The SQLite database uses schema version 3, WAL mode, indexed timeline queries, foreign keys, and FTS5. Feed refreshes and restores preload identity maps, update search data in bounded batches, and preserve mutable item state with one transactional snapshot instead of per-item queries. Shared library snapshots prevent each visible row from opening its own database stream. Potentially expensive feed, article, and Nostr signature parsing runs away from the UI isolate, and reader extraction and fragmentation use linear passes over the document. Nostr refreshes use a finite set of secure relay connections that close after an end-of-stored-events response or the shared deadline. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
 
 ## Project layout
 
@@ -98,4 +99,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in screenshots were regenerated from the current visual system on July 24, 2026.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in screenshot set was verified against the current visual system on July 26, 2026, with Home regenerated for the current episode shelf.

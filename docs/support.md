@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: July 25, 2026_
+_Last updated: July 26, 2026_
 
 ## Contact
 
@@ -47,6 +47,12 @@ Video entries require a network connection. If the initial video page cannot loa
 
 Use the player’s Picture in Picture button to start the system window on a supported iPhone or Android 8 or later device. While Picture in Picture is active, the in-app Now Playing bar shows the video thumbnail and its close button ends the video. If trickle is visible, closing or restoring the system window returns the same video and timestamp to the live minimized player. Closing the system window while trickle is in the background or the screen is locked ends playback. Video audio can continue while the app is hidden or locked only during Picture in Picture. Otherwise, hiding trickle pauses the video. Podcast audio continues to use native background playback.
 
+### Nostr profile feeds
+
+Paste an `npub`, `nprofile`, or `nostr:` profile address into Add Feed. trickle reads verified root posts from a small finite set of secure relays. Replies and reposts are omitted so the feed stays focused on the profile's own posts.
+
+Posts can contain text, Markdown articles, content warnings, images, audio, and direct video. Audio uses the native player and saves progress. Relay and media availability remain controlled by their respective operators; retry the feed or attachment if one is temporarily unavailable.
+
 ### Background refresh or downloads
 
 Allow background activity for trickle in system settings. The selected interval applies to each subscription from its last refresh. Work is time-bounded; subscriptions that do not fit remain eligible for the next opportunity. Android battery restrictions and iOS Low Power Mode can delay operating-system scheduled work.
@@ -61,7 +67,9 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 
 ## Backup and migration
 
-Settings can import standard OPML and export podcast subscriptions, RSS and YouTube subscriptions, or all subscriptions as OPML. Imported public podcasts are recognized as subscribed when the same feed appears in podcast search. Settings also provides a local ZIP backup for subscriptions, article and playback state, queue entries, bookmarks, and settings. Private-feed credentials and downloaded media are not included in that ZIP.
+Settings can import standard OPML and export podcast subscriptions, RSS and YouTube subscriptions, or all OPML-compatible subscriptions. Nostr profiles are not representable in standard OPML. Imported public podcasts are recognized as subscribed when the same feed appears in podcast search.
+
+The local ZIP backup includes portable podcast and feed subscriptions, Nostr profiles and relay choices, articles and attachments, reading and playback state, queue entries, bookmarks, and settings. A private feed whose token is entirely in its URL is portable and included. Authorization headers, passwords entered separately from a URL, and downloaded media files are excluded.
 
 Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data.
 

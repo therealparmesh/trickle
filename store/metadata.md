@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 34
+- Build: 35
 
 ## Name
 
@@ -29,13 +29,13 @@ Podcasts and feeds in one fast, focused cyberpunk interface.
 
 trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
 
-Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, or paste a public YouTube channel or playlist URL. Stream or download podcast episodes, build a persistent queue, read clean extracted articles, and open video entries in a persistent player without creating an account. Podcast episodes distinguish New, In Progress, and Played, with saved progress and Resume available for partial listening. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast playback uses the native system audio engine and includes exact global speed choices from 1x to 2x, intro and outro skipping, sleep timers, chapters, publisher transcripts, bookmarks, lock-screen controls, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, paste a public YouTube channel or playlist URL, or follow a Nostr profile's verified posts. Stream or download podcast episodes, build a persistent queue, read clean extracted articles and Markdown posts, play attached audio and video, and open video entries in a persistent player without creating an account. Podcast episodes distinguish New, In Progress, and Played, with saved progress and Resume available for partial listening. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast and attached audio playback use the native system audio engine and include exact global speed choices from 1x to 2x, sleep timers, bookmarks, lock-screen controls, and saved progress. Podcasts also support intro and outro skipping, chapters, publisher transcripts, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
-trickle does not collect your information. Import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and create a local backup whenever you want.
+trickle does not collect your information. Import and export standard OPML subscriptions, or create a local backup that also preserves Nostr profiles and portable local state.
 
 ## Keywords
 
-podcast,rss,feed,reader,offline,opml,audio,news,blog,queue
+podcast,rss,feed,reader,offline,opml,audio,news,nostr,queue
 
 ## Categories
 
@@ -58,7 +58,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-Five 1320×2868 iPhone screenshots were regenerated from the current visual system on July 24, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
+Five 1320×2868 iPhone screenshots were verified against the current visual system on July 26, 2026. Home was regenerated for the current direct-play episode shelf. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
 
 1. Home
 2. Podcast
@@ -77,7 +77,9 @@ Five 1320×2868 iPhone screenshots were regenerated from the current visual syst
 
 Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, follow public YouTube channels and playlists as feeds, stream or download episodes, build a queue, import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and read articles in a clean reader view.
 
-Browse recent podcast episodes in a compact two-row shelf, then move directly into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Subscription counts stay attached to their exact destinations, and podcast details remain visible throughout subscribe and unsubscribe actions.
+Follow Nostr profiles from an npub or nprofile address. trickle verifies events, shows the profile's own posts without replies or reposts, respects content warnings, renders Markdown, and supports attached images, native audio, and direct video.
+
+Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then move into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Subscription counts stay attached to their exact destinations, and podcast details remain visible throughout subscribe and unsubscribe actions.
 
 The Feeds collection now includes a consistent See all action that opens the complete reader.
 
@@ -96,6 +98,8 @@ Video entries play in a persistent player with a live minimized preview and user
 Closing Picture in Picture while trickle is visible returns the same video and timestamp to the minimized player. Closing it while trickle is backgrounded ends playback cleanly.
 
 Podcasts imported through OPML are recognized as subscribed in catalog search, including feeds whose query credentials stay in secure device storage.
+
+Local ZIP backup now preserves Nostr profiles, post attachments, reading and playback state, queues, bookmarks, settings, and portable URL-token feeds. Standard OPML remains available for compatible podcast, RSS, and YouTube subscriptions.
 
 Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 

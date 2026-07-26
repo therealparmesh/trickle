@@ -4,7 +4,7 @@ title: trickle Privacy Policy
 
 # trickle privacy policy
 
-Effective date: July 23, 2026
+Effective date: July 26, 2026
 
 ## Summary
 
@@ -24,6 +24,7 @@ trickle makes direct requests to third parties only to perform actions requested
 
 - Apple receives podcast discovery search terms and standard network metadata when catalog search is used.
 - Feed publishers and their hosting providers receive feed, article, artwork, transcript, chapter, and media requests, plus standard network metadata such as the device IP address.
+- Nostr relays receive the public profile key being requested and standard network metadata. Media hosts linked from a post receive media requests only when that media is displayed or played.
 - When the user adds a YouTube channel or playlist, YouTube receives the page or feed request. Opening one of its video entries loads a third-party video page in the in-app player. If that page cannot load, the same player falls back to the official source URL from the feed. Those services receive the request and standard network metadata under their own policies.
 - The operating system and the destination selected by the user handle data when the user imports, exports, shares, or opens a link.
 
@@ -33,7 +34,9 @@ Private-feed credentials are never sent to the trickle developer. They are sent 
 
 ## Exports and backups
 
-The user-initiated trickle ZIP export is the only built-in portable full backup. It excludes private-feed credentials and downloaded media. OPML export includes ordinary public feed URLs and private URLs whose access is contained entirely in the URL; it excludes feeds that require authorization headers.
+The user-initiated trickle ZIP export includes portable subscriptions, Nostr profiles and relay choices, articles and attachments, reading and playback state, queue entries, bookmarks, and settings. A private-feed URL is included when all access information is contained in that URL. Authorization headers, passwords entered separately from a URL, and downloaded media files are excluded.
+
+OPML export includes podcast, RSS, Atom, JSON, and YouTube feed subscriptions whose URLs are portable. Nostr profiles are included in the trickle ZIP backup instead because they are not standard OPML subscriptions.
 
 ## Background processing and notifications
 
