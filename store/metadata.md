@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 35
+- Build: 36
 
 ## Name
 
@@ -96,6 +96,10 @@ Large libraries, feed refreshes, queue automation, search indexing, and long rea
 Video entries play in a persistent player with a live minimized preview and user-started system Picture in Picture on supported devices.
 
 Closing Picture in Picture while trickle is visible returns the same video and timestamp to the minimized player. Closing it while trickle is backgrounded ends playback cleanly.
+
+Every recognized YouTube video now follows the same initial player path, including video URLs discovered in post attachments, before using the official source as a fallback.
+
+Picture in Picture requests now wait for confirmation, recover cleanly when unavailable, and never leave the player controls stuck in a loading state.
 
 Podcasts imported through OPML are recognized as subscribed in catalog search, including feeds whose query credentials stay in secure device storage.
 
