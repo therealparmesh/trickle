@@ -331,6 +331,22 @@ final class TrickleAudioHandler extends BaseAudioHandler
     }
   }
 
+  Future<void> playStandaloneEpisode(String episodeId) async {
+    final generation = ++_episodeSelectionGeneration;
+    _pendingEpisodeSelectionId = episodeId;
+    try {
+      await _persistProgress();
+      final episode = await _database.episodeById(episodeId);
+      if (episode == null || generation != _episodeSelectionGeneration) return;
+      final feed = await _database.feedById(episode.feedId);
+      await _load(_mediaItem(episode, feed, standalone: true), autoPlay: true);
+    } finally {
+      if (generation == _episodeSelectionGeneration) {
+        _pendingEpisodeSelectionId = null;
+      }
+    }
+  }
+
   Future<void> playNextEpisode(String episodeId) async {
     final item = await _mediaItemForEpisode(episodeId);
     if (item == null) return;
@@ -852,6 +868,14 @@ final class TrickleAudioHandler extends BaseAudioHandler
         customEvent.add({'type': 'completed', 'episodeId': completedId});
       }
       if (completedId == null) return;
+      if (mediaItem.value?.extras?['standalone'] == true) {
+        await pause();
+        mediaItem.add(null);
+        _processingState = AudioProcessingState.completed;
+        _broadcastState(playing: false);
+        await _setSessionActive(false);
+        return;
+      }
       if (mediaItem.value?.id != completedId) {
         final items = [...queue.value]
           ..removeWhere((item) => item.id == completedId);
@@ -1033,11 +1057,14 @@ final class TrickleAudioHandler extends BaseAudioHandler
     return _mediaItem(episode, feed);
   }
 
-  MediaItem _mediaItem(Episode episode, Feed? feed) {
+  MediaItem _mediaItem(Episode episode, Feed? feed, {bool standalone = false}) {
     final artworkUrl = (episode.imageUrl ?? feed?.imageUrl)?.trim();
     final artworkUri = artworkUrl == null || artworkUrl.isEmpty
         ? null
         : Uri.tryParse(artworkUrl);
+    final articleId = episode.guid?.startsWith('nostr-media:') == true
+        ? episode.guid!.substring('nostr-media:'.length)
+        : null;
     return MediaItem(
       id: episode.id,
       title: episode.title,
@@ -1052,7 +1079,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
           : null,
       displayDescription: episode.description,
       playable: true,
-      extras: {'feedId': episode.feedId, 'explicit': episode.explicit},
+      extras: {
+        'feedId': episode.feedId,
+        'explicit': episode.explicit,
+        if (articleId?.isNotEmpty == true) 'articleId': articleId,
+        if (standalone) 'standalone': true,
+      },
     );
   }
 

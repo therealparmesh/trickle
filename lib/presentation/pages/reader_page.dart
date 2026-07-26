@@ -138,15 +138,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       title: switch (_filter) {
                         _ReaderFilter.unread => 'All caught up',
                         _ReaderFilter.all => 'No feed items yet',
-                        _ReaderFilter.starred => 'No saved articles or videos',
+                        _ReaderFilter.starred => 'No saved feed items',
                       },
                       message: switch (_filter) {
                         _ReaderFilter.unread =>
                           'There are no unread feed items.',
                         _ReaderFilter.all =>
-                          'Add a feed to see articles and videos here.',
+                          'Add a feed to see new items here.',
                         _ReaderFilter.starred =>
-                          'Save an article or video to keep it here.',
+                          'Save a feed item to keep it here.',
                       },
                     ),
                   )
@@ -235,7 +235,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     icon: Icons.rss_feed_rounded,
                     title: 'No feeds yet',
                     message:
-                        'Add a website, RSS feed, YouTube channel, or playlist.',
+                        'Add a website, RSS feed, YouTube channel, playlist, or Nostr profile.',
                     action: 'Add feed',
                     onAction: () => showDialog<void>(
                       context: context,
@@ -279,7 +279,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       builder: (context) => AlertDialog(
         title: const Text('Mark everything read?'),
         content: const Text(
-          'Every unread article and unwatched video will leave the Unread view.',
+          'Every unread feed item will leave the Unread view.',
         ),
         actions: [
           TextButton(
@@ -320,7 +320,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               ListTile(
                 leading: const Icon(Icons.add_link_rounded),
                 title: const Text('Add feed'),
-                subtitle: const Text('RSS, Atom, JSON Feed, or a website'),
+                subtitle: const Text(
+                  'RSS, Atom, JSON Feed, website, or Nostr profile',
+                ),
                 onTap: () => Navigator.pop(context, _AddSourceType.feed),
               ),
               ListTile(
@@ -352,10 +354,13 @@ final class _FeedRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
+    final isNostr = feed.protocol == FeedProtocol.nostr.index;
     final author = feed.author?.trim();
     final subtitle =
         feed.refreshError ??
-        (youtubeKind != null
+        (isNostr
+            ? 'Nostr profile'
+            : youtubeKind != null
             ? switch (youtubeKind) {
                 YouTubeFeedKind.channel => 'YouTube channel',
                 YouTubeFeedKind.playlist => 'YouTube playlist',
@@ -373,7 +378,9 @@ final class _FeedRow extends StatelessWidget {
           feed: feed,
           size: 54,
           radius: 12,
-          icon: youtubeKind == null
+          icon: isNostr
+              ? Icons.person_outline_rounded
+              : youtubeKind == null
               ? Icons.article_outlined
               : Icons.ondemand_video_rounded,
         ),

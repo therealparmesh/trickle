@@ -15,6 +15,7 @@ import 'data/network/safe_network_client.dart';
 import 'data/repositories/article_repository.dart';
 import 'data/repositories/episode_extras_repository.dart';
 import 'data/repositories/feed_repository.dart';
+import 'data/repositories/nostr_repository.dart';
 import 'data/repositories/playback_source_resolver.dart';
 import 'data/repositories/podcast_search_repository.dart';
 import 'data/repositories/settings_repository.dart';
@@ -136,6 +137,7 @@ final class _TrickleRuntime {
     required this.downloads,
     required this.completionSubscription,
     required this.feedRepository,
+    required this.nostr,
     required this.privateFeeds,
     required this.search,
     required this.articles,
@@ -153,6 +155,7 @@ final class _TrickleRuntime {
   final DownloadCoordinator downloads;
   final StreamSubscription<Object?> completionSubscription;
   final FeedRepository feedRepository;
+  final NostrRepository nostr;
   final PrivateFeedStore privateFeeds;
   final PodcastSearchRepository search;
   final ArticleRepository articles;
@@ -170,6 +173,7 @@ final class _TrickleRuntime {
         databaseProvider.overrideWithValue(database),
         networkProvider.overrideWithValue(network),
         feedRepositoryProvider.overrideWithValue(feedRepository),
+        nostrRepositoryProvider.overrideWithValue(nostr),
         privateFeedStoreProvider.overrideWithValue(privateFeeds),
         podcastSearchProvider.overrideWithValue(search),
         articleRepositoryProvider.overrideWithValue(articles),
@@ -208,10 +212,12 @@ Future<_TrickleRuntime> _createRuntime() async {
     final privateFeeds = PrivateFeedStore();
     await _prepareSecureStoreForInstall(privateFeeds);
     final settings = SettingsRepository(database);
+    final nostr = NostrRepository(database: database, network: network);
     final feedRepository = FeedRepository(
       database: database,
       network: network,
       privateFeeds: privateFeeds,
+      nostr: nostr,
     );
     final sources = PlaybackSourceResolver(database, privateFeeds, network);
     audio = TrickleAudioHandler(
@@ -235,7 +241,7 @@ Future<_TrickleRuntime> _createRuntime() async {
     final search = PodcastSearchRepository(database, network);
     final articles = ArticleRepository(database, network, privateFeeds);
     final extras = EpisodeExtrasRepository(database, network, privateFeeds);
-    final backup = BackupService(database);
+    final backup = BackupService(database, privateFeeds);
     final opml = OpmlService(database, feedRepository, privateFeeds);
     final sync = SyncCoordinator(
       database: database,
@@ -259,6 +265,7 @@ Future<_TrickleRuntime> _createRuntime() async {
       downloads: downloads,
       completionSubscription: completionSubscription,
       feedRepository: feedRepository,
+      nostr: nostr,
       privateFeeds: privateFeeds,
       search: search,
       articles: articles,

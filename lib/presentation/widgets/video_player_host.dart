@@ -59,6 +59,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
 
   bool get _usingOfficialFallback =>
       _source == VideoPlaybackSource.officialYouTube;
+  bool get _usingDirectMedia => _source == VideoPlaybackSource.directMedia;
 
   @override
   void initState() {
@@ -610,11 +611,14 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           }
           final uri = Uri.tryParse(request.url);
           if (!request.isMainFrame) return NavigationDecision.navigate;
-          final allowedHost = _usingOfficialFallback
+          final allowedHost = _usingDirectMedia
+              ? _isCurrentDirectMedia(uri)
+              : _usingOfficialFallback
               ? _isOfficialYouTubeHost(uri?.host)
               : _isWrapperHost(uri?.host) || _isPlaybackHost(uri?.host);
-          final requestedVideo = youtubeVideoId(uri);
+          final requestedVideo = _usingDirectMedia ? null : youtubeVideoId(uri);
           if (uri?.scheme == 'about' ||
+              (_usingDirectMedia && allowedHost) ||
               (allowedHost &&
                   (requestedVideo == null || _isCurrentVideo(uri)))) {
             return NavigationDecision.navigate;
@@ -671,16 +675,17 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   Future<void> _load(
     VideoSession session, {
     required int generation,
-    VideoPlaybackSource source = VideoPlaybackSource.privacyWrapper,
+    VideoPlaybackSource? source,
   }) async {
     if (!_isCurrentSession(session, generation)) return;
-    final requestUri = session.playbackUriFor(source);
+    final selectedSource = source ?? session.initialPlaybackSource;
+    final requestUri = session.playbackUriFor(selectedSource);
     if (requestUri == null) {
       _showLoadError('Couldn’t load this video.', generation: generation);
       return;
     }
     _activeRequestUri = requestUri;
-    _source = source;
+    _source = selectedSource;
     _videoControlRevision++;
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
@@ -750,23 +755,35 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _showLoadError(
       timedOut
-          ? 'YouTube took too long to load this video.'
-          : 'Couldn’t load this video from YouTube.',
+          ? 'The video took too long to load.'
+          : 'Couldn’t load this video.',
       generation: activeGeneration,
     );
   }
 
   bool _isActivePlaybackUri(Uri? uri) =>
-      _isCurrentVideo(uri) &&
+      (_usingDirectMedia ? _isCurrentDirectMedia(uri) : _isCurrentVideo(uri)) &&
       (_usingOfficialFallback
           ? _isOfficialYouTubeHost(uri?.host)
+          : _usingDirectMedia
+          ? true
           : _isPlaybackHost(uri?.host));
 
   bool _isActiveLoadUri(Uri? uri) =>
-      _isCurrentVideo(uri) &&
+      (_usingDirectMedia ? _isCurrentDirectMedia(uri) : _isCurrentVideo(uri)) &&
       (_usingOfficialFallback
           ? _isOfficialYouTubeHost(uri?.host)
+          : _usingDirectMedia
+          ? true
           : _isWrapperHost(uri?.host) || _isPlaybackHost(uri?.host));
+
+  bool _isCurrentDirectMedia(Uri? uri) =>
+      uri != null &&
+      _activeRequestUri != null &&
+      uri.scheme == 'https' &&
+      uri.host == _activeRequestUri!.host &&
+      uri.path == _activeRequestUri!.path &&
+      uri.query == _activeRequestUri!.query;
 
   bool _isCurrentVideo(Uri? uri) {
     final activeVideoId = youtubeVideoId(_activeRequestUri);

@@ -18,6 +18,7 @@ import '../database/app_database.dart';
 import '../network/safe_network_client.dart';
 import '../parsing/feed_parser.dart';
 import '../security/private_feed_store.dart';
+import 'nostr_repository.dart';
 
 // Drift stores these timestamps with second precision. Advancing by one full
 // stored unit makes concurrent refresh revisions comparable and deterministic.
@@ -34,13 +35,16 @@ final class FeedRepository {
     required AppDatabase database,
     required SafeNetworkClient network,
     required PrivateFeedStore privateFeeds,
+    NostrRepository? nostr,
   }) : _database = database,
        _network = network,
-       _privateFeeds = privateFeeds;
+       _privateFeeds = privateFeeds,
+       _nostr = nostr ?? NostrRepository(database: database, network: network);
 
   final AppDatabase _database;
   final SafeNetworkClient _network;
   final PrivateFeedStore _privateFeeds;
+  final NostrRepository _nostr;
   final Uuid _uuid = const Uuid();
   final Map<String, Completer<bool>> _feedDeletions = {};
   final Map<String, Future<bool>> _refreshes = {};
@@ -153,6 +157,81 @@ final class FeedRepository {
     return storedFeed;
   }
 
+  Future<Episode> cachePodcastPreviewEpisode({
+    required PodcastSearchResult podcast,
+    required ParsedFeed details,
+    required ParsedEpisode episode,
+  }) async {
+    final storedUrl = feedUrlIdentity(podcast.feedUrl.toString());
+    final existingFeed = await _database.feedByUrl(storedUrl);
+    final feedId =
+        existingFeed?.id ?? stableContentId('podcast-preview', storedUrl);
+    final episodeId = stableContentId(
+      feedId,
+      _episodeIdentity(episode, isPrivate: false),
+    );
+    final existingEpisode = await _database.episodeById(episodeId);
+    final now = DateTime.now().toUtc();
+    await _database.transaction(() async {
+      await _database
+          .into(_database.feeds)
+          .insertOnConflictUpdate(
+            FeedsCompanion.insert(
+              id: feedId,
+              title: details.title,
+              description: Value(details.description),
+              feedUrl: storedUrl,
+              siteUrl: Value(details.siteUrl?.toString()),
+              imageUrl: Value(
+                (details.imageUrl ?? podcast.artworkUrl)?.toString(),
+              ),
+              author: Value(details.author ?? podcast.author),
+              kind: Value(FeedKind.podcast.index),
+              protocol: Value(FeedProtocol.syndication.index),
+              subscribed: Value(existingFeed?.subscribed ?? false),
+              isPrivate: const Value(false),
+              lastRefresh: Value(existingFeed?.lastRefresh),
+              refreshError: Value(existingFeed?.refreshError),
+              autoDownload: Value(existingFeed?.autoDownload ?? false),
+              autoDownloadLimit: Value(existingFeed?.autoDownloadLimit ?? 3),
+              notifications: Value(existingFeed?.notifications ?? false),
+              introSkipMs: Value(existingFeed?.introSkipMs ?? 0),
+              outroSkipMs: Value(existingFeed?.outroSkipMs ?? 0),
+              autoQueue: Value(existingFeed?.autoQueue ?? false),
+              createdAt: existingFeed?.createdAt ?? now,
+              updatedAt: now,
+            ),
+          );
+      await _database
+          .into(_database.episodes)
+          .insertOnConflictUpdate(
+            EpisodesCompanion.insert(
+              id: episodeId,
+              feedId: feedId,
+              guid: Value(episode.guid),
+              title: episode.title,
+              description: Value(episode.description),
+              enclosureUrl: episode.enclosureUrl.toString(),
+              mimeType: Value(episode.mimeType),
+              imageUrl: Value(
+                (episode.imageUrl ?? details.imageUrl ?? podcast.artworkUrl)
+                    ?.toString(),
+              ),
+              chaptersUrl: Value(episode.chaptersUrl?.toString()),
+              publishedAt: Value(episode.publishedAt),
+              discoveredAt: existingEpisode?.discoveredAt ?? now,
+              durationMs: Value(episode.duration?.inMilliseconds),
+              fileSize: Value(episode.fileSize),
+              explicit: Value(episode.explicit),
+              played: Value(existingEpisode?.played ?? false),
+              starred: Value(existingEpisode?.starred ?? false),
+              automationApplied: const Value(true),
+            ),
+          );
+    });
+    return (await _database.episodeById(episodeId))!;
+  }
+
   Future<void> updatePrivateAccess(
     String feedId,
     String rawAddress, {
@@ -247,7 +326,10 @@ final class FeedRepository {
     required Duration totalTimeout,
   }) async {
     final feed = await _database.feedById(requestedFeed.id);
-    if (feed == null) return false;
+    if (feed == null || !feed.subscribed) return false;
+    if (feed.protocol == FeedProtocol.nostr.index) {
+      return _nostr.refresh(feed, totalTimeout: totalTimeout);
+    }
     final previousRevision = feed.updatedAt;
     Uri url;
     Map<String, String> headers = {};
@@ -334,7 +416,8 @@ final class FeedRepository {
         (minimumAge != null && minimumAge <= Duration.zero)) {
       throw ArgumentError('dueAt and a positive minimumAge must be combined.');
     }
-    final query = _database.select(_database.feeds);
+    final query = _database.select(_database.feeds)
+      ..where((row) => row.subscribed.equals(true));
     if (dueAt != null) {
       final refreshBefore = dueAt.subtract(minimumAge!);
       query.where(
@@ -381,72 +464,206 @@ final class FeedRepository {
     final deletion = Completer<bool>();
     _feedDeletions[feedId] = deletion;
     try {
-      final feed = await _database.feedById(feedId);
-      final episodeIds =
-          await (_database.selectOnly(_database.episodes)
-                ..addColumns([_database.episodes.id])
-                ..where(_database.episodes.feedId.equals(feedId)))
-              .map((row) => row.read(_database.episodes.id)!)
-              .get();
-      final downloads =
-          await (_database.select(_database.mediaDownloads).join([
-                innerJoin(
-                  _database.episodes,
-                  _database.episodes.id.equalsExp(
-                    _database.mediaDownloads.episodeId,
-                  ),
-                ),
-              ])..where(_database.episodes.feedId.equals(feedId)))
-              .map((row) => row.readTable(_database.mediaDownloads))
-              .get();
-      await _database.transaction(() async {
-        await _database.customStatement(
-          'DELETE FROM search_index WHERE entity_id = ? '
-          'OR entity_id IN (SELECT id FROM episodes WHERE feed_id = ?) '
-          'OR entity_id IN (SELECT id FROM articles WHERE feed_id = ?)',
-          [feedId, feedId, feedId],
-        );
-        // Child rows use ON DELETE CASCADE.
-        await (_database.delete(
-          _database.feeds,
-        )..where((row) => row.id.equals(feedId))).go();
-      });
-      await _removeCachedPrivateFeed(feedId);
+      await _deleteOrRetainFeed(feedId);
       deletion.complete(true);
-      // External cleanup happens only after the database commit. If the
-      // transaction fails, the subscription and all credentials remain usable.
-      for (final download in downloads) {
-        final path = download.filePath;
-        if (path == null) continue;
-        try {
-          final file = File(path);
-          if (await file.exists()) await file.delete();
-        } on Object {
-          // The database is authoritative; an inaccessible orphan is harmless
-          // and can be reclaimed by the operating system with app storage.
-        }
-      }
-      for (final episodeId in episodeIds) {
-        try {
-          await _privateFeeds.deleteMediaUrl(episodeId);
-        } on Object {
-          // Continue removing the remaining external entries.
-        }
-      }
-      if (feed?.credentialRef != null) {
-        try {
-          await _privateFeeds.delete(feed!.credentialRef!);
-        } on Object {
-          // The orphan is no longer addressable by application data.
-        }
-      }
     } on Object {
-      if (!deletion.isCompleted) deletion.complete(false);
+      deletion.complete(false);
       rethrow;
     } finally {
-      if (!deletion.isCompleted) deletion.complete(false);
       if (identical(_feedDeletions[feedId], deletion)) {
         _feedDeletions.remove(feedId);
+      }
+    }
+  }
+
+  Future<void> _deleteOrRetainFeed(String feedId) async {
+    final feed = await _database.feedById(feedId);
+    if (feed == null) return;
+    final articleCount = _database.articles.id.count();
+    final retainedArticleCount =
+        await (_database.selectOnly(_database.articles)
+              ..addColumns([articleCount])
+              ..where(
+                _database.articles.feedId.equals(feedId) &
+                    _database.articles.starred.equals(true),
+              ))
+            .map((row) => row.read(articleCount) ?? 0)
+            .getSingle();
+    final retainedEpisodeIds = await _database
+        .customSelect(
+          'SELECT episodes.id FROM episodes WHERE episodes.feed_id = ? AND ('
+          'episodes.starred = 1 OR EXISTS (SELECT 1 FROM playback_progresses '
+          'WHERE playback_progresses.episode_id = episodes.id '
+          'AND playback_progresses.position_ms > 0) OR EXISTS '
+          '(SELECT 1 FROM queue_entries WHERE queue_entries.episode_id = episodes.id) '
+          'OR EXISTS (SELECT 1 FROM media_downloads '
+          'WHERE media_downloads.episode_id = episodes.id) OR EXISTS '
+          '(SELECT 1 FROM bookmarks WHERE bookmarks.episode_id = episodes.id))',
+          variables: [Variable(feedId)],
+          readsFrom: {
+            _database.episodes,
+            _database.playbackProgresses,
+            _database.queueEntries,
+            _database.mediaDownloads,
+            _database.bookmarks,
+          },
+        )
+        .map((row) => row.read<String>('id'))
+        .get();
+    if (retainedArticleCount == 0 && retainedEpisodeIds.isEmpty) {
+      await _deleteFeedPermanently(feedId);
+      return;
+    }
+    final allEpisodeIds =
+        await (_database.selectOnly(_database.episodes)
+              ..addColumns([_database.episodes.id])
+              ..where(_database.episodes.feedId.equals(feedId)))
+            .map((row) => row.read(_database.episodes.id)!)
+            .get();
+    final removedEpisodeIds = allEpisodeIds.toSet()
+      ..removeAll(retainedEpisodeIds);
+    await _database.transaction(() async {
+      await _database.customStatement(
+        "DELETE FROM search_index WHERE kind = 'feed' AND entity_id = ?",
+        [feedId],
+      );
+      await _database.customStatement(
+        "DELETE FROM search_index WHERE kind = 'article' AND entity_id IN "
+        '(SELECT id FROM articles WHERE feed_id = ? AND starred = 0)',
+        [feedId],
+      );
+      if (removedEpisodeIds.isNotEmpty) {
+        for (
+          var start = 0;
+          start < removedEpisodeIds.length;
+          start += AppDatabase.safeVariableBatchSize
+        ) {
+          final ids = removedEpisodeIds
+              .skip(start)
+              .take(AppDatabase.safeVariableBatchSize)
+              .toList(growable: false);
+          await _database.customStatement(
+            "DELETE FROM search_index WHERE kind = 'episode' "
+            'AND entity_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))',
+            [jsonEncode(ids)],
+          );
+        }
+      }
+      await (_database.delete(_database.articles)..where(
+            (row) => row.feedId.equals(feedId) & row.starred.equals(false),
+          ))
+          .go();
+      if (removedEpisodeIds.isNotEmpty) {
+        for (
+          var start = 0;
+          start < removedEpisodeIds.length;
+          start += AppDatabase.safeVariableBatchSize
+        ) {
+          final ids = removedEpisodeIds
+              .skip(start)
+              .take(AppDatabase.safeVariableBatchSize);
+          await (_database.delete(
+            _database.episodes,
+          )..where((row) => row.id.isIn(ids))).go();
+        }
+      }
+      await (_database.update(
+        _database.feeds,
+      )..where((row) => row.id.equals(feedId))).write(
+        FeedsCompanion(
+          subscribed: const Value(false),
+          notifications: const Value(false),
+          autoDownload: const Value(false),
+          autoQueue: const Value(false),
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
+    });
+    for (final episodeId in removedEpisodeIds) {
+      try {
+        await _privateFeeds.deleteMediaUrl(episodeId);
+      } on Object {
+        // Secure media cleanup is best effort after the database commit.
+      }
+    }
+  }
+
+  Future<Feed> resubscribe(Feed feed) async {
+    if (feed.subscribed) return feed;
+    if (feed.protocol == FeedProtocol.nostr.index) {
+      return _nostr.subscribe(feed.feedUrl);
+    }
+    if (!feed.isPrivate) return subscribe(feed.feedUrl);
+    await (_database.update(
+      _database.feeds,
+    )..where((row) => row.id.equals(feed.id))).write(
+      FeedsCompanion(
+        subscribed: const Value(true),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+    final updated = (await _database.feedById(feed.id))!;
+    await refreshFeed(updated);
+    return (await _database.feedById(feed.id))!;
+  }
+
+  Future<void> _deleteFeedPermanently(String feedId) async {
+    final feed = await _database.feedById(feedId);
+    final episodeIds =
+        await (_database.selectOnly(_database.episodes)
+              ..addColumns([_database.episodes.id])
+              ..where(_database.episodes.feedId.equals(feedId)))
+            .map((row) => row.read(_database.episodes.id)!)
+            .get();
+    final downloads =
+        await (_database.select(_database.mediaDownloads).join([
+              innerJoin(
+                _database.episodes,
+                _database.episodes.id.equalsExp(
+                  _database.mediaDownloads.episodeId,
+                ),
+              ),
+            ])..where(_database.episodes.feedId.equals(feedId)))
+            .map((row) => row.readTable(_database.mediaDownloads))
+            .get();
+    await _database.transaction(() async {
+      await _database.customStatement(
+        'DELETE FROM search_index WHERE entity_id = ? '
+        'OR entity_id IN (SELECT id FROM episodes WHERE feed_id = ?) '
+        'OR entity_id IN (SELECT id FROM articles WHERE feed_id = ?)',
+        [feedId, feedId, feedId],
+      );
+      // Child rows use ON DELETE CASCADE.
+      await (_database.delete(
+        _database.feeds,
+      )..where((row) => row.id.equals(feedId))).go();
+    });
+    await _removeCachedPrivateFeed(feedId);
+    // External cleanup happens only after the database commit. If the
+    // transaction fails, the subscription and all credentials remain usable.
+    for (final download in downloads) {
+      final path = download.filePath;
+      if (path == null) continue;
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } on Object {
+        // The database is authoritative; an inaccessible orphan is harmless
+        // and can be reclaimed by the operating system with app storage.
+      }
+    }
+    for (final episodeId in episodeIds) {
+      try {
+        await _privateFeeds.deleteMediaUrl(episodeId);
+      } on Object {
+        // Continue removing the remaining external entries.
+      }
+    }
+    if (feed?.credentialRef != null) {
+      try {
+        await _privateFeeds.delete(feed!.credentialRef!);
+      } on Object {
+        // The orphan is no longer addressable by application data.
       }
     }
   }
@@ -459,15 +676,23 @@ final class FeedRepository {
     );
   }
 
-  Future<void> markAllArticlesRead({String? feedId}) {
+  Future<void> markAllArticlesRead({String? feedId}) async {
+    if (feedId == null) {
+      await _database.customUpdate(
+        'UPDATE articles SET read_at = ? WHERE read_at IS NULL '
+        'AND EXISTS (SELECT 1 FROM feeds WHERE feeds.id = articles.feed_id '
+        'AND feeds.subscribed = 1)',
+        variables: [Variable(DateTime.now().toUtc())],
+        updates: {_database.articles},
+      );
+      return;
+    }
     final query = _database.update(_database.articles)
       ..where((row) {
         final unread = row.readAt.isNull();
-        return feedId == null ? unread : unread & row.feedId.equals(feedId);
+        return unread & row.feedId.equals(feedId);
       });
-    return query.write(
-      ArticlesCompanion(readAt: Value(DateTime.now().toUtc())),
-    );
+    await query.write(ArticlesCompanion(readAt: Value(DateTime.now().toUtc())));
   }
 
   Future<void> starArticle(String articleId, {required bool starred}) {
@@ -712,6 +937,10 @@ final class FeedRepository {
                 imageUrl: Value(parsed.imageUrl?.toString()),
                 author: Value(parsed.author),
                 kind: Value(kind.index),
+                protocol: Value(
+                  effectiveFeed?.protocol ?? FeedProtocol.syndication.index,
+                ),
+                subscribed: const Value(true),
                 isPrivate: Value(isPrivate),
                 credentialRef: Value(credentialRef),
                 etag: Value(document.header('etag')),

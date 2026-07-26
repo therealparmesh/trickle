@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/youtube_support.dart';
 
-enum VideoPlaybackSource { privacyWrapper, officialYouTube }
+enum VideoPlaybackSource { privacyWrapper, officialYouTube, directMedia }
 
 enum VideoPresentation { expanded, minimized, pictureInPicture }
 
@@ -56,7 +56,8 @@ bool shouldApplyVideoPlaybackState({
 extension VideoPlaybackSourceFallback on VideoPlaybackSource {
   VideoPlaybackSource? get fallbackAfterFailure => switch (this) {
     VideoPlaybackSource.privacyWrapper => VideoPlaybackSource.officialYouTube,
-    VideoPlaybackSource.officialYouTube => null,
+    VideoPlaybackSource.officialYouTube ||
+    VideoPlaybackSource.directMedia => null,
   };
 }
 
@@ -75,11 +76,17 @@ final class VideoSession {
   final Uri playbackUri;
   final VideoPresentation presentation;
 
+  VideoPlaybackSource get initialPlaybackSource =>
+      youtubeVideoId(sourceUri) == null
+      ? VideoPlaybackSource.directMedia
+      : VideoPlaybackSource.privacyWrapper;
+
   Uri? playbackUriFor(VideoPlaybackSource source) => switch (source) {
     VideoPlaybackSource.privacyWrapper => playbackUri,
     VideoPlaybackSource.officialYouTube => officialYouTubePlaybackUri(
       sourceUri,
     ),
+    VideoPlaybackSource.directMedia => playbackUri,
   };
 
   VideoSession copyWith({VideoPresentation? presentation}) => VideoSession(

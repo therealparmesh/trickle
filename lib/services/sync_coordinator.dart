@@ -122,9 +122,12 @@ final class SyncCoordinator {
               ))
               .get();
       final notifiedFeedIds =
-          (await (_database.select(
-                _database.feeds,
-              )..where((row) => row.notifications.equals(true))).get())
+          (await (_database.select(_database.feeds)..where(
+                    (row) =>
+                        row.subscribed.equals(true) &
+                        row.notifications.equals(true),
+                  ))
+                  .get())
               .map((feed) => feed.id)
               .toSet();
       try {
@@ -159,7 +162,11 @@ Future<void> applyPodcastAutomation({
   Set<String>? feedIds,
 }) async {
   final query = database.select(database.feeds);
-  if (feedIds != null) query.where((row) => row.id.isIn(feedIds));
+  query.where(
+    (row) =>
+        row.subscribed.equals(true) &
+        (feedIds == null ? const Constant(true) : row.id.isIn(feedIds)),
+  );
   final feeds = await query.get();
   if (feeds.isEmpty) return;
   final feedsById = {for (final feed in feeds) feed.id: feed};

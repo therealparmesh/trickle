@@ -131,8 +131,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
               child: SearchBar(
                 controller: _query,
                 autoFocus: true,
+                textCapitalization: TextCapitalization.none,
+                keyboardType: TextInputType.text,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
                 hintText: _tabs.index == 0
-                    ? 'Episodes, articles, or feeds…'
+                    ? 'Episodes, articles, posts, or feeds…'
                     : 'Podcast title or creator…',
                 leading: const Icon(Icons.search_rounded),
                 trailing: [
@@ -243,7 +247,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
   }
 
   void _scheduleSearch() {
-    final query = _query.text.trim();
+    final query = _normalizedSearchQuery(_query.text);
     final tab = _tabs.index;
     if (query == _scheduledQuery && tab == _scheduledTab) return;
     _scheduledQuery = query;
@@ -252,9 +256,9 @@ class _SearchPageState extends ConsumerState<SearchPage>
     setState(() {
       _loading = canSearch;
       _error = null;
-      if (tab == 0) {
+      if (!canSearch && tab == 0) {
         _local = const [];
-      } else {
+      } else if (!canSearch) {
         _catalog = const [];
       }
     });
@@ -267,7 +271,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   Future<void> _runSearch() async {
     final generation = ++_searchGeneration;
-    final query = _query.text.trim();
+    final query = _normalizedSearchQuery(_query.text);
     if (query.length < 2) {
       setState(() {
         _local = const [];
@@ -286,7 +290,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
         final hits = await ref.read(databaseProvider).search(query);
         if (!mounted ||
             generation != _searchGeneration ||
-            _query.text.trim() != query ||
+            _normalizedSearchQuery(_query.text) != query ||
             _tabs.index != tab) {
           return;
         }
@@ -298,7 +302,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
             .search(query, region);
         if (!mounted ||
             generation != _searchGeneration ||
-            _query.text.trim() != query ||
+            _normalizedSearchQuery(_query.text) != query ||
             _tabs.index != tab) {
           return;
         }
@@ -307,20 +311,23 @@ class _SearchPageState extends ConsumerState<SearchPage>
     } on Object catch (error) {
       if (mounted &&
           generation == _searchGeneration &&
-          _query.text.trim() == query &&
+          _normalizedSearchQuery(_query.text) == query &&
           _tabs.index == tab) {
         setState(() => _error = friendlyError(error));
       }
     } finally {
       if (mounted &&
           generation == _searchGeneration &&
-          _query.text.trim() == query &&
+          _normalizedSearchQuery(_query.text) == query &&
           _tabs.index == tab) {
         setState(() => _loading = false);
       }
     }
   }
 }
+
+String _normalizedSearchQuery(String value) =>
+    value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 
 final class _CatalogResultRow extends ConsumerStatefulWidget {
   const _CatalogResultRow({

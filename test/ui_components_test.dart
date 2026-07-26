@@ -324,6 +324,8 @@ void main() {
       title: 'Example Podcast',
       feedUrl: 'https://example.test/feed.xml',
       kind: FeedKind.podcast.index,
+      protocol: FeedProtocol.syndication.index,
+      subscribed: true,
       isPrivate: false,
       autoDownload: false,
       autoDownloadLimit: 3,
@@ -371,7 +373,16 @@ void main() {
           ),
           remoteImagesProvider.overrideWith((_) => Stream.value(false)),
         ],
-        child: MaterialApp(theme: TrickleTheme.dark, home: const HomePage()),
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(3.2)),
+            child: child!,
+          ),
+          home: const HomePage(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -384,6 +395,7 @@ void main() {
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
     expect(find.bySemanticsLabel('Podcasts, 1 item'), findsOneWidget);
+    expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1414,6 +1426,8 @@ void main() {
       feedUrl:
           'https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw',
       kind: FeedKind.reader.index,
+      protocol: FeedProtocol.syndication.index,
+      subscribed: true,
       isPrivate: false,
       autoDownload: false,
       autoDownloadLimit: 3,
@@ -1430,6 +1444,8 @@ void main() {
       title: 'A useful video',
       canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       discoveredAt: now,
+      contentFormat: ArticleContentFormat.html.index,
+      mediaKind: ArticleMediaKind.none.index,
       starred: false,
     );
 
@@ -1658,6 +1674,8 @@ void main() {
       feedUrl: 'https://example.test/podcast.xml',
       author: 'Publisher',
       kind: FeedKind.podcast.index,
+      protocol: FeedProtocol.syndication.index,
+      subscribed: true,
       isPrivate: false,
       autoDownload: false,
       autoDownloadLimit: 3,
@@ -1769,6 +1787,8 @@ Feed _privateFeed() {
     title: 'Private signal',
     feedUrl: 'private://credential',
     kind: FeedKind.podcast.index,
+    protocol: FeedProtocol.syndication.index,
+    subscribed: true,
     isPrivate: true,
     credentialRef: 'credential',
     autoDownload: false,

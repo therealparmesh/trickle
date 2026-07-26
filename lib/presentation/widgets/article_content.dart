@@ -455,7 +455,7 @@ class _ArticleContentState extends State<ArticleContent> {
       final source = image.attributes['src'];
       if (source == null || source.trim().isEmpty) continue;
       final link = _imageLink(image, root);
-      yield _ArticleImage(
+      yield ArticleImage(
         source: source,
         alt: image.attributes['alt']?.trim(),
         declaredWidth: _imageDimension(image.attributes['width']),
@@ -1042,8 +1042,8 @@ Iterable<String> _orderedMarkerLabels(int firstIndex, int lastIndex) sync* {
   }
 }
 
-final class _ArticleImage extends ConsumerWidget {
-  const _ArticleImage({
+final class ArticleImage extends ConsumerWidget {
+  const ArticleImage({
     required this.source,
     required this.allowed,
     this.alt,
@@ -1051,6 +1051,7 @@ final class _ArticleImage extends ConsumerWidget {
     this.declaredHeight,
     this.secret,
     this.onTap,
+    super.key,
   });
 
   final String source;

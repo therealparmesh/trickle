@@ -68,6 +68,45 @@ void main() {
   });
 
   test(
+    'mark all read leaves retained items from unsubscribed feeds alone',
+    () async {
+      final now = DateTime.utc(2026, 7, 26);
+      for (final id in const ['retained', 'active']) {
+        await database
+            .into(database.feeds)
+            .insert(
+              FeedsCompanion.insert(
+                id: id,
+                title: id,
+                feedUrl: 'https://example.test/$id.xml',
+                kind: Value(FeedKind.reader.index),
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+        await database
+            .into(database.articles)
+            .insert(
+              ArticlesCompanion.insert(
+                id: '$id-article',
+                feedId: id,
+                title: id,
+                discoveredAt: now,
+                starred: Value(id == 'retained'),
+              ),
+            );
+      }
+
+      await repository.deleteFeed('retained');
+      await repository.markAllArticlesRead();
+
+      expect((await database.feedById('retained'))?.subscribed, isFalse);
+      expect((await database.articleById('retained-article'))?.readAt, isNull);
+      expect((await database.articleById('active-article'))?.readAt, isNotNull);
+    },
+  );
+
+  test(
     'explicit private mode protects credentials embedded in a URL path',
     () async {
       const secretUrl = 'https://example.test/private/PATH_SECRET/feed.xml';

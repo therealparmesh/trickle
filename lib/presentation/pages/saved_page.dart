@@ -73,8 +73,8 @@ final class _SavedPageState extends ConsumerState<SavedPage> {
                 data: (items) => items.isEmpty
                     ? const EmptyState(
                         icon: Icons.bookmark_border_rounded,
-                        title: 'No saved articles or videos',
-                        message: 'Save an article or video to keep it here.',
+                        title: 'No saved feed items',
+                        message: 'Save a feed item to keep it here.',
                       )
                     : ListView.builder(
                         itemCount:

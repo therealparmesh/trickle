@@ -1,5 +1,9 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:markdown/markdown.dart' as markdown;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -13,6 +17,7 @@ import '../../data/repositories/article_repository.dart';
 import '../../features/video/video_session.dart';
 import '../widgets/common.dart';
 import '../widgets/article_content.dart';
+import '../widgets/article_attachments.dart';
 import '../widgets/design_system.dart';
 
 final class ArticlePage extends ConsumerStatefulWidget {
@@ -30,6 +35,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
   Future<ExtractedArticle>? _content;
   String? _presentedVideoArticleId;
   Future<void> _readStateWrite = Future<void>.value();
+  String? _revealedContentWarning;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +43,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     final value = article.value;
     final sourceUri = Uri.tryParse(value?.canonicalUrl ?? '');
     final playbackUri = privacyYouTubePlaybackUri(sourceUri);
+    final isNostr = sourceUri?.scheme == 'nostr';
     return Scaffold(
       appBar: AppBar(
         title: PageTitle(playbackUri == null ? 'Reader' : 'Video'),
@@ -83,7 +90,11 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
             icon: const Icon(Icons.share_rounded),
           ),
           IconButton(
-            tooltip: playbackUri == null ? 'Open in browser' : 'Open original',
+            tooltip: isNostr
+                ? 'Open in another app'
+                : playbackUri == null
+                ? 'Open in browser'
+                : 'Open original',
             onPressed: value?.canonicalUrl == null
                 ? null
                 : () => _openInBrowser(value!),
@@ -131,6 +142,10 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                     .value;
                 final allowRemoteImages =
                     feed != null && (!feed.isPrivate || secret != null);
+                final warning = value.contentWarning?.trim();
+                final revealContent =
+                    warning?.isNotEmpty != true ||
+                    _revealedContentWarning == warning;
                 return SelectionArea(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(22, 20, 22, 64),
@@ -164,13 +179,23 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                 ),
                                 const SizedBox(height: 20),
                               ],
-                              ArticleContent(
-                                html: html,
-                                scale: _scale,
-                                privateSecret: secret,
-                                allowRemoteImages: allowRemoteImages,
-                                leadingTitleToOmit: value.title,
-                              ),
+                              if (!revealContent)
+                                _ContentWarningGate(
+                                  warning: warning!,
+                                  onReveal: () => setState(
+                                    () => _revealedContentWarning = warning,
+                                  ),
+                                )
+                              else ...[
+                                ArticleAttachmentsView(article: value),
+                                ArticleContent(
+                                  html: html,
+                                  scale: _scale,
+                                  privateSecret: secret,
+                                  allowRemoteImages: allowRemoteImages,
+                                  leadingTitleToOmit: value.title,
+                                ),
+                              ],
                               const SizedBox(height: 30),
                               Wrap(
                                 spacing: 10,
@@ -378,12 +403,36 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     final signature = '${article.id}|${article.canonicalUrl}';
     if (_content == null || _contentSignature != signature) {
       _contentSignature = signature;
-      _content = ref.read(articleRepositoryProvider).load(article);
+      final format =
+          ArticleContentFormat.values[article.contentFormat.clamp(
+            0,
+            ArticleContentFormat.values.length - 1,
+          )];
+      _content = format == ArticleContentFormat.html
+          ? ref.read(articleRepositoryProvider).load(article)
+          : compute(_renderStoredArticle, (
+              format: format.index,
+              content: article.contentHtml ?? article.summary ?? '',
+            ));
     }
     return _content!;
   }
 
   void _refreshContent(Article article) {
+    final format =
+        ArticleContentFormat.values[article.contentFormat.clamp(
+          0,
+          ArticleContentFormat.values.length - 1,
+        )];
+    if (format != ArticleContentFormat.html) {
+      setState(() {
+        _content = compute(_renderStoredArticle, (
+          format: format.index,
+          content: article.contentHtml ?? article.summary ?? '',
+        ));
+      });
+      return;
+    }
     setState(() {
       _content = ref
           .read(articleRepositoryProvider)
@@ -429,9 +478,12 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
       opened = false;
     }
     if (!opened && mounted) {
-      final noun = privacyYouTubePlaybackUri(Uri.tryParse(url)) == null
-          ? 'article'
-          : 'video';
+      final uri = Uri.tryParse(url);
+      if (uri?.scheme == 'nostr') {
+        showMessageSnackBar(context, 'Couldn’t open this post in another app.');
+        return;
+      }
+      final noun = privacyYouTubePlaybackUri(uri) == null ? 'article' : 'video';
       showMessageSnackBar(context, 'Couldn’t open this $noun in your browser.');
     }
   }
@@ -457,6 +509,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
   void didUpdateWidget(covariant ArticlePage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.articleId != widget.articleId) {
+      _revealedContentWarning = null;
       _markCurrentItemRead();
     }
   }
@@ -487,13 +540,103 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
           child: Text(
             metadataLine([
               if (feedTitle?.isNotEmpty == true) feedTitle!,
-              if (article.author?.isNotEmpty == true) article.author!,
+              if (article.author?.isNotEmpty == true &&
+                  article.author!.trim().toLowerCase() !=
+                      feedTitle?.trim().toLowerCase())
+                article.author!,
               relativeDate(article.publishedAt),
             ]),
             style: const TextStyle(color: AppConstants.cyan),
           ),
         ),
       ],
+    );
+  }
+}
+
+ExtractedArticle _renderStoredArticle(({int format, String content}) input) {
+  final format = ArticleContentFormat
+      .values[input.format.clamp(0, ArticleContentFormat.values.length - 1)];
+  final html = switch (format) {
+    ArticleContentFormat.markdown => markdown.markdownToHtml(
+      input.content,
+      enableTagfilter: true,
+      extensionSet: markdown.ExtensionSet.gitHubWeb,
+    ),
+    ArticleContentFormat.plainText =>
+      input.content
+          .split(RegExp(r'\n\s*\n'))
+          .where((paragraph) => paragraph.trim().isNotEmpty)
+          .map((paragraph) => '<p>${_linkPlainText(paragraph.trim())}</p>')
+          .join(),
+    ArticleContentFormat.html => input.content,
+  };
+  return ExtractedArticle(html: html, text: input.content);
+}
+
+String _linkPlainText(String input) {
+  final output = StringBuffer();
+  var offset = 0;
+  for (final match in RegExp(
+    r'https://[^\s<]+',
+    caseSensitive: false,
+  ).allMatches(input)) {
+    output.write(
+      const HtmlEscape(
+        HtmlEscapeMode.element,
+      ).convert(input.substring(offset, match.start)),
+    );
+    var url = match.group(0)!;
+    var trailing = '';
+    while (url.isNotEmpty &&
+        RegExp(r'[.,!?:;]').hasMatch(url[url.length - 1])) {
+      trailing = '${url[url.length - 1]}$trailing';
+      url = url.substring(0, url.length - 1);
+    }
+    if (url.isEmpty) {
+      output.write(
+        const HtmlEscape(HtmlEscapeMode.element).convert(match.group(0)!),
+      );
+    } else {
+      final label = const HtmlEscape(HtmlEscapeMode.element).convert(url);
+      final href = const HtmlEscape(HtmlEscapeMode.attribute).convert(url);
+      output.write('<a href="$href">$label</a>');
+      output.write(const HtmlEscape(HtmlEscapeMode.element).convert(trailing));
+    }
+    offset = match.end;
+  }
+  output.write(
+    const HtmlEscape(HtmlEscapeMode.element).convert(input.substring(offset)),
+  );
+  return output.toString().replaceAll('\n', '<br>');
+}
+
+final class _ContentWarningGate extends StatelessWidget {
+  const _ContentWarningGate({required this.warning, required this.onReveal});
+
+  final String warning;
+  final VoidCallback onReveal;
+
+  @override
+  Widget build(BuildContext context) {
+    return SignalPanel(
+      accent: AppConstants.danger,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Content warning',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(warning),
+          const SizedBox(height: 14),
+          FilledButton.tonal(
+            onPressed: onReveal,
+            child: const Text('Show content'),
+          ),
+        ],
+      ),
     );
   }
 }

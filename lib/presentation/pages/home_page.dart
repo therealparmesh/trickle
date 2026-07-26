@@ -12,6 +12,7 @@ import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/design_system.dart';
+import '../widgets/episode_playback_button.dart';
 import 'podcasts_page.dart';
 
 final class HomePage extends ConsumerWidget {
@@ -281,7 +282,7 @@ final class _RecentStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
-    final rowHeight = (82 + (textScale - 1) * 30).clamp(82.0, 138.0);
+    final rowHeight = (82 + (textScale - 1) * 36).clamp(82.0, 166.0);
     return SizedBox(
       height: rowHeight * 2 + 26,
       child: GridView.builder(
@@ -328,59 +329,69 @@ final class _RecentEpisodeCard extends ConsumerWidget {
           ? null
           : listeningState.color,
       padding: EdgeInsets.zero,
-      child: Semantics(
-        button: true,
-        excludeSemantics: true,
-        onTap: () => context.push('/episode/${episode.id}'),
-        onLongPress: () => _showActions(context, ref),
-        label:
-            'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}. $status${metadata.isEmpty ? '' : '. $metadata'}',
-        hint: 'Long press for playback options',
-        child: InkWell(
-          onTap: () => context.push('/episode/${episode.id}'),
-          onLongPress: () => _showActions(context, ref),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                EpisodeArtwork(episode: episode, size: 64, radius: 5),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                button: true,
+                excludeSemantics: true,
+                onTap: () => context.push('/episode/${episode.id}'),
+                onLongPress: () => _showActions(context, ref),
+                label:
+                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}. $status${metadata.isEmpty ? '' : '. $metadata'}',
+                hint: 'Long press for playback options',
+                child: InkWell(
+                  onTap: () => context.push('/episode/${episode.id}'),
+                  onLongPress: () => _showActions(context, ref),
+                  child: Row(
                     children: [
-                      Text(
-                        status.toUpperCase(),
-                        maxLines: 1,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: isCurrent
-                              ? AppConstants.acid
-                              : listeningState.color,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      EpisodeTitle(
-                        title: episode.title,
-                        explicit: episode.explicit,
-                        maxLines: 2,
-                        style: TextStyle(
-                          color:
-                              listeningState == EpisodeListeningState.played &&
-                                  !isCurrent
-                              ? AppConstants.secondaryText
-                              : AppConstants.primaryText,
-                          fontWeight: FontWeight.w700,
-                          height: 1.15,
+                      EpisodeArtwork(episode: episode, size: 64, radius: 5),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              status.toUpperCase(),
+                              maxLines: 1,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: isCurrent
+                                        ? AppConstants.acid
+                                        : listeningState.color,
+                                    letterSpacing: 1.1,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            EpisodeTitle(
+                              title: episode.title,
+                              explicit: episode.explicit,
+                              maxLines: 2,
+                              style: TextStyle(
+                                color:
+                                    listeningState ==
+                                            EpisodeListeningState.played &&
+                                        !isCurrent
+                                    ? AppConstants.secondaryText
+                                    : AppConstants.primaryText,
+                                fontWeight: FontWeight.w700,
+                                height: 1.15,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(width: 6),
+            EpisodePlaybackButton(episode: episode, progress: progress),
+          ],
         ),
       ),
     );

@@ -224,7 +224,7 @@ void main() {
         isA<NetworkException>().having(
           (error) => error.message,
           'message',
-          'The media server did not return playable audio.',
+          'The media server did not return playable media.',
         ),
       ),
     );

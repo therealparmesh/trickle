@@ -286,6 +286,71 @@ void main() {
     },
   );
 
+  testWidgets('capitalization-only edits keep catalog results stable', (
+    tester,
+  ) async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final adapter = _CatalogAdapter();
+    final network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    final router = GoRouter(
+      initialLocation: '/search',
+      routes: [
+        GoRoute(
+          path: '/search',
+          builder: (_, _) => const SearchPage(initialCatalog: true),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          podcastSearchProvider.overrideWithValue(
+            PodcastSearchRepository(database, network),
+          ),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp.router(
+          theme: TrickleTheme.dark,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(EditableText), 'joe');
+    await tester.pump(const Duration(milliseconds: 500));
+    for (
+      var attempt = 0;
+      attempt < 30 && find.text('Explicit Signal').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(find.text('Explicit Signal'), findsOneWidget);
+    expect(adapter.requests, 1);
+
+    await tester.enterText(find.byType(EditableText), 'Joe');
+    await tester.pump();
+    expect(find.text('Explicit Signal'), findsOneWidget);
+    expect(find.text('Searching'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(adapter.requests, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    router.dispose();
+    network.close();
+    await database.close();
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('catalog rows preserve titles and actions at large text', (
     tester,
   ) async {
@@ -649,12 +714,15 @@ void main() {
 }
 
 final class _CatalogAdapter implements HttpClientAdapter {
+  int requests = 0;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    requests++;
     return ResponseBody.fromString(
       '''
       {

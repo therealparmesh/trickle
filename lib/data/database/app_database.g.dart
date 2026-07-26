@@ -89,6 +89,33 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _protocolMeta = const VerificationMeta(
+    'protocol',
+  );
+  @override
+  late final GeneratedColumn<int> protocol = GeneratedColumn<int>(
+    'protocol',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _subscribedMeta = const VerificationMeta(
+    'subscribed',
+  );
+  @override
+  late final GeneratedColumn<bool> subscribed = GeneratedColumn<bool>(
+    'subscribed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("subscribed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _isPrivateMeta = const VerificationMeta(
     'isPrivate',
   );
@@ -270,6 +297,8 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
     imageUrl,
     author,
     kind,
+    protocol,
+    subscribed,
     isPrivate,
     credentialRef,
     etag,
@@ -349,6 +378,18 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
       context.handle(
         _kindMeta,
         kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('protocol')) {
+      context.handle(
+        _protocolMeta,
+        protocol.isAcceptableOrUnknown(data['protocol']!, _protocolMeta),
+      );
+    }
+    if (data.containsKey('subscribed')) {
+      context.handle(
+        _subscribedMeta,
+        subscribed.isAcceptableOrUnknown(data['subscribed']!, _subscribedMeta),
       );
     }
     if (data.containsKey('is_private')) {
@@ -511,6 +552,14 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
         DriftSqlType.int,
         data['${effectivePrefix}kind'],
       )!,
+      protocol: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}protocol'],
+      )!,
+      subscribed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}subscribed'],
+      )!,
       isPrivate: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_private'],
@@ -585,6 +634,8 @@ class Feed extends DataClass implements Insertable<Feed> {
   final String? imageUrl;
   final String? author;
   final int kind;
+  final int protocol;
+  final bool subscribed;
   final bool isPrivate;
   final String? credentialRef;
   final String? etag;
@@ -608,6 +659,8 @@ class Feed extends DataClass implements Insertable<Feed> {
     this.imageUrl,
     this.author,
     required this.kind,
+    required this.protocol,
+    required this.subscribed,
     required this.isPrivate,
     this.credentialRef,
     this.etag,
@@ -642,6 +695,8 @@ class Feed extends DataClass implements Insertable<Feed> {
       map['author'] = Variable<String>(author);
     }
     map['kind'] = Variable<int>(kind);
+    map['protocol'] = Variable<int>(protocol);
+    map['subscribed'] = Variable<bool>(subscribed);
     map['is_private'] = Variable<bool>(isPrivate);
     if (!nullToAbsent || credentialRef != null) {
       map['credential_ref'] = Variable<String>(credentialRef);
@@ -687,6 +742,8 @@ class Feed extends DataClass implements Insertable<Feed> {
           ? const Value.absent()
           : Value(author),
       kind: Value(kind),
+      protocol: Value(protocol),
+      subscribed: Value(subscribed),
       isPrivate: Value(isPrivate),
       credentialRef: credentialRef == null && nullToAbsent
           ? const Value.absent()
@@ -726,6 +783,8 @@ class Feed extends DataClass implements Insertable<Feed> {
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       author: serializer.fromJson<String?>(json['author']),
       kind: serializer.fromJson<int>(json['kind']),
+      protocol: serializer.fromJson<int>(json['protocol']),
+      subscribed: serializer.fromJson<bool>(json['subscribed']),
       isPrivate: serializer.fromJson<bool>(json['isPrivate']),
       credentialRef: serializer.fromJson<String?>(json['credentialRef']),
       etag: serializer.fromJson<String?>(json['etag']),
@@ -754,6 +813,8 @@ class Feed extends DataClass implements Insertable<Feed> {
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'author': serializer.toJson<String?>(author),
       'kind': serializer.toJson<int>(kind),
+      'protocol': serializer.toJson<int>(protocol),
+      'subscribed': serializer.toJson<bool>(subscribed),
       'isPrivate': serializer.toJson<bool>(isPrivate),
       'credentialRef': serializer.toJson<String?>(credentialRef),
       'etag': serializer.toJson<String?>(etag),
@@ -780,6 +841,8 @@ class Feed extends DataClass implements Insertable<Feed> {
     Value<String?> imageUrl = const Value.absent(),
     Value<String?> author = const Value.absent(),
     int? kind,
+    int? protocol,
+    bool? subscribed,
     bool? isPrivate,
     Value<String?> credentialRef = const Value.absent(),
     Value<String?> etag = const Value.absent(),
@@ -803,6 +866,8 @@ class Feed extends DataClass implements Insertable<Feed> {
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
     author: author.present ? author.value : this.author,
     kind: kind ?? this.kind,
+    protocol: protocol ?? this.protocol,
+    subscribed: subscribed ?? this.subscribed,
     isPrivate: isPrivate ?? this.isPrivate,
     credentialRef: credentialRef.present
         ? credentialRef.value
@@ -832,6 +897,10 @@ class Feed extends DataClass implements Insertable<Feed> {
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       author: data.author.present ? data.author.value : this.author,
       kind: data.kind.present ? data.kind.value : this.kind,
+      protocol: data.protocol.present ? data.protocol.value : this.protocol,
+      subscribed: data.subscribed.present
+          ? data.subscribed.value
+          : this.subscribed,
       isPrivate: data.isPrivate.present ? data.isPrivate.value : this.isPrivate,
       credentialRef: data.credentialRef.present
           ? data.credentialRef.value
@@ -878,6 +947,8 @@ class Feed extends DataClass implements Insertable<Feed> {
           ..write('imageUrl: $imageUrl, ')
           ..write('author: $author, ')
           ..write('kind: $kind, ')
+          ..write('protocol: $protocol, ')
+          ..write('subscribed: $subscribed, ')
           ..write('isPrivate: $isPrivate, ')
           ..write('credentialRef: $credentialRef, ')
           ..write('etag: $etag, ')
@@ -906,6 +977,8 @@ class Feed extends DataClass implements Insertable<Feed> {
     imageUrl,
     author,
     kind,
+    protocol,
+    subscribed,
     isPrivate,
     credentialRef,
     etag,
@@ -933,6 +1006,8 @@ class Feed extends DataClass implements Insertable<Feed> {
           other.imageUrl == this.imageUrl &&
           other.author == this.author &&
           other.kind == this.kind &&
+          other.protocol == this.protocol &&
+          other.subscribed == this.subscribed &&
           other.isPrivate == this.isPrivate &&
           other.credentialRef == this.credentialRef &&
           other.etag == this.etag &&
@@ -958,6 +1033,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
   final Value<String?> imageUrl;
   final Value<String?> author;
   final Value<int> kind;
+  final Value<int> protocol;
+  final Value<bool> subscribed;
   final Value<bool> isPrivate;
   final Value<String?> credentialRef;
   final Value<String?> etag;
@@ -982,6 +1059,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     this.imageUrl = const Value.absent(),
     this.author = const Value.absent(),
     this.kind = const Value.absent(),
+    this.protocol = const Value.absent(),
+    this.subscribed = const Value.absent(),
     this.isPrivate = const Value.absent(),
     this.credentialRef = const Value.absent(),
     this.etag = const Value.absent(),
@@ -1007,6 +1086,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     this.imageUrl = const Value.absent(),
     this.author = const Value.absent(),
     this.kind = const Value.absent(),
+    this.protocol = const Value.absent(),
+    this.subscribed = const Value.absent(),
     this.isPrivate = const Value.absent(),
     this.credentialRef = const Value.absent(),
     this.etag = const Value.absent(),
@@ -1036,6 +1117,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     Expression<String>? imageUrl,
     Expression<String>? author,
     Expression<int>? kind,
+    Expression<int>? protocol,
+    Expression<bool>? subscribed,
     Expression<bool>? isPrivate,
     Expression<String>? credentialRef,
     Expression<String>? etag,
@@ -1061,6 +1144,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
       if (imageUrl != null) 'image_url': imageUrl,
       if (author != null) 'author': author,
       if (kind != null) 'kind': kind,
+      if (protocol != null) 'protocol': protocol,
+      if (subscribed != null) 'subscribed': subscribed,
       if (isPrivate != null) 'is_private': isPrivate,
       if (credentialRef != null) 'credential_ref': credentialRef,
       if (etag != null) 'etag': etag,
@@ -1088,6 +1173,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     Value<String?>? imageUrl,
     Value<String?>? author,
     Value<int>? kind,
+    Value<int>? protocol,
+    Value<bool>? subscribed,
     Value<bool>? isPrivate,
     Value<String?>? credentialRef,
     Value<String?>? etag,
@@ -1113,6 +1200,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
       imageUrl: imageUrl ?? this.imageUrl,
       author: author ?? this.author,
       kind: kind ?? this.kind,
+      protocol: protocol ?? this.protocol,
+      subscribed: subscribed ?? this.subscribed,
       isPrivate: isPrivate ?? this.isPrivate,
       credentialRef: credentialRef ?? this.credentialRef,
       etag: etag ?? this.etag,
@@ -1157,6 +1246,12 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     }
     if (kind.present) {
       map['kind'] = Variable<int>(kind.value);
+    }
+    if (protocol.present) {
+      map['protocol'] = Variable<int>(protocol.value);
+    }
+    if (subscribed.present) {
+      map['subscribed'] = Variable<bool>(subscribed.value);
     }
     if (isPrivate.present) {
       map['is_private'] = Variable<bool>(isPrivate.value);
@@ -1217,6 +1312,8 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
           ..write('imageUrl: $imageUrl, ')
           ..write('author: $author, ')
           ..write('kind: $kind, ')
+          ..write('protocol: $protocol, ')
+          ..write('subscribed: $subscribed, ')
           ..write('isPrivate: $isPrivate, ')
           ..write('credentialRef: $credentialRef, ')
           ..write('etag: $etag, ')
@@ -2314,6 +2411,63 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _contentFormatMeta = const VerificationMeta(
+    'contentFormat',
+  );
+  @override
+  late final GeneratedColumn<int> contentFormat = GeneratedColumn<int>(
+    'content_format',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _contentWarningMeta = const VerificationMeta(
+    'contentWarning',
+  );
+  @override
+  late final GeneratedColumn<String> contentWarning = GeneratedColumn<String>(
+    'content_warning',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceEventIdMeta = const VerificationMeta(
+    'sourceEventId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceEventId = GeneratedColumn<String>(
+    'source_event_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceAddressMeta = const VerificationMeta(
+    'sourceAddress',
+  );
+  @override
+  late final GeneratedColumn<String> sourceAddress = GeneratedColumn<String>(
+    'source_address',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mediaKindMeta = const VerificationMeta(
+    'mediaKind',
+  );
+  @override
+  late final GeneratedColumn<int> mediaKind = GeneratedColumn<int>(
+    'media_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _publishedAtMeta = const VerificationMeta(
     'publishedAt',
   );
@@ -2371,6 +2525,11 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     contentHtml,
     canonicalUrl,
     imageUrl,
+    contentFormat,
+    contentWarning,
+    sourceEventId,
+    sourceAddress,
+    mediaKind,
     publishedAt,
     discoveredAt,
     readAt,
@@ -2451,6 +2610,48 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         imageUrl.isAcceptableOrUnknown(data['image_url']!, _imageUrlMeta),
       );
     }
+    if (data.containsKey('content_format')) {
+      context.handle(
+        _contentFormatMeta,
+        contentFormat.isAcceptableOrUnknown(
+          data['content_format']!,
+          _contentFormatMeta,
+        ),
+      );
+    }
+    if (data.containsKey('content_warning')) {
+      context.handle(
+        _contentWarningMeta,
+        contentWarning.isAcceptableOrUnknown(
+          data['content_warning']!,
+          _contentWarningMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_event_id')) {
+      context.handle(
+        _sourceEventIdMeta,
+        sourceEventId.isAcceptableOrUnknown(
+          data['source_event_id']!,
+          _sourceEventIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_address')) {
+      context.handle(
+        _sourceAddressMeta,
+        sourceAddress.isAcceptableOrUnknown(
+          data['source_address']!,
+          _sourceAddressMeta,
+        ),
+      );
+    }
+    if (data.containsKey('media_kind')) {
+      context.handle(
+        _mediaKindMeta,
+        mediaKind.isAcceptableOrUnknown(data['media_kind']!, _mediaKindMeta),
+      );
+    }
     if (data.containsKey('published_at')) {
       context.handle(
         _publishedAtMeta,
@@ -2528,6 +2729,26 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         DriftSqlType.string,
         data['${effectivePrefix}image_url'],
       ),
+      contentFormat: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}content_format'],
+      )!,
+      contentWarning: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_warning'],
+      ),
+      sourceEventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_event_id'],
+      ),
+      sourceAddress: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_address'],
+      ),
+      mediaKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}media_kind'],
+      )!,
       publishedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}published_at'],
@@ -2563,6 +2784,11 @@ class Article extends DataClass implements Insertable<Article> {
   final String? contentHtml;
   final String? canonicalUrl;
   final String? imageUrl;
+  final int contentFormat;
+  final String? contentWarning;
+  final String? sourceEventId;
+  final String? sourceAddress;
+  final int mediaKind;
   final DateTime? publishedAt;
   final DateTime discoveredAt;
   final DateTime? readAt;
@@ -2577,6 +2803,11 @@ class Article extends DataClass implements Insertable<Article> {
     this.contentHtml,
     this.canonicalUrl,
     this.imageUrl,
+    required this.contentFormat,
+    this.contentWarning,
+    this.sourceEventId,
+    this.sourceAddress,
+    required this.mediaKind,
     this.publishedAt,
     required this.discoveredAt,
     this.readAt,
@@ -2606,6 +2837,17 @@ class Article extends DataClass implements Insertable<Article> {
     if (!nullToAbsent || imageUrl != null) {
       map['image_url'] = Variable<String>(imageUrl);
     }
+    map['content_format'] = Variable<int>(contentFormat);
+    if (!nullToAbsent || contentWarning != null) {
+      map['content_warning'] = Variable<String>(contentWarning);
+    }
+    if (!nullToAbsent || sourceEventId != null) {
+      map['source_event_id'] = Variable<String>(sourceEventId);
+    }
+    if (!nullToAbsent || sourceAddress != null) {
+      map['source_address'] = Variable<String>(sourceAddress);
+    }
+    map['media_kind'] = Variable<int>(mediaKind);
     if (!nullToAbsent || publishedAt != null) {
       map['published_at'] = Variable<DateTime>(publishedAt);
     }
@@ -2638,6 +2880,17 @@ class Article extends DataClass implements Insertable<Article> {
       imageUrl: imageUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(imageUrl),
+      contentFormat: Value(contentFormat),
+      contentWarning: contentWarning == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contentWarning),
+      sourceEventId: sourceEventId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceEventId),
+      sourceAddress: sourceAddress == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceAddress),
+      mediaKind: Value(mediaKind),
       publishedAt: publishedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(publishedAt),
@@ -2664,6 +2917,11 @@ class Article extends DataClass implements Insertable<Article> {
       contentHtml: serializer.fromJson<String?>(json['contentHtml']),
       canonicalUrl: serializer.fromJson<String?>(json['canonicalUrl']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
+      contentFormat: serializer.fromJson<int>(json['contentFormat']),
+      contentWarning: serializer.fromJson<String?>(json['contentWarning']),
+      sourceEventId: serializer.fromJson<String?>(json['sourceEventId']),
+      sourceAddress: serializer.fromJson<String?>(json['sourceAddress']),
+      mediaKind: serializer.fromJson<int>(json['mediaKind']),
       publishedAt: serializer.fromJson<DateTime?>(json['publishedAt']),
       discoveredAt: serializer.fromJson<DateTime>(json['discoveredAt']),
       readAt: serializer.fromJson<DateTime?>(json['readAt']),
@@ -2683,6 +2941,11 @@ class Article extends DataClass implements Insertable<Article> {
       'contentHtml': serializer.toJson<String?>(contentHtml),
       'canonicalUrl': serializer.toJson<String?>(canonicalUrl),
       'imageUrl': serializer.toJson<String?>(imageUrl),
+      'contentFormat': serializer.toJson<int>(contentFormat),
+      'contentWarning': serializer.toJson<String?>(contentWarning),
+      'sourceEventId': serializer.toJson<String?>(sourceEventId),
+      'sourceAddress': serializer.toJson<String?>(sourceAddress),
+      'mediaKind': serializer.toJson<int>(mediaKind),
       'publishedAt': serializer.toJson<DateTime?>(publishedAt),
       'discoveredAt': serializer.toJson<DateTime>(discoveredAt),
       'readAt': serializer.toJson<DateTime?>(readAt),
@@ -2700,6 +2963,11 @@ class Article extends DataClass implements Insertable<Article> {
     Value<String?> contentHtml = const Value.absent(),
     Value<String?> canonicalUrl = const Value.absent(),
     Value<String?> imageUrl = const Value.absent(),
+    int? contentFormat,
+    Value<String?> contentWarning = const Value.absent(),
+    Value<String?> sourceEventId = const Value.absent(),
+    Value<String?> sourceAddress = const Value.absent(),
+    int? mediaKind,
     Value<DateTime?> publishedAt = const Value.absent(),
     DateTime? discoveredAt,
     Value<DateTime?> readAt = const Value.absent(),
@@ -2714,6 +2982,17 @@ class Article extends DataClass implements Insertable<Article> {
     contentHtml: contentHtml.present ? contentHtml.value : this.contentHtml,
     canonicalUrl: canonicalUrl.present ? canonicalUrl.value : this.canonicalUrl,
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
+    contentFormat: contentFormat ?? this.contentFormat,
+    contentWarning: contentWarning.present
+        ? contentWarning.value
+        : this.contentWarning,
+    sourceEventId: sourceEventId.present
+        ? sourceEventId.value
+        : this.sourceEventId,
+    sourceAddress: sourceAddress.present
+        ? sourceAddress.value
+        : this.sourceAddress,
+    mediaKind: mediaKind ?? this.mediaKind,
     publishedAt: publishedAt.present ? publishedAt.value : this.publishedAt,
     discoveredAt: discoveredAt ?? this.discoveredAt,
     readAt: readAt.present ? readAt.value : this.readAt,
@@ -2734,6 +3013,19 @@ class Article extends DataClass implements Insertable<Article> {
           ? data.canonicalUrl.value
           : this.canonicalUrl,
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
+      contentFormat: data.contentFormat.present
+          ? data.contentFormat.value
+          : this.contentFormat,
+      contentWarning: data.contentWarning.present
+          ? data.contentWarning.value
+          : this.contentWarning,
+      sourceEventId: data.sourceEventId.present
+          ? data.sourceEventId.value
+          : this.sourceEventId,
+      sourceAddress: data.sourceAddress.present
+          ? data.sourceAddress.value
+          : this.sourceAddress,
+      mediaKind: data.mediaKind.present ? data.mediaKind.value : this.mediaKind,
       publishedAt: data.publishedAt.present
           ? data.publishedAt.value
           : this.publishedAt,
@@ -2757,6 +3049,11 @@ class Article extends DataClass implements Insertable<Article> {
           ..write('contentHtml: $contentHtml, ')
           ..write('canonicalUrl: $canonicalUrl, ')
           ..write('imageUrl: $imageUrl, ')
+          ..write('contentFormat: $contentFormat, ')
+          ..write('contentWarning: $contentWarning, ')
+          ..write('sourceEventId: $sourceEventId, ')
+          ..write('sourceAddress: $sourceAddress, ')
+          ..write('mediaKind: $mediaKind, ')
           ..write('publishedAt: $publishedAt, ')
           ..write('discoveredAt: $discoveredAt, ')
           ..write('readAt: $readAt, ')
@@ -2776,6 +3073,11 @@ class Article extends DataClass implements Insertable<Article> {
     contentHtml,
     canonicalUrl,
     imageUrl,
+    contentFormat,
+    contentWarning,
+    sourceEventId,
+    sourceAddress,
+    mediaKind,
     publishedAt,
     discoveredAt,
     readAt,
@@ -2794,6 +3096,11 @@ class Article extends DataClass implements Insertable<Article> {
           other.contentHtml == this.contentHtml &&
           other.canonicalUrl == this.canonicalUrl &&
           other.imageUrl == this.imageUrl &&
+          other.contentFormat == this.contentFormat &&
+          other.contentWarning == this.contentWarning &&
+          other.sourceEventId == this.sourceEventId &&
+          other.sourceAddress == this.sourceAddress &&
+          other.mediaKind == this.mediaKind &&
           other.publishedAt == this.publishedAt &&
           other.discoveredAt == this.discoveredAt &&
           other.readAt == this.readAt &&
@@ -2810,6 +3117,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   final Value<String?> contentHtml;
   final Value<String?> canonicalUrl;
   final Value<String?> imageUrl;
+  final Value<int> contentFormat;
+  final Value<String?> contentWarning;
+  final Value<String?> sourceEventId;
+  final Value<String?> sourceAddress;
+  final Value<int> mediaKind;
   final Value<DateTime?> publishedAt;
   final Value<DateTime> discoveredAt;
   final Value<DateTime?> readAt;
@@ -2825,6 +3137,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.contentHtml = const Value.absent(),
     this.canonicalUrl = const Value.absent(),
     this.imageUrl = const Value.absent(),
+    this.contentFormat = const Value.absent(),
+    this.contentWarning = const Value.absent(),
+    this.sourceEventId = const Value.absent(),
+    this.sourceAddress = const Value.absent(),
+    this.mediaKind = const Value.absent(),
     this.publishedAt = const Value.absent(),
     this.discoveredAt = const Value.absent(),
     this.readAt = const Value.absent(),
@@ -2841,6 +3158,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.contentHtml = const Value.absent(),
     this.canonicalUrl = const Value.absent(),
     this.imageUrl = const Value.absent(),
+    this.contentFormat = const Value.absent(),
+    this.contentWarning = const Value.absent(),
+    this.sourceEventId = const Value.absent(),
+    this.sourceAddress = const Value.absent(),
+    this.mediaKind = const Value.absent(),
     this.publishedAt = const Value.absent(),
     required DateTime discoveredAt,
     this.readAt = const Value.absent(),
@@ -2860,6 +3182,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Expression<String>? contentHtml,
     Expression<String>? canonicalUrl,
     Expression<String>? imageUrl,
+    Expression<int>? contentFormat,
+    Expression<String>? contentWarning,
+    Expression<String>? sourceEventId,
+    Expression<String>? sourceAddress,
+    Expression<int>? mediaKind,
     Expression<DateTime>? publishedAt,
     Expression<DateTime>? discoveredAt,
     Expression<DateTime>? readAt,
@@ -2876,6 +3203,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       if (contentHtml != null) 'content_html': contentHtml,
       if (canonicalUrl != null) 'canonical_url': canonicalUrl,
       if (imageUrl != null) 'image_url': imageUrl,
+      if (contentFormat != null) 'content_format': contentFormat,
+      if (contentWarning != null) 'content_warning': contentWarning,
+      if (sourceEventId != null) 'source_event_id': sourceEventId,
+      if (sourceAddress != null) 'source_address': sourceAddress,
+      if (mediaKind != null) 'media_kind': mediaKind,
       if (publishedAt != null) 'published_at': publishedAt,
       if (discoveredAt != null) 'discovered_at': discoveredAt,
       if (readAt != null) 'read_at': readAt,
@@ -2894,6 +3226,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Value<String?>? contentHtml,
     Value<String?>? canonicalUrl,
     Value<String?>? imageUrl,
+    Value<int>? contentFormat,
+    Value<String?>? contentWarning,
+    Value<String?>? sourceEventId,
+    Value<String?>? sourceAddress,
+    Value<int>? mediaKind,
     Value<DateTime?>? publishedAt,
     Value<DateTime>? discoveredAt,
     Value<DateTime?>? readAt,
@@ -2910,6 +3247,11 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       contentHtml: contentHtml ?? this.contentHtml,
       canonicalUrl: canonicalUrl ?? this.canonicalUrl,
       imageUrl: imageUrl ?? this.imageUrl,
+      contentFormat: contentFormat ?? this.contentFormat,
+      contentWarning: contentWarning ?? this.contentWarning,
+      sourceEventId: sourceEventId ?? this.sourceEventId,
+      sourceAddress: sourceAddress ?? this.sourceAddress,
+      mediaKind: mediaKind ?? this.mediaKind,
       publishedAt: publishedAt ?? this.publishedAt,
       discoveredAt: discoveredAt ?? this.discoveredAt,
       readAt: readAt ?? this.readAt,
@@ -2948,6 +3290,21 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     if (imageUrl.present) {
       map['image_url'] = Variable<String>(imageUrl.value);
     }
+    if (contentFormat.present) {
+      map['content_format'] = Variable<int>(contentFormat.value);
+    }
+    if (contentWarning.present) {
+      map['content_warning'] = Variable<String>(contentWarning.value);
+    }
+    if (sourceEventId.present) {
+      map['source_event_id'] = Variable<String>(sourceEventId.value);
+    }
+    if (sourceAddress.present) {
+      map['source_address'] = Variable<String>(sourceAddress.value);
+    }
+    if (mediaKind.present) {
+      map['media_kind'] = Variable<int>(mediaKind.value);
+    }
     if (publishedAt.present) {
       map['published_at'] = Variable<DateTime>(publishedAt.value);
     }
@@ -2978,10 +3335,1115 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
           ..write('contentHtml: $contentHtml, ')
           ..write('canonicalUrl: $canonicalUrl, ')
           ..write('imageUrl: $imageUrl, ')
+          ..write('contentFormat: $contentFormat, ')
+          ..write('contentWarning: $contentWarning, ')
+          ..write('sourceEventId: $sourceEventId, ')
+          ..write('sourceAddress: $sourceAddress, ')
+          ..write('mediaKind: $mediaKind, ')
           ..write('publishedAt: $publishedAt, ')
           ..write('discoveredAt: $discoveredAt, ')
           ..write('readAt: $readAt, ')
           ..write('starred: $starred, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NostrProfilesTable extends NostrProfiles
+    with TableInfo<$NostrProfilesTable, NostrProfile> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NostrProfilesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _feedIdMeta = const VerificationMeta('feedId');
+  @override
+  late final GeneratedColumn<String> feedId = GeneratedColumn<String>(
+    'feed_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES feeds (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _publicKeyMeta = const VerificationMeta(
+    'publicKey',
+  );
+  @override
+  late final GeneratedColumn<String> publicKey = GeneratedColumn<String>(
+    'public_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [feedId, publicKey];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'nostr_profiles';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NostrProfile> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('feed_id')) {
+      context.handle(
+        _feedIdMeta,
+        feedId.isAcceptableOrUnknown(data['feed_id']!, _feedIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_feedIdMeta);
+    }
+    if (data.containsKey('public_key')) {
+      context.handle(
+        _publicKeyMeta,
+        publicKey.isAcceptableOrUnknown(data['public_key']!, _publicKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_publicKeyMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {feedId};
+  @override
+  NostrProfile map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NostrProfile(
+      feedId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}feed_id'],
+      )!,
+      publicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}public_key'],
+      )!,
+    );
+  }
+
+  @override
+  $NostrProfilesTable createAlias(String alias) {
+    return $NostrProfilesTable(attachedDatabase, alias);
+  }
+}
+
+class NostrProfile extends DataClass implements Insertable<NostrProfile> {
+  final String feedId;
+  final String publicKey;
+  const NostrProfile({required this.feedId, required this.publicKey});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['feed_id'] = Variable<String>(feedId);
+    map['public_key'] = Variable<String>(publicKey);
+    return map;
+  }
+
+  NostrProfilesCompanion toCompanion(bool nullToAbsent) {
+    return NostrProfilesCompanion(
+      feedId: Value(feedId),
+      publicKey: Value(publicKey),
+    );
+  }
+
+  factory NostrProfile.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NostrProfile(
+      feedId: serializer.fromJson<String>(json['feedId']),
+      publicKey: serializer.fromJson<String>(json['publicKey']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'feedId': serializer.toJson<String>(feedId),
+      'publicKey': serializer.toJson<String>(publicKey),
+    };
+  }
+
+  NostrProfile copyWith({String? feedId, String? publicKey}) => NostrProfile(
+    feedId: feedId ?? this.feedId,
+    publicKey: publicKey ?? this.publicKey,
+  );
+  NostrProfile copyWithCompanion(NostrProfilesCompanion data) {
+    return NostrProfile(
+      feedId: data.feedId.present ? data.feedId.value : this.feedId,
+      publicKey: data.publicKey.present ? data.publicKey.value : this.publicKey,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NostrProfile(')
+          ..write('feedId: $feedId, ')
+          ..write('publicKey: $publicKey')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(feedId, publicKey);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NostrProfile &&
+          other.feedId == this.feedId &&
+          other.publicKey == this.publicKey);
+}
+
+class NostrProfilesCompanion extends UpdateCompanion<NostrProfile> {
+  final Value<String> feedId;
+  final Value<String> publicKey;
+  final Value<int> rowid;
+  const NostrProfilesCompanion({
+    this.feedId = const Value.absent(),
+    this.publicKey = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NostrProfilesCompanion.insert({
+    required String feedId,
+    required String publicKey,
+    this.rowid = const Value.absent(),
+  }) : feedId = Value(feedId),
+       publicKey = Value(publicKey);
+  static Insertable<NostrProfile> custom({
+    Expression<String>? feedId,
+    Expression<String>? publicKey,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (feedId != null) 'feed_id': feedId,
+      if (publicKey != null) 'public_key': publicKey,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NostrProfilesCompanion copyWith({
+    Value<String>? feedId,
+    Value<String>? publicKey,
+    Value<int>? rowid,
+  }) {
+    return NostrProfilesCompanion(
+      feedId: feedId ?? this.feedId,
+      publicKey: publicKey ?? this.publicKey,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (feedId.present) {
+      map['feed_id'] = Variable<String>(feedId.value);
+    }
+    if (publicKey.present) {
+      map['public_key'] = Variable<String>(publicKey.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NostrProfilesCompanion(')
+          ..write('feedId: $feedId, ')
+          ..write('publicKey: $publicKey, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NostrRelaysTable extends NostrRelays
+    with TableInfo<$NostrRelaysTable, NostrRelay> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NostrRelaysTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _feedIdMeta = const VerificationMeta('feedId');
+  @override
+  late final GeneratedColumn<String> feedId = GeneratedColumn<String>(
+    'feed_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES feeds (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [feedId, url];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'nostr_relays';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NostrRelay> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('feed_id')) {
+      context.handle(
+        _feedIdMeta,
+        feedId.isAcceptableOrUnknown(data['feed_id']!, _feedIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_feedIdMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {feedId, url};
+  @override
+  NostrRelay map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NostrRelay(
+      feedId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}feed_id'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+    );
+  }
+
+  @override
+  $NostrRelaysTable createAlias(String alias) {
+    return $NostrRelaysTable(attachedDatabase, alias);
+  }
+}
+
+class NostrRelay extends DataClass implements Insertable<NostrRelay> {
+  final String feedId;
+  final String url;
+  const NostrRelay({required this.feedId, required this.url});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['feed_id'] = Variable<String>(feedId);
+    map['url'] = Variable<String>(url);
+    return map;
+  }
+
+  NostrRelaysCompanion toCompanion(bool nullToAbsent) {
+    return NostrRelaysCompanion(feedId: Value(feedId), url: Value(url));
+  }
+
+  factory NostrRelay.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NostrRelay(
+      feedId: serializer.fromJson<String>(json['feedId']),
+      url: serializer.fromJson<String>(json['url']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'feedId': serializer.toJson<String>(feedId),
+      'url': serializer.toJson<String>(url),
+    };
+  }
+
+  NostrRelay copyWith({String? feedId, String? url}) =>
+      NostrRelay(feedId: feedId ?? this.feedId, url: url ?? this.url);
+  NostrRelay copyWithCompanion(NostrRelaysCompanion data) {
+    return NostrRelay(
+      feedId: data.feedId.present ? data.feedId.value : this.feedId,
+      url: data.url.present ? data.url.value : this.url,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NostrRelay(')
+          ..write('feedId: $feedId, ')
+          ..write('url: $url')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(feedId, url);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NostrRelay &&
+          other.feedId == this.feedId &&
+          other.url == this.url);
+}
+
+class NostrRelaysCompanion extends UpdateCompanion<NostrRelay> {
+  final Value<String> feedId;
+  final Value<String> url;
+  final Value<int> rowid;
+  const NostrRelaysCompanion({
+    this.feedId = const Value.absent(),
+    this.url = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NostrRelaysCompanion.insert({
+    required String feedId,
+    required String url,
+    this.rowid = const Value.absent(),
+  }) : feedId = Value(feedId),
+       url = Value(url);
+  static Insertable<NostrRelay> custom({
+    Expression<String>? feedId,
+    Expression<String>? url,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (feedId != null) 'feed_id': feedId,
+      if (url != null) 'url': url,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NostrRelaysCompanion copyWith({
+    Value<String>? feedId,
+    Value<String>? url,
+    Value<int>? rowid,
+  }) {
+    return NostrRelaysCompanion(
+      feedId: feedId ?? this.feedId,
+      url: url ?? this.url,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (feedId.present) {
+      map['feed_id'] = Variable<String>(feedId.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NostrRelaysCompanion(')
+          ..write('feedId: $feedId, ')
+          ..write('url: $url, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ArticleAttachmentsTable extends ArticleAttachments
+    with TableInfo<$ArticleAttachmentsTable, ArticleAttachment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ArticleAttachmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _articleIdMeta = const VerificationMeta(
+    'articleId',
+  );
+  @override
+  late final GeneratedColumn<String> articleId = GeneratedColumn<String>(
+    'article_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES articles (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _previewUrlMeta = const VerificationMeta(
+    'previewUrl',
+  );
+  @override
+  late final GeneratedColumn<String> previewUrl = GeneratedColumn<String>(
+    'preview_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _altMeta = const VerificationMeta('alt');
+  @override
+  late final GeneratedColumn<String> alt = GeneratedColumn<String>(
+    'alt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<int> width = GeneratedColumn<int>(
+    'width',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _heightMeta = const VerificationMeta('height');
+  @override
+  late final GeneratedColumn<int> height = GeneratedColumn<int>(
+    'height',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _durationMsMeta = const VerificationMeta(
+    'durationMs',
+  );
+  @override
+  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
+    'duration_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fallbackUrlsMeta = const VerificationMeta(
+    'fallbackUrls',
+  );
+  @override
+  late final GeneratedColumn<String> fallbackUrls = GeneratedColumn<String>(
+    'fallback_urls',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    articleId,
+    position,
+    url,
+    mimeType,
+    previewUrl,
+    alt,
+    width,
+    height,
+    durationMs,
+    fallbackUrls,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'article_attachments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ArticleAttachment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('article_id')) {
+      context.handle(
+        _articleIdMeta,
+        articleId.isAcceptableOrUnknown(data['article_id']!, _articleIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_articleIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    }
+    if (data.containsKey('preview_url')) {
+      context.handle(
+        _previewUrlMeta,
+        previewUrl.isAcceptableOrUnknown(data['preview_url']!, _previewUrlMeta),
+      );
+    }
+    if (data.containsKey('alt')) {
+      context.handle(
+        _altMeta,
+        alt.isAcceptableOrUnknown(data['alt']!, _altMeta),
+      );
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+        _widthMeta,
+        width.isAcceptableOrUnknown(data['width']!, _widthMeta),
+      );
+    }
+    if (data.containsKey('height')) {
+      context.handle(
+        _heightMeta,
+        height.isAcceptableOrUnknown(data['height']!, _heightMeta),
+      );
+    }
+    if (data.containsKey('duration_ms')) {
+      context.handle(
+        _durationMsMeta,
+        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
+      );
+    }
+    if (data.containsKey('fallback_urls')) {
+      context.handle(
+        _fallbackUrlsMeta,
+        fallbackUrls.isAcceptableOrUnknown(
+          data['fallback_urls']!,
+          _fallbackUrlsMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {articleId, position},
+  ];
+  @override
+  ArticleAttachment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ArticleAttachment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      articleId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}article_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      ),
+      previewUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preview_url'],
+      ),
+      alt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}alt'],
+      ),
+      width: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}width'],
+      ),
+      height: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}height'],
+      ),
+      durationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_ms'],
+      ),
+      fallbackUrls: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fallback_urls'],
+      ),
+    );
+  }
+
+  @override
+  $ArticleAttachmentsTable createAlias(String alias) {
+    return $ArticleAttachmentsTable(attachedDatabase, alias);
+  }
+}
+
+class ArticleAttachment extends DataClass
+    implements Insertable<ArticleAttachment> {
+  final String id;
+  final String articleId;
+  final int position;
+  final String url;
+  final String? mimeType;
+  final String? previewUrl;
+  final String? alt;
+  final int? width;
+  final int? height;
+  final int? durationMs;
+  final String? fallbackUrls;
+  const ArticleAttachment({
+    required this.id,
+    required this.articleId,
+    required this.position,
+    required this.url,
+    this.mimeType,
+    this.previewUrl,
+    this.alt,
+    this.width,
+    this.height,
+    this.durationMs,
+    this.fallbackUrls,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['article_id'] = Variable<String>(articleId);
+    map['position'] = Variable<int>(position);
+    map['url'] = Variable<String>(url);
+    if (!nullToAbsent || mimeType != null) {
+      map['mime_type'] = Variable<String>(mimeType);
+    }
+    if (!nullToAbsent || previewUrl != null) {
+      map['preview_url'] = Variable<String>(previewUrl);
+    }
+    if (!nullToAbsent || alt != null) {
+      map['alt'] = Variable<String>(alt);
+    }
+    if (!nullToAbsent || width != null) {
+      map['width'] = Variable<int>(width);
+    }
+    if (!nullToAbsent || height != null) {
+      map['height'] = Variable<int>(height);
+    }
+    if (!nullToAbsent || durationMs != null) {
+      map['duration_ms'] = Variable<int>(durationMs);
+    }
+    if (!nullToAbsent || fallbackUrls != null) {
+      map['fallback_urls'] = Variable<String>(fallbackUrls);
+    }
+    return map;
+  }
+
+  ArticleAttachmentsCompanion toCompanion(bool nullToAbsent) {
+    return ArticleAttachmentsCompanion(
+      id: Value(id),
+      articleId: Value(articleId),
+      position: Value(position),
+      url: Value(url),
+      mimeType: mimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mimeType),
+      previewUrl: previewUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previewUrl),
+      alt: alt == null && nullToAbsent ? const Value.absent() : Value(alt),
+      width: width == null && nullToAbsent
+          ? const Value.absent()
+          : Value(width),
+      height: height == null && nullToAbsent
+          ? const Value.absent()
+          : Value(height),
+      durationMs: durationMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(durationMs),
+      fallbackUrls: fallbackUrls == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fallbackUrls),
+    );
+  }
+
+  factory ArticleAttachment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ArticleAttachment(
+      id: serializer.fromJson<String>(json['id']),
+      articleId: serializer.fromJson<String>(json['articleId']),
+      position: serializer.fromJson<int>(json['position']),
+      url: serializer.fromJson<String>(json['url']),
+      mimeType: serializer.fromJson<String?>(json['mimeType']),
+      previewUrl: serializer.fromJson<String?>(json['previewUrl']),
+      alt: serializer.fromJson<String?>(json['alt']),
+      width: serializer.fromJson<int?>(json['width']),
+      height: serializer.fromJson<int?>(json['height']),
+      durationMs: serializer.fromJson<int?>(json['durationMs']),
+      fallbackUrls: serializer.fromJson<String?>(json['fallbackUrls']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'articleId': serializer.toJson<String>(articleId),
+      'position': serializer.toJson<int>(position),
+      'url': serializer.toJson<String>(url),
+      'mimeType': serializer.toJson<String?>(mimeType),
+      'previewUrl': serializer.toJson<String?>(previewUrl),
+      'alt': serializer.toJson<String?>(alt),
+      'width': serializer.toJson<int?>(width),
+      'height': serializer.toJson<int?>(height),
+      'durationMs': serializer.toJson<int?>(durationMs),
+      'fallbackUrls': serializer.toJson<String?>(fallbackUrls),
+    };
+  }
+
+  ArticleAttachment copyWith({
+    String? id,
+    String? articleId,
+    int? position,
+    String? url,
+    Value<String?> mimeType = const Value.absent(),
+    Value<String?> previewUrl = const Value.absent(),
+    Value<String?> alt = const Value.absent(),
+    Value<int?> width = const Value.absent(),
+    Value<int?> height = const Value.absent(),
+    Value<int?> durationMs = const Value.absent(),
+    Value<String?> fallbackUrls = const Value.absent(),
+  }) => ArticleAttachment(
+    id: id ?? this.id,
+    articleId: articleId ?? this.articleId,
+    position: position ?? this.position,
+    url: url ?? this.url,
+    mimeType: mimeType.present ? mimeType.value : this.mimeType,
+    previewUrl: previewUrl.present ? previewUrl.value : this.previewUrl,
+    alt: alt.present ? alt.value : this.alt,
+    width: width.present ? width.value : this.width,
+    height: height.present ? height.value : this.height,
+    durationMs: durationMs.present ? durationMs.value : this.durationMs,
+    fallbackUrls: fallbackUrls.present ? fallbackUrls.value : this.fallbackUrls,
+  );
+  ArticleAttachment copyWithCompanion(ArticleAttachmentsCompanion data) {
+    return ArticleAttachment(
+      id: data.id.present ? data.id.value : this.id,
+      articleId: data.articleId.present ? data.articleId.value : this.articleId,
+      position: data.position.present ? data.position.value : this.position,
+      url: data.url.present ? data.url.value : this.url,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      previewUrl: data.previewUrl.present
+          ? data.previewUrl.value
+          : this.previewUrl,
+      alt: data.alt.present ? data.alt.value : this.alt,
+      width: data.width.present ? data.width.value : this.width,
+      height: data.height.present ? data.height.value : this.height,
+      durationMs: data.durationMs.present
+          ? data.durationMs.value
+          : this.durationMs,
+      fallbackUrls: data.fallbackUrls.present
+          ? data.fallbackUrls.value
+          : this.fallbackUrls,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ArticleAttachment(')
+          ..write('id: $id, ')
+          ..write('articleId: $articleId, ')
+          ..write('position: $position, ')
+          ..write('url: $url, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('previewUrl: $previewUrl, ')
+          ..write('alt: $alt, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('fallbackUrls: $fallbackUrls')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    articleId,
+    position,
+    url,
+    mimeType,
+    previewUrl,
+    alt,
+    width,
+    height,
+    durationMs,
+    fallbackUrls,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ArticleAttachment &&
+          other.id == this.id &&
+          other.articleId == this.articleId &&
+          other.position == this.position &&
+          other.url == this.url &&
+          other.mimeType == this.mimeType &&
+          other.previewUrl == this.previewUrl &&
+          other.alt == this.alt &&
+          other.width == this.width &&
+          other.height == this.height &&
+          other.durationMs == this.durationMs &&
+          other.fallbackUrls == this.fallbackUrls);
+}
+
+class ArticleAttachmentsCompanion extends UpdateCompanion<ArticleAttachment> {
+  final Value<String> id;
+  final Value<String> articleId;
+  final Value<int> position;
+  final Value<String> url;
+  final Value<String?> mimeType;
+  final Value<String?> previewUrl;
+  final Value<String?> alt;
+  final Value<int?> width;
+  final Value<int?> height;
+  final Value<int?> durationMs;
+  final Value<String?> fallbackUrls;
+  final Value<int> rowid;
+  const ArticleAttachmentsCompanion({
+    this.id = const Value.absent(),
+    this.articleId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.url = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.previewUrl = const Value.absent(),
+    this.alt = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.fallbackUrls = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ArticleAttachmentsCompanion.insert({
+    required String id,
+    required String articleId,
+    required int position,
+    required String url,
+    this.mimeType = const Value.absent(),
+    this.previewUrl = const Value.absent(),
+    this.alt = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.fallbackUrls = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       articleId = Value(articleId),
+       position = Value(position),
+       url = Value(url);
+  static Insertable<ArticleAttachment> custom({
+    Expression<String>? id,
+    Expression<String>? articleId,
+    Expression<int>? position,
+    Expression<String>? url,
+    Expression<String>? mimeType,
+    Expression<String>? previewUrl,
+    Expression<String>? alt,
+    Expression<int>? width,
+    Expression<int>? height,
+    Expression<int>? durationMs,
+    Expression<String>? fallbackUrls,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (articleId != null) 'article_id': articleId,
+      if (position != null) 'position': position,
+      if (url != null) 'url': url,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (previewUrl != null) 'preview_url': previewUrl,
+      if (alt != null) 'alt': alt,
+      if (width != null) 'width': width,
+      if (height != null) 'height': height,
+      if (durationMs != null) 'duration_ms': durationMs,
+      if (fallbackUrls != null) 'fallback_urls': fallbackUrls,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ArticleAttachmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? articleId,
+    Value<int>? position,
+    Value<String>? url,
+    Value<String?>? mimeType,
+    Value<String?>? previewUrl,
+    Value<String?>? alt,
+    Value<int?>? width,
+    Value<int?>? height,
+    Value<int?>? durationMs,
+    Value<String?>? fallbackUrls,
+    Value<int>? rowid,
+  }) {
+    return ArticleAttachmentsCompanion(
+      id: id ?? this.id,
+      articleId: articleId ?? this.articleId,
+      position: position ?? this.position,
+      url: url ?? this.url,
+      mimeType: mimeType ?? this.mimeType,
+      previewUrl: previewUrl ?? this.previewUrl,
+      alt: alt ?? this.alt,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      durationMs: durationMs ?? this.durationMs,
+      fallbackUrls: fallbackUrls ?? this.fallbackUrls,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (articleId.present) {
+      map['article_id'] = Variable<String>(articleId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (previewUrl.present) {
+      map['preview_url'] = Variable<String>(previewUrl.value);
+    }
+    if (alt.present) {
+      map['alt'] = Variable<String>(alt.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<int>(width.value);
+    }
+    if (height.present) {
+      map['height'] = Variable<int>(height.value);
+    }
+    if (durationMs.present) {
+      map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (fallbackUrls.present) {
+      map['fallback_urls'] = Variable<String>(fallbackUrls.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ArticleAttachmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('articleId: $articleId, ')
+          ..write('position: $position, ')
+          ..write('url: $url, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('previewUrl: $previewUrl, ')
+          ..write('alt: $alt, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('fallbackUrls: $fallbackUrls, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5878,6 +7340,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FeedsTable feeds = $FeedsTable(this);
   late final $EpisodesTable episodes = $EpisodesTable(this);
   late final $ArticlesTable articles = $ArticlesTable(this);
+  late final $NostrProfilesTable nostrProfiles = $NostrProfilesTable(this);
+  late final $NostrRelaysTable nostrRelays = $NostrRelaysTable(this);
+  late final $ArticleAttachmentsTable articleAttachments =
+      $ArticleAttachmentsTable(this);
   late final $PlaybackProgressesTable playbackProgresses =
       $PlaybackProgressesTable(this);
   late final $QueueEntriesTable queueEntries = $QueueEntriesTable(this);
@@ -5895,6 +7361,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     feeds,
     episodes,
     articles,
+    nostrProfiles,
+    nostrRelays,
+    articleAttachments,
     playbackProgresses,
     queueEntries,
     mediaDownloads,
@@ -5919,6 +7388,27 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('articles', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'feeds',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('nostr_profiles', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'feeds',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('nostr_relays', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'articles',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('article_attachments', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -5975,6 +7465,8 @@ typedef $$FeedsTableCreateCompanionBuilder =
       Value<String?> imageUrl,
       Value<String?> author,
       Value<int> kind,
+      Value<int> protocol,
+      Value<bool> subscribed,
       Value<bool> isPrivate,
       Value<String?> credentialRef,
       Value<String?> etag,
@@ -6001,6 +7493,8 @@ typedef $$FeedsTableUpdateCompanionBuilder =
       Value<String?> imageUrl,
       Value<String?> author,
       Value<int> kind,
+      Value<int> protocol,
+      Value<bool> subscribed,
       Value<bool> isPrivate,
       Value<String?> credentialRef,
       Value<String?> etag,
@@ -6059,6 +7553,42 @@ final class $$FeedsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$NostrProfilesTable, List<NostrProfile>>
+  _nostrProfilesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.nostrProfiles,
+    aliasName: 'feeds__id__nostr_profiles__feed_id',
+  );
+
+  $$NostrProfilesTableProcessedTableManager get nostrProfilesRefs {
+    final manager = $$NostrProfilesTableTableManager(
+      $_db,
+      $_db.nostrProfiles,
+    ).filter((f) => f.feedId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_nostrProfilesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$NostrRelaysTable, List<NostrRelay>>
+  _nostrRelaysRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.nostrRelays,
+    aliasName: 'feeds__id__nostr_relays__feed_id',
+  );
+
+  $$NostrRelaysTableProcessedTableManager get nostrRelaysRefs {
+    final manager = $$NostrRelaysTableTableManager(
+      $_db,
+      $_db.nostrRelays,
+    ).filter((f) => f.feedId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_nostrRelaysRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$FeedsTableFilterComposer extends Composer<_$AppDatabase, $FeedsTable> {
@@ -6106,6 +7636,16 @@ class $$FeedsTableFilterComposer extends Composer<_$AppDatabase, $FeedsTable> {
 
   ColumnFilters<int> get kind => $composableBuilder(
     column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get protocol => $composableBuilder(
+    column: $table.protocol,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get subscribed => $composableBuilder(
+    column: $table.subscribed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6228,6 +7768,56 @@ class $$FeedsTableFilterComposer extends Composer<_$AppDatabase, $FeedsTable> {
     );
     return f(composer);
   }
+
+  Expression<bool> nostrProfilesRefs(
+    Expression<bool> Function($$NostrProfilesTableFilterComposer f) f,
+  ) {
+    final $$NostrProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.nostrProfiles,
+      getReferencedColumn: (t) => t.feedId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NostrProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.nostrProfiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> nostrRelaysRefs(
+    Expression<bool> Function($$NostrRelaysTableFilterComposer f) f,
+  ) {
+    final $$NostrRelaysTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.nostrRelays,
+      getReferencedColumn: (t) => t.feedId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NostrRelaysTableFilterComposer(
+            $db: $db,
+            $table: $db.nostrRelays,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$FeedsTableOrderingComposer
@@ -6276,6 +7866,16 @@ class $$FeedsTableOrderingComposer
 
   ColumnOrderings<int> get kind => $composableBuilder(
     column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get protocol => $composableBuilder(
+    column: $table.protocol,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get subscribed => $composableBuilder(
+    column: $table.subscribed,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -6384,6 +7984,14 @@ class $$FeedsTableAnnotationComposer
 
   GeneratedColumn<int> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get protocol =>
+      $composableBuilder(column: $table.protocol, builder: (column) => column);
+
+  GeneratedColumn<bool> get subscribed => $composableBuilder(
+    column: $table.subscribed,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get isPrivate =>
       $composableBuilder(column: $table.isPrivate, builder: (column) => column);
@@ -6494,6 +8102,56 @@ class $$FeedsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> nostrProfilesRefs<T extends Object>(
+    Expression<T> Function($$NostrProfilesTableAnnotationComposer a) f,
+  ) {
+    final $$NostrProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.nostrProfiles,
+      getReferencedColumn: (t) => t.feedId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NostrProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nostrProfiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> nostrRelaysRefs<T extends Object>(
+    Expression<T> Function($$NostrRelaysTableAnnotationComposer a) f,
+  ) {
+    final $$NostrRelaysTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.nostrRelays,
+      getReferencedColumn: (t) => t.feedId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NostrRelaysTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nostrRelays,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$FeedsTableTableManager
@@ -6509,7 +8167,12 @@ class $$FeedsTableTableManager
           $$FeedsTableUpdateCompanionBuilder,
           (Feed, $$FeedsTableReferences),
           Feed,
-          PrefetchHooks Function({bool episodesRefs, bool articlesRefs})
+          PrefetchHooks Function({
+            bool episodesRefs,
+            bool articlesRefs,
+            bool nostrProfilesRefs,
+            bool nostrRelaysRefs,
+          })
         > {
   $$FeedsTableTableManager(_$AppDatabase db, $FeedsTable table)
     : super(
@@ -6532,6 +8195,8 @@ class $$FeedsTableTableManager
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> author = const Value.absent(),
                 Value<int> kind = const Value.absent(),
+                Value<int> protocol = const Value.absent(),
+                Value<bool> subscribed = const Value.absent(),
                 Value<bool> isPrivate = const Value.absent(),
                 Value<String?> credentialRef = const Value.absent(),
                 Value<String?> etag = const Value.absent(),
@@ -6556,6 +8221,8 @@ class $$FeedsTableTableManager
                 imageUrl: imageUrl,
                 author: author,
                 kind: kind,
+                protocol: protocol,
+                subscribed: subscribed,
                 isPrivate: isPrivate,
                 credentialRef: credentialRef,
                 etag: etag,
@@ -6582,6 +8249,8 @@ class $$FeedsTableTableManager
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> author = const Value.absent(),
                 Value<int> kind = const Value.absent(),
+                Value<int> protocol = const Value.absent(),
+                Value<bool> subscribed = const Value.absent(),
                 Value<bool> isPrivate = const Value.absent(),
                 Value<String?> credentialRef = const Value.absent(),
                 Value<String?> etag = const Value.absent(),
@@ -6606,6 +8275,8 @@ class $$FeedsTableTableManager
                 imageUrl: imageUrl,
                 author: author,
                 kind: kind,
+                protocol: protocol,
+                subscribed: subscribed,
                 isPrivate: isPrivate,
                 credentialRef: credentialRef,
                 etag: etag,
@@ -6629,12 +8300,19 @@ class $$FeedsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({episodesRefs = false, articlesRefs = false}) {
+              ({
+                episodesRefs = false,
+                articlesRefs = false,
+                nostrProfilesRefs = false,
+                nostrRelaysRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (episodesRefs) db.episodes,
                     if (articlesRefs) db.articles,
+                    if (nostrProfilesRefs) db.nostrProfiles,
+                    if (nostrRelaysRefs) db.nostrRelays,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -6673,6 +8351,48 @@ class $$FeedsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (nostrProfilesRefs)
+                        await $_getPrefetchedData<
+                          Feed,
+                          $FeedsTable,
+                          NostrProfile
+                        >(
+                          currentTable: table,
+                          referencedTable: $$FeedsTableReferences
+                              ._nostrProfilesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$FeedsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).nostrProfilesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.feedId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (nostrRelaysRefs)
+                        await $_getPrefetchedData<
+                          Feed,
+                          $FeedsTable,
+                          NostrRelay
+                        >(
+                          currentTable: table,
+                          referencedTable: $$FeedsTableReferences
+                              ._nostrRelaysRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$FeedsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).nostrRelaysRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.feedId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -6693,7 +8413,12 @@ typedef $$FeedsTableProcessedTableManager =
       $$FeedsTableUpdateCompanionBuilder,
       (Feed, $$FeedsTableReferences),
       Feed,
-      PrefetchHooks Function({bool episodesRefs, bool articlesRefs})
+      PrefetchHooks Function({
+        bool episodesRefs,
+        bool articlesRefs,
+        bool nostrProfilesRefs,
+        bool nostrRelaysRefs,
+      })
     >;
 typedef $$EpisodesTableCreateCompanionBuilder =
     EpisodesCompanion Function({
@@ -7840,6 +9565,11 @@ typedef $$ArticlesTableCreateCompanionBuilder =
       Value<String?> contentHtml,
       Value<String?> canonicalUrl,
       Value<String?> imageUrl,
+      Value<int> contentFormat,
+      Value<String?> contentWarning,
+      Value<String?> sourceEventId,
+      Value<String?> sourceAddress,
+      Value<int> mediaKind,
       Value<DateTime?> publishedAt,
       required DateTime discoveredAt,
       Value<DateTime?> readAt,
@@ -7857,6 +9587,11 @@ typedef $$ArticlesTableUpdateCompanionBuilder =
       Value<String?> contentHtml,
       Value<String?> canonicalUrl,
       Value<String?> imageUrl,
+      Value<int> contentFormat,
+      Value<String?> contentWarning,
+      Value<String?> sourceEventId,
+      Value<String?> sourceAddress,
+      Value<int> mediaKind,
       Value<DateTime?> publishedAt,
       Value<DateTime> discoveredAt,
       Value<DateTime?> readAt,
@@ -7882,6 +9617,27 @@ final class $$ArticlesTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$ArticleAttachmentsTable, List<ArticleAttachment>>
+  _articleAttachmentsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.articleAttachments,
+        aliasName: 'articles__id__article_attachments__article_id',
+      );
+
+  $$ArticleAttachmentsTableProcessedTableManager get articleAttachmentsRefs {
+    final manager = $$ArticleAttachmentsTableTableManager(
+      $_db,
+      $_db.articleAttachments,
+    ).filter((f) => f.articleId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _articleAttachmentsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 }
@@ -7935,6 +9691,31 @@ class $$ArticlesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get contentFormat => $composableBuilder(
+    column: $table.contentFormat,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentWarning => $composableBuilder(
+    column: $table.contentWarning,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceEventId => $composableBuilder(
+    column: $table.sourceEventId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceAddress => $composableBuilder(
+    column: $table.sourceAddress,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get mediaKind => $composableBuilder(
+    column: $table.mediaKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get publishedAt => $composableBuilder(
     column: $table.publishedAt,
     builder: (column) => ColumnFilters(column),
@@ -7976,6 +9757,31 @@ class $$ArticlesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> articleAttachmentsRefs(
+    Expression<bool> Function($$ArticleAttachmentsTableFilterComposer f) f,
+  ) {
+    final $$ArticleAttachmentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.articleAttachments,
+      getReferencedColumn: (t) => t.articleId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ArticleAttachmentsTableFilterComposer(
+            $db: $db,
+            $table: $db.articleAttachments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -8025,6 +9831,31 @@ class $$ArticlesTableOrderingComposer
 
   ColumnOrderings<String> get imageUrl => $composableBuilder(
     column: $table.imageUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get contentFormat => $composableBuilder(
+    column: $table.contentFormat,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentWarning => $composableBuilder(
+    column: $table.contentWarning,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceEventId => $composableBuilder(
+    column: $table.sourceEventId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceAddress => $composableBuilder(
+    column: $table.sourceAddress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get mediaKind => $composableBuilder(
+    column: $table.mediaKind,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -8109,6 +9940,29 @@ class $$ArticlesTableAnnotationComposer
   GeneratedColumn<String> get imageUrl =>
       $composableBuilder(column: $table.imageUrl, builder: (column) => column);
 
+  GeneratedColumn<int> get contentFormat => $composableBuilder(
+    column: $table.contentFormat,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get contentWarning => $composableBuilder(
+    column: $table.contentWarning,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceEventId => $composableBuilder(
+    column: $table.sourceEventId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceAddress => $composableBuilder(
+    column: $table.sourceAddress,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get mediaKind =>
+      $composableBuilder(column: $table.mediaKind, builder: (column) => column);
+
   GeneratedColumn<DateTime> get publishedAt => $composableBuilder(
     column: $table.publishedAt,
     builder: (column) => column,
@@ -8147,6 +10001,32 @@ class $$ArticlesTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> articleAttachmentsRefs<T extends Object>(
+    Expression<T> Function($$ArticleAttachmentsTableAnnotationComposer a) f,
+  ) {
+    final $$ArticleAttachmentsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.articleAttachments,
+          getReferencedColumn: (t) => t.articleId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ArticleAttachmentsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.articleAttachments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ArticlesTableTableManager
@@ -8162,7 +10042,7 @@ class $$ArticlesTableTableManager
           $$ArticlesTableUpdateCompanionBuilder,
           (Article, $$ArticlesTableReferences),
           Article,
-          PrefetchHooks Function({bool feedId})
+          PrefetchHooks Function({bool feedId, bool articleAttachmentsRefs})
         > {
   $$ArticlesTableTableManager(_$AppDatabase db, $ArticlesTable table)
     : super(
@@ -8186,6 +10066,11 @@ class $$ArticlesTableTableManager
                 Value<String?> contentHtml = const Value.absent(),
                 Value<String?> canonicalUrl = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
+                Value<int> contentFormat = const Value.absent(),
+                Value<String?> contentWarning = const Value.absent(),
+                Value<String?> sourceEventId = const Value.absent(),
+                Value<String?> sourceAddress = const Value.absent(),
+                Value<int> mediaKind = const Value.absent(),
                 Value<DateTime?> publishedAt = const Value.absent(),
                 Value<DateTime> discoveredAt = const Value.absent(),
                 Value<DateTime?> readAt = const Value.absent(),
@@ -8201,6 +10086,11 @@ class $$ArticlesTableTableManager
                 contentHtml: contentHtml,
                 canonicalUrl: canonicalUrl,
                 imageUrl: imageUrl,
+                contentFormat: contentFormat,
+                contentWarning: contentWarning,
+                sourceEventId: sourceEventId,
+                sourceAddress: sourceAddress,
+                mediaKind: mediaKind,
                 publishedAt: publishedAt,
                 discoveredAt: discoveredAt,
                 readAt: readAt,
@@ -8218,6 +10108,11 @@ class $$ArticlesTableTableManager
                 Value<String?> contentHtml = const Value.absent(),
                 Value<String?> canonicalUrl = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
+                Value<int> contentFormat = const Value.absent(),
+                Value<String?> contentWarning = const Value.absent(),
+                Value<String?> sourceEventId = const Value.absent(),
+                Value<String?> sourceAddress = const Value.absent(),
+                Value<int> mediaKind = const Value.absent(),
                 Value<DateTime?> publishedAt = const Value.absent(),
                 required DateTime discoveredAt,
                 Value<DateTime?> readAt = const Value.absent(),
@@ -8233,6 +10128,11 @@ class $$ArticlesTableTableManager
                 contentHtml: contentHtml,
                 canonicalUrl: canonicalUrl,
                 imageUrl: imageUrl,
+                contentFormat: contentFormat,
+                contentWarning: contentWarning,
+                sourceEventId: sourceEventId,
+                sourceAddress: sourceAddress,
+                mediaKind: mediaKind,
                 publishedAt: publishedAt,
                 discoveredAt: discoveredAt,
                 readAt: readAt,
@@ -8244,6 +10144,295 @@ class $$ArticlesTableTableManager
                 (e) => (
                   e.readTable(table),
                   $$ArticlesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({feedId = false, articleAttachmentsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (articleAttachmentsRefs) db.articleAttachments,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (feedId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.feedId,
+                                    referencedTable: $$ArticlesTableReferences
+                                        ._feedIdTable(db),
+                                    referencedColumn: $$ArticlesTableReferences
+                                        ._feedIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (articleAttachmentsRefs)
+                        await $_getPrefetchedData<
+                          Article,
+                          $ArticlesTable,
+                          ArticleAttachment
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ArticlesTableReferences
+                              ._articleAttachmentsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ArticlesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).articleAttachmentsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.articleId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$ArticlesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ArticlesTable,
+      Article,
+      $$ArticlesTableFilterComposer,
+      $$ArticlesTableOrderingComposer,
+      $$ArticlesTableAnnotationComposer,
+      $$ArticlesTableCreateCompanionBuilder,
+      $$ArticlesTableUpdateCompanionBuilder,
+      (Article, $$ArticlesTableReferences),
+      Article,
+      PrefetchHooks Function({bool feedId, bool articleAttachmentsRefs})
+    >;
+typedef $$NostrProfilesTableCreateCompanionBuilder =
+    NostrProfilesCompanion Function({
+      required String feedId,
+      required String publicKey,
+      Value<int> rowid,
+    });
+typedef $$NostrProfilesTableUpdateCompanionBuilder =
+    NostrProfilesCompanion Function({
+      Value<String> feedId,
+      Value<String> publicKey,
+      Value<int> rowid,
+    });
+
+final class $$NostrProfilesTableReferences
+    extends BaseReferences<_$AppDatabase, $NostrProfilesTable, NostrProfile> {
+  $$NostrProfilesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $FeedsTable _feedIdTable(_$AppDatabase db) =>
+      db.feeds.createAlias('nostr_profiles__feed_id__feeds__id');
+
+  $$FeedsTableProcessedTableManager get feedId {
+    final $_column = $_itemColumn<String>('feed_id')!;
+
+    final manager = $$FeedsTableTableManager(
+      $_db,
+      $_db.feeds,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_feedIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NostrProfilesTableFilterComposer
+    extends Composer<_$AppDatabase, $NostrProfilesTable> {
+  $$NostrProfilesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get publicKey => $composableBuilder(
+    column: $table.publicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FeedsTableFilterComposer get feedId {
+    final $$FeedsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableFilterComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrProfilesTableOrderingComposer
+    extends Composer<_$AppDatabase, $NostrProfilesTable> {
+  $$NostrProfilesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get publicKey => $composableBuilder(
+    column: $table.publicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FeedsTableOrderingComposer get feedId {
+    final $$FeedsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableOrderingComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrProfilesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NostrProfilesTable> {
+  $$NostrProfilesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get publicKey =>
+      $composableBuilder(column: $table.publicKey, builder: (column) => column);
+
+  $$FeedsTableAnnotationComposer get feedId {
+    final $$FeedsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrProfilesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NostrProfilesTable,
+          NostrProfile,
+          $$NostrProfilesTableFilterComposer,
+          $$NostrProfilesTableOrderingComposer,
+          $$NostrProfilesTableAnnotationComposer,
+          $$NostrProfilesTableCreateCompanionBuilder,
+          $$NostrProfilesTableUpdateCompanionBuilder,
+          (NostrProfile, $$NostrProfilesTableReferences),
+          NostrProfile,
+          PrefetchHooks Function({bool feedId})
+        > {
+  $$NostrProfilesTableTableManager(_$AppDatabase db, $NostrProfilesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NostrProfilesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NostrProfilesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NostrProfilesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> feedId = const Value.absent(),
+                Value<String> publicKey = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NostrProfilesCompanion(
+                feedId: feedId,
+                publicKey: publicKey,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String feedId,
+                required String publicKey,
+                Value<int> rowid = const Value.absent(),
+              }) => NostrProfilesCompanion.insert(
+                feedId: feedId,
+                publicKey: publicKey,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$NostrProfilesTableReferences(db, table, e),
                 ),
               )
               .toList(),
@@ -8272,9 +10461,9 @@ class $$ArticlesTableTableManager
                           state.withJoin(
                                 currentTable: table,
                                 currentColumn: table.feedId,
-                                referencedTable: $$ArticlesTableReferences
+                                referencedTable: $$NostrProfilesTableReferences
                                     ._feedIdTable(db),
-                                referencedColumn: $$ArticlesTableReferences
+                                referencedColumn: $$NostrProfilesTableReferences
                                     ._feedIdTable(db)
                                     .id,
                               )
@@ -8292,19 +10481,729 @@ class $$ArticlesTableTableManager
       );
 }
 
-typedef $$ArticlesTableProcessedTableManager =
+typedef $$NostrProfilesTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $ArticlesTable,
-      Article,
-      $$ArticlesTableFilterComposer,
-      $$ArticlesTableOrderingComposer,
-      $$ArticlesTableAnnotationComposer,
-      $$ArticlesTableCreateCompanionBuilder,
-      $$ArticlesTableUpdateCompanionBuilder,
-      (Article, $$ArticlesTableReferences),
-      Article,
+      $NostrProfilesTable,
+      NostrProfile,
+      $$NostrProfilesTableFilterComposer,
+      $$NostrProfilesTableOrderingComposer,
+      $$NostrProfilesTableAnnotationComposer,
+      $$NostrProfilesTableCreateCompanionBuilder,
+      $$NostrProfilesTableUpdateCompanionBuilder,
+      (NostrProfile, $$NostrProfilesTableReferences),
+      NostrProfile,
       PrefetchHooks Function({bool feedId})
+    >;
+typedef $$NostrRelaysTableCreateCompanionBuilder =
+    NostrRelaysCompanion Function({
+      required String feedId,
+      required String url,
+      Value<int> rowid,
+    });
+typedef $$NostrRelaysTableUpdateCompanionBuilder =
+    NostrRelaysCompanion Function({
+      Value<String> feedId,
+      Value<String> url,
+      Value<int> rowid,
+    });
+
+final class $$NostrRelaysTableReferences
+    extends BaseReferences<_$AppDatabase, $NostrRelaysTable, NostrRelay> {
+  $$NostrRelaysTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $FeedsTable _feedIdTable(_$AppDatabase db) =>
+      db.feeds.createAlias('nostr_relays__feed_id__feeds__id');
+
+  $$FeedsTableProcessedTableManager get feedId {
+    final $_column = $_itemColumn<String>('feed_id')!;
+
+    final manager = $$FeedsTableTableManager(
+      $_db,
+      $_db.feeds,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_feedIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NostrRelaysTableFilterComposer
+    extends Composer<_$AppDatabase, $NostrRelaysTable> {
+  $$NostrRelaysTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FeedsTableFilterComposer get feedId {
+    final $$FeedsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableFilterComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrRelaysTableOrderingComposer
+    extends Composer<_$AppDatabase, $NostrRelaysTable> {
+  $$NostrRelaysTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FeedsTableOrderingComposer get feedId {
+    final $$FeedsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableOrderingComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrRelaysTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NostrRelaysTable> {
+  $$NostrRelaysTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  $$FeedsTableAnnotationComposer get feedId {
+    final $$FeedsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrRelaysTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NostrRelaysTable,
+          NostrRelay,
+          $$NostrRelaysTableFilterComposer,
+          $$NostrRelaysTableOrderingComposer,
+          $$NostrRelaysTableAnnotationComposer,
+          $$NostrRelaysTableCreateCompanionBuilder,
+          $$NostrRelaysTableUpdateCompanionBuilder,
+          (NostrRelay, $$NostrRelaysTableReferences),
+          NostrRelay,
+          PrefetchHooks Function({bool feedId})
+        > {
+  $$NostrRelaysTableTableManager(_$AppDatabase db, $NostrRelaysTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NostrRelaysTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NostrRelaysTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NostrRelaysTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> feedId = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) =>
+                  NostrRelaysCompanion(feedId: feedId, url: url, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String feedId,
+                required String url,
+                Value<int> rowid = const Value.absent(),
+              }) => NostrRelaysCompanion.insert(
+                feedId: feedId,
+                url: url,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$NostrRelaysTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({feedId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (feedId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.feedId,
+                                referencedTable: $$NostrRelaysTableReferences
+                                    ._feedIdTable(db),
+                                referencedColumn: $$NostrRelaysTableReferences
+                                    ._feedIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NostrRelaysTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NostrRelaysTable,
+      NostrRelay,
+      $$NostrRelaysTableFilterComposer,
+      $$NostrRelaysTableOrderingComposer,
+      $$NostrRelaysTableAnnotationComposer,
+      $$NostrRelaysTableCreateCompanionBuilder,
+      $$NostrRelaysTableUpdateCompanionBuilder,
+      (NostrRelay, $$NostrRelaysTableReferences),
+      NostrRelay,
+      PrefetchHooks Function({bool feedId})
+    >;
+typedef $$ArticleAttachmentsTableCreateCompanionBuilder =
+    ArticleAttachmentsCompanion Function({
+      required String id,
+      required String articleId,
+      required int position,
+      required String url,
+      Value<String?> mimeType,
+      Value<String?> previewUrl,
+      Value<String?> alt,
+      Value<int?> width,
+      Value<int?> height,
+      Value<int?> durationMs,
+      Value<String?> fallbackUrls,
+      Value<int> rowid,
+    });
+typedef $$ArticleAttachmentsTableUpdateCompanionBuilder =
+    ArticleAttachmentsCompanion Function({
+      Value<String> id,
+      Value<String> articleId,
+      Value<int> position,
+      Value<String> url,
+      Value<String?> mimeType,
+      Value<String?> previewUrl,
+      Value<String?> alt,
+      Value<int?> width,
+      Value<int?> height,
+      Value<int?> durationMs,
+      Value<String?> fallbackUrls,
+      Value<int> rowid,
+    });
+
+final class $$ArticleAttachmentsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ArticleAttachmentsTable,
+          ArticleAttachment
+        > {
+  $$ArticleAttachmentsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ArticlesTable _articleIdTable(_$AppDatabase db) =>
+      db.articles.createAlias('article_attachments__article_id__articles__id');
+
+  $$ArticlesTableProcessedTableManager get articleId {
+    final $_column = $_itemColumn<String>('article_id')!;
+
+    final manager = $$ArticlesTableTableManager(
+      $_db,
+      $_db.articles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_articleIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ArticleAttachmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $ArticleAttachmentsTable> {
+  $$ArticleAttachmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get previewUrl => $composableBuilder(
+    column: $table.previewUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get alt => $composableBuilder(
+    column: $table.alt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fallbackUrls => $composableBuilder(
+    column: $table.fallbackUrls,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ArticlesTableFilterComposer get articleId {
+    final $$ArticlesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.articleId,
+      referencedTable: $db.articles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ArticlesTableFilterComposer(
+            $db: $db,
+            $table: $db.articles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ArticleAttachmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ArticleAttachmentsTable> {
+  $$ArticleAttachmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get previewUrl => $composableBuilder(
+    column: $table.previewUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get alt => $composableBuilder(
+    column: $table.alt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fallbackUrls => $composableBuilder(
+    column: $table.fallbackUrls,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ArticlesTableOrderingComposer get articleId {
+    final $$ArticlesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.articleId,
+      referencedTable: $db.articles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ArticlesTableOrderingComposer(
+            $db: $db,
+            $table: $db.articles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ArticleAttachmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ArticleAttachmentsTable> {
+  $$ArticleAttachmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<String> get previewUrl => $composableBuilder(
+    column: $table.previewUrl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get alt =>
+      $composableBuilder(column: $table.alt, builder: (column) => column);
+
+  GeneratedColumn<int> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<int> get height =>
+      $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fallbackUrls => $composableBuilder(
+    column: $table.fallbackUrls,
+    builder: (column) => column,
+  );
+
+  $$ArticlesTableAnnotationComposer get articleId {
+    final $$ArticlesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.articleId,
+      referencedTable: $db.articles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ArticlesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.articles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ArticleAttachmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ArticleAttachmentsTable,
+          ArticleAttachment,
+          $$ArticleAttachmentsTableFilterComposer,
+          $$ArticleAttachmentsTableOrderingComposer,
+          $$ArticleAttachmentsTableAnnotationComposer,
+          $$ArticleAttachmentsTableCreateCompanionBuilder,
+          $$ArticleAttachmentsTableUpdateCompanionBuilder,
+          (ArticleAttachment, $$ArticleAttachmentsTableReferences),
+          ArticleAttachment,
+          PrefetchHooks Function({bool articleId})
+        > {
+  $$ArticleAttachmentsTableTableManager(
+    _$AppDatabase db,
+    $ArticleAttachmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ArticleAttachmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ArticleAttachmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ArticleAttachmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> articleId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                Value<String?> previewUrl = const Value.absent(),
+                Value<String?> alt = const Value.absent(),
+                Value<int?> width = const Value.absent(),
+                Value<int?> height = const Value.absent(),
+                Value<int?> durationMs = const Value.absent(),
+                Value<String?> fallbackUrls = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ArticleAttachmentsCompanion(
+                id: id,
+                articleId: articleId,
+                position: position,
+                url: url,
+                mimeType: mimeType,
+                previewUrl: previewUrl,
+                alt: alt,
+                width: width,
+                height: height,
+                durationMs: durationMs,
+                fallbackUrls: fallbackUrls,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String articleId,
+                required int position,
+                required String url,
+                Value<String?> mimeType = const Value.absent(),
+                Value<String?> previewUrl = const Value.absent(),
+                Value<String?> alt = const Value.absent(),
+                Value<int?> width = const Value.absent(),
+                Value<int?> height = const Value.absent(),
+                Value<int?> durationMs = const Value.absent(),
+                Value<String?> fallbackUrls = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ArticleAttachmentsCompanion.insert(
+                id: id,
+                articleId: articleId,
+                position: position,
+                url: url,
+                mimeType: mimeType,
+                previewUrl: previewUrl,
+                alt: alt,
+                width: width,
+                height: height,
+                durationMs: durationMs,
+                fallbackUrls: fallbackUrls,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ArticleAttachmentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({articleId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (articleId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.articleId,
+                                referencedTable:
+                                    $$ArticleAttachmentsTableReferences
+                                        ._articleIdTable(db),
+                                referencedColumn:
+                                    $$ArticleAttachmentsTableReferences
+                                        ._articleIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ArticleAttachmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ArticleAttachmentsTable,
+      ArticleAttachment,
+      $$ArticleAttachmentsTableFilterComposer,
+      $$ArticleAttachmentsTableOrderingComposer,
+      $$ArticleAttachmentsTableAnnotationComposer,
+      $$ArticleAttachmentsTableCreateCompanionBuilder,
+      $$ArticleAttachmentsTableUpdateCompanionBuilder,
+      (ArticleAttachment, $$ArticleAttachmentsTableReferences),
+      ArticleAttachment,
+      PrefetchHooks Function({bool articleId})
     >;
 typedef $$PlaybackProgressesTableCreateCompanionBuilder =
     PlaybackProgressesCompanion Function({
@@ -10634,6 +13533,12 @@ class $AppDatabaseManager {
       $$EpisodesTableTableManager(_db, _db.episodes);
   $$ArticlesTableTableManager get articles =>
       $$ArticlesTableTableManager(_db, _db.articles);
+  $$NostrProfilesTableTableManager get nostrProfiles =>
+      $$NostrProfilesTableTableManager(_db, _db.nostrProfiles);
+  $$NostrRelaysTableTableManager get nostrRelays =>
+      $$NostrRelaysTableTableManager(_db, _db.nostrRelays);
+  $$ArticleAttachmentsTableTableManager get articleAttachments =>
+      $$ArticleAttachmentsTableTableManager(_db, _db.articleAttachments);
   $$PlaybackProgressesTableTableManager get playbackProgresses =>
       $$PlaybackProgressesTableTableManager(_db, _db.playbackProgresses);
   $$QueueEntriesTableTableManager get queueEntries =>

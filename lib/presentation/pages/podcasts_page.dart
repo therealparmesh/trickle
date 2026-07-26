@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/nostr_identifier.dart';
 import '../../core/youtube_support.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
@@ -166,10 +167,10 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                 decoration: InputDecoration(
                   labelText: widget.youtubeOnly
                       ? 'YouTube channel or playlist URL'
-                      : 'Feed or website URL',
+                      : 'Feed, website, or Nostr profile',
                   hintText: widget.youtubeOnly
                       ? 'youtube.com/@channel or playlist URL'
-                      : 'RSS, Atom, JSON Feed, or website',
+                      : 'RSS, Atom, JSON Feed, website, npub, or nprofile',
                 ),
               ),
               if (!widget.youtubeOnly)
@@ -183,7 +184,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                         }),
                   title: const Text('Private feed'),
                   subtitle: const Text(
-                    'The full feed URL and any credentials are stored securely on this device.',
+                    'trickle doesn’t collect your feed URL or credentials.',
                   ),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -258,8 +259,36 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
       setState(
         () => _error = widget.youtubeOnly
             ? 'Enter a public YouTube channel or playlist URL.'
-            : 'Enter an RSS feed or website.',
+            : 'Enter a feed, website, or Nostr profile.',
       );
+      return;
+    }
+    if (!widget.youtubeOnly && looksLikeNostrProfile(url) && _private) {
+      setState(
+        () => _error =
+            'Nostr profiles are public. Turn off Private feed to continue.',
+      );
+      return;
+    }
+    if (!widget.youtubeOnly && looksLikeNostrProfile(url)) {
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
+      try {
+        final feed = await ref.read(nostrRepositoryProvider).subscribe(url);
+        if (!mounted) return;
+        final router = GoRouter.of(context);
+        Navigator.pop(context);
+        unawaited(router.push('/feed/${feed.id}'));
+      } on Object catch (error) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _error = friendlyError(error);
+          });
+        }
+      }
       return;
     }
     final candidate = Uri.tryParse(

@@ -277,6 +277,39 @@ void main() {
             discoveredAt: now,
           ),
         );
+    await database.customStatement(
+      'DROP INDEX IF EXISTS idx_feeds_last_refresh',
+    );
+    await database.customStatement('DROP INDEX IF EXISTS idx_feeds_protocol');
+    await database.customStatement(
+      'DROP INDEX IF EXISTS idx_article_attachments',
+    );
+    await database.customStatement(
+      'DROP INDEX IF EXISTS idx_nostr_relays_feed',
+    );
+    await database.customStatement('DROP TABLE article_attachments');
+    await database.customStatement('DROP TABLE nostr_relays');
+    await database.customStatement('DROP TABLE nostr_profiles');
+    await database.customStatement('ALTER TABLE feeds DROP COLUMN protocol');
+    await database.customStatement('ALTER TABLE feeds DROP COLUMN subscribed');
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN content_format',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN content_warning',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN source_event_id',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN source_address',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN media_kind',
+    );
+    await database.customStatement(
+      'CREATE INDEX idx_feeds_last_refresh ON feeds(last_refresh)',
+    );
     await database.close();
     underlying.userVersion = 1;
 
@@ -295,6 +328,16 @@ void main() {
     expect(
       (await database.select(database.articles).get()).single.feedId,
       'reader',
+    );
+    final refreshIndex = await database
+        .customSelect(
+          "SELECT sql FROM sqlite_master WHERE type = 'index' "
+          "AND name = 'idx_feeds_last_refresh'",
+        )
+        .getSingle();
+    expect(
+      refreshIndex.read<String>('sql'),
+      contains('feeds(subscribed, last_refresh)'),
     );
     expect(await database.search('podcast article'), isEmpty);
   });

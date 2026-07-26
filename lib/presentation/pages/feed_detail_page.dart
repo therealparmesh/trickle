@@ -120,7 +120,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
               FeedKind.podcast => 'Podcast settings',
               _ => 'Feed settings',
             },
-            onPressed: feed.value == null
+            onPressed: feed.value?.subscribed != true
                 ? null
                 : () async {
                     final deleted = await showModalBottomSheet<bool>(
@@ -150,7 +150,8 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
               );
             }
             return RefreshIndicator(
-              onRefresh: () => _refresh(value),
+              onRefresh: value.subscribed ? () => _refresh(value) : () async {},
+              notificationPredicate: (_) => value.subscribed,
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
@@ -158,13 +159,18 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                     child: _FeedHero(
                       feed: value,
                       refreshing: _refreshing,
-                      onRefresh: () => _refresh(value),
+                      onRefresh: value.subscribed
+                          ? () => _refresh(value)
+                          : null,
                       subscriptionControl: MediaQuery.withClampedTextScaling(
                         maxScaleFactor: 2,
                         child: _SubscriptionControl(
                           feedTitle: value.title,
-                          busy: _unsubscribing,
-                          onPressed: () => _unsubscribe(value),
+                          subscribed: value.subscribed,
+                          busy: _unsubscribing || _subscribing,
+                          onPressed: value.subscribed
+                              ? () => _unsubscribe(value)
+                              : () => _resubscribe(value),
                         ),
                       ),
                     ),
@@ -192,7 +198,11 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                   if (showArticles) ...[
                     SliverToBoxAdapter(
                       child: SectionHeader(
-                        youtubeKind == null ? 'Articles' : 'Videos',
+                        value.protocol == FeedProtocol.nostr.index
+                            ? 'Posts'
+                            : youtubeKind == null
+                            ? 'Articles'
+                            : 'Videos',
                       ),
                     ),
                     articles.when(
@@ -283,20 +293,19 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       final retainedPreview = podcast == null
           ? null
           : _storedPodcastPreview(feed, episodes);
-      if (podcast != null) {
+      await removeSubscription(ref, feed);
+      if (!mounted) return;
+      final retained = await ref.read(databaseProvider).feedById(feed.id);
+      if (!mounted) return;
+      if (retained != null) {
+        showMessageSnackBar(context, 'Unsubscribed from ${feed.title}');
+      } else if (podcast != null) {
         setState(() {
           _podcast = podcast;
           _catalogPreviewSnapshot = retainedPreview;
           _catalogPreview = Future.value(retainedPreview!);
-          _transitionFeed = feed;
           _feedId = null;
           _forcePrivateResubscribe = feed.isPrivate;
-        });
-      }
-      await removeSubscription(ref, feed);
-      if (!mounted) return;
-      if (podcast != null) {
-        setState(() {
           _transitionFeed = null;
           _unsubscribing = false;
         });
@@ -315,6 +324,19 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       }
     } finally {
       if (mounted) setState(() => _unsubscribing = false);
+    }
+  }
+
+  Future<void> _resubscribe(Feed feed) async {
+    if (_subscribing) return;
+    setState(() => _subscribing = true);
+    try {
+      await ref.read(feedRepositoryProvider).resubscribe(feed);
+      if (mounted) showMessageSnackBar(context, 'Subscribed to ${feed.title}');
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _subscribing = false);
     }
   }
 
@@ -413,6 +435,11 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                       episode: episodes[index],
                       fallbackArtworkUrl:
                           details?.imageUrl ?? podcast.artworkUrl,
+                      onPlay: () => _playPreviewEpisode(
+                        podcast,
+                        details!,
+                        episodes[index],
+                      ),
                     ),
                   ),
                 if (visibleCount < episodes.length)
@@ -433,6 +460,25 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _playPreviewEpisode(
+    PodcastSearchResult podcast,
+    ParsedFeed details,
+    ParsedEpisode parsedEpisode,
+  ) async {
+    try {
+      final episode = await ref
+          .read(feedRepositoryProvider)
+          .cachePodcastPreviewEpisode(
+            podcast: podcast,
+            details: details,
+            episode: parsedEpisode,
+          );
+      await ref.read(audioHandlerProvider).playEpisode(episode.id);
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    }
   }
 
   void _retryCatalogPreview() {
@@ -505,7 +551,9 @@ final class _FeedHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final stackIdentity = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
-    final artworkIcon = youtubeKind == null
+    final artworkIcon = feed.protocol == FeedProtocol.nostr.index
+        ? Icons.person_outline_rounded
+        : youtubeKind == null
         ? Icons.rss_feed_rounded
         : Icons.ondemand_video_rounded;
     final kind =
@@ -585,7 +633,7 @@ final class _FeedHero extends StatelessWidget {
               if (refreshing) ...[
                 const SizedBox(height: 14),
                 const InlineLoadingView(label: 'Refreshing feed'),
-              ] else if (feed.refreshError != null) ...[
+              ] else if (feed.subscribed && feed.refreshError != null) ...[
                 const SizedBox(height: 14),
                 InlineErrorView(
                   feed.refreshError!,
@@ -615,6 +663,8 @@ Feed _previewFeed(PodcastSearchResult podcast, ParsedFeed? details) {
     imageUrl: (details?.imageUrl ?? podcast.artworkUrl)?.toString(),
     author: parsedAuthor?.isNotEmpty == true ? parsedAuthor : podcast.author,
     kind: FeedKind.podcast.index,
+    protocol: FeedProtocol.syndication.index,
+    subscribed: false,
     isPrivate: false,
     autoDownload: false,
     autoDownloadLimit: 3,
@@ -806,6 +856,8 @@ final class _FeedDescription extends StatelessWidget {
     return Text(
       feed.description?.trim().isNotEmpty == true
           ? feed.description!
+          : feed.protocol == FeedProtocol.nostr.index
+          ? 'Nostr profile'
           : switch ((
               FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)],
               youtubeKind,
@@ -931,6 +983,9 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                 ),
                 title: Text(switch (_kind) {
                   FeedKind.reader when _isYouTube => 'New video notifications',
+                  FeedKind.reader
+                      when widget.feed.protocol == FeedProtocol.nostr.index =>
+                    'New post notifications',
                   FeedKind.reader => 'New article notifications',
                   FeedKind.podcast => 'New episode notifications',
                 }),
@@ -995,7 +1050,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                 label: Text(
                   _operation == _FeedSettingsOperation.unsubscribe
                       ? 'Unsubscribing…'
-                      : 'Unsubscribe and delete local data',
+                      : 'Unsubscribe',
                 ),
               ),
             ],

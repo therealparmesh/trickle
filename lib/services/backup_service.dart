@@ -15,6 +15,8 @@ import '../core/constants.dart';
 import '../core/errors.dart';
 import '../core/feed_identity.dart';
 import '../core/formatters.dart';
+import '../core/nostr_identifier.dart';
+import '../data/security/private_feed_store.dart';
 
 final class BackupResult {
   const BackupResult({
@@ -28,109 +30,80 @@ final class BackupResult {
 }
 
 final class BackupService {
-  BackupService(this._database);
+  BackupService(this._database, [this._privateFeeds]);
 
   final AppDatabase _database;
+  final PrivateFeedStore? _privateFeeds;
 
-  Future<void> exportAndShare({Rect? sharePositionOrigin}) async {
-    final publicFeeds = await (_database.select(
-      _database.feeds,
-    )..where((row) => row.isPrivate.equals(false))).get();
-    final episodeQuery =
-        _database.select(_database.episodes).join([
-          innerJoin(
-            _database.feeds,
-            _database.feeds.id.equalsExp(_database.episodes.feedId),
-          ),
-        ])..where(
-          _database.feeds.isPrivate.equals(false) &
-              _database.feeds.kind.equals(FeedKind.podcast.index),
-        );
-    final episodes = (await episodeQuery.get())
-        .map((row) => row.readTable(_database.episodes))
+  Future<List<int>> exportBytes() async {
+    final portableFeeds = await _portableFeeds();
+    final feedIds = portableFeeds.map((feed) => feed.id).toSet();
+    final storedFeeds = {
+      for (final feed in await _database.select(_database.feeds).get())
+        feed.id: feed,
+    };
+    final episodes = <Episode>[];
+    for (final episode in await _database.select(_database.episodes).get()) {
+      if (!feedIds.contains(episode.feedId)) continue;
+      if (storedFeeds[episode.feedId]?.isPrivate != true) {
+        episodes.add(episode);
+        continue;
+      }
+      final mediaUrl = await _privateFeeds?.readMediaUrl(episode.id);
+      if (_https(mediaUrl?.toString()) case final url?) {
+        episodes.add(episode.copyWith(enclosureUrl: url));
+      }
+    }
+    final episodeIds = episodes.map((episode) => episode.id).toSet();
+    final articles = (await _database.select(_database.articles).get())
+        .where((article) => feedIds.contains(article.feedId))
         .toList(growable: false);
-    final articleQuery =
-        _database.select(_database.articles).join([
-          innerJoin(
-            _database.feeds,
-            _database.feeds.id.equalsExp(_database.articles.feedId),
-          ),
-        ])..where(
-          _database.feeds.isPrivate.equals(false) &
-              _database.feeds.kind.equals(FeedKind.reader.index),
-        );
-    final articles = (await articleQuery.get())
-        .map((row) => row.readTable(_database.articles))
+    final articleIds = articles.map((article) => article.id).toSet();
+    final progress =
+        (await _database.select(_database.playbackProgresses).get())
+            .where((item) => episodeIds.contains(item.episodeId))
+            .toList(growable: false);
+    final queue = (await _database.select(_database.queueEntries).get())
+        .where((item) => episodeIds.contains(item.episodeId))
         .toList(growable: false);
-    final progressQuery =
-        _database.select(_database.playbackProgresses).join([
-          innerJoin(
-            _database.episodes,
-            _database.episodes.id.equalsExp(
-              _database.playbackProgresses.episodeId,
-            ),
-          ),
-          innerJoin(
-            _database.feeds,
-            _database.feeds.id.equalsExp(_database.episodes.feedId),
-          ),
-        ])..where(
-          _database.feeds.isPrivate.equals(false) &
-              _database.feeds.kind.equals(FeedKind.podcast.index),
-        );
-    final progress = (await progressQuery.get())
-        .map((row) => row.readTable(_database.playbackProgresses))
+    final bookmarks = (await _database.select(_database.bookmarks).get())
+        .where((item) => episodeIds.contains(item.episodeId))
         .toList(growable: false);
-    final queueQuery =
-        _database.select(_database.queueEntries).join([
-          innerJoin(
-            _database.episodes,
-            _database.episodes.id.equalsExp(_database.queueEntries.episodeId),
-          ),
-          innerJoin(
-            _database.feeds,
-            _database.feeds.id.equalsExp(_database.episodes.feedId),
-          ),
-        ])..where(
-          _database.feeds.isPrivate.equals(false) &
-              _database.feeds.kind.equals(FeedKind.podcast.index),
-        );
-    final queue = (await queueQuery.get())
-        .map((row) => row.readTable(_database.queueEntries))
-        .toList(growable: false);
-    final bookmarkQuery =
-        _database.select(_database.bookmarks).join([
-          innerJoin(
-            _database.episodes,
-            _database.episodes.id.equalsExp(_database.bookmarks.episodeId),
-          ),
-          innerJoin(
-            _database.feeds,
-            _database.feeds.id.equalsExp(_database.episodes.feedId),
-          ),
-        ])..where(
-          _database.feeds.isPrivate.equals(false) &
-              _database.feeds.kind.equals(FeedKind.podcast.index),
-        );
-    final bookmarks = (await bookmarkQuery.get())
-        .map((row) => row.readTable(_database.bookmarks))
+    final attachments =
+        (await _database.select(_database.articleAttachments).get())
+            .where((item) => articleIds.contains(item.articleId))
+            .toList(growable: false);
+    final nostrProfiles =
+        (await _database.select(_database.nostrProfiles).get())
+            .where((item) => feedIds.contains(item.feedId))
+            .toList(growable: false);
+    final nostrRelays = (await _database.select(_database.nostrRelays).get())
+        .where((item) => feedIds.contains(item.feedId))
         .toList(growable: false);
     final settings = (await _database.select(_database.appSettings).get())
         .where(_validSetting)
         .toList(growable: false);
     final payload = <String, Object?>{
       'format': 'trickle-backup',
-      'version': 1,
+      'version': 2,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
-      'feeds': publicFeeds.map((row) => row.toJson()).toList(),
+      'feeds': portableFeeds.map((row) => row.toJson()).toList(),
       'episodes': episodes.map((row) => row.toJson()).toList(),
       'articles': articles.map((row) => row.toJson()).toList(),
+      'articleAttachments': attachments.map((row) => row.toJson()).toList(),
+      'nostrProfiles': nostrProfiles.map((row) => row.toJson()).toList(),
+      'nostrRelays': nostrRelays.map((row) => row.toJson()).toList(),
       'progress': progress.map((row) => row.toJson()).toList(),
       'queue': queue.map((row) => row.toJson()).toList(),
       'bookmarks': bookmarks.map((row) => row.toJson()).toList(),
       'settings': settings.map((row) => row.toJson()).toList(),
     };
     final bytes = await compute(_encodeBackup, payload);
+    return bytes;
+  }
+
+  Future<void> exportAndShare({Rect? sharePositionOrigin}) async {
+    final bytes = await exportBytes();
     final temp = await getTemporaryDirectory();
     final date = DateTime.now().toUtc().toIso8601String().split('T').first;
     final file = File(p.join(temp.path, 'trickle-$date.zip'));
@@ -173,24 +146,57 @@ final class BackupService {
     } on Object {
       throw const BackupException('That file isn’t a valid trickle backup.');
     }
-    if (data['format'] != 'trickle-backup' || data['version'] != 1) {
+    final version = data['version'];
+    if (data['format'] != 'trickle-backup' ||
+        version is! int ||
+        version < 1 ||
+        version > 2) {
       throw const BackupException('Unsupported trickle backup version.');
     }
     final feeds = _maps(data['feeds']);
     final episodes = _maps(data['episodes']);
     final articles = _maps(data['articles']);
+    final attachments = _maps(data['articleAttachments']);
+    final nostrProfiles = _maps(data['nostrProfiles']);
+    final nostrRelays = _maps(data['nostrRelays']);
+    final importedArticlesById = <String, Map<String, Object?>>{
+      for (final article in articles)
+        if (article['id'] case final String id) id: article,
+    };
+    final importedAttachmentsById = <String, Map<String, Object?>>{
+      for (final attachment in attachments)
+        if (attachment['id'] case final String id) id: attachment,
+    };
     if (feeds.length > 5000 ||
         episodes.length > 200000 ||
-        articles.length > 200000) {
+        articles.length > 200000 ||
+        attachments.length > 500000 ||
+        nostrProfiles.length > 5000 ||
+        nostrRelays.length > 20000) {
       throw const BackupException('Backup contains too many records.');
     }
     final acceptedFeeds = <String, String>{};
     final feedTitles = <String, String>{};
     final feedKinds = <String, FeedKind>{};
+    final feedProtocols = <String, FeedProtocol>{};
     final acceptedEpisodes = <String, String>{};
     final episodeIdentities = <String, Map<String, String>>{};
     final articleIdentities = <String, Map<String, String>>{};
-    final acceptedArticles = <String>{};
+    final acceptedArticles = <String, String>{};
+    final importedNostrKeys = <String, String>{};
+    for (final json in nostrProfiles) {
+      try {
+        final profile = NostrProfile.fromJson(json);
+        if (RegExp(r'^[0-9a-f]{64}$').hasMatch(profile.publicKey)) {
+          importedNostrKeys.putIfAbsent(
+            profile.feedId,
+            () => profile.publicKey,
+          );
+        }
+      } on Object {
+        // Invalid child records are ignored without rejecting usable content.
+      }
+    }
     final existingQueue = await (_database.select(
       _database.queueEntries,
     )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
@@ -202,6 +208,12 @@ final class BackupService {
     final existingFeedsByUrl = {
       for (final feed in existingFeeds) feed.feedUrl: feed,
     };
+    final existingNostrFeedsByKey = <String, Feed>{};
+    for (final profile
+        in await _database.select(_database.nostrProfiles).get()) {
+      final feed = existingFeedsById[profile.feedId];
+      if (feed != null) existingNostrFeedsByKey[profile.publicKey] = feed;
+    }
     final backupFeedsWithEpisodes = {
       for (final episode in episodes)
         if (episode['feedId'] case final String feedId) feedId,
@@ -212,18 +224,39 @@ final class BackupService {
     await _database.transaction(() async {
       final searchItems = <SearchIndexEntry>[];
       for (final json in feeds) {
-        final feed = Feed.fromJson(json);
+        final feed = Feed.fromJson({
+          ...json,
+          'protocol': json['protocol'] ?? FeedProtocol.syndication.index,
+          'subscribed': json['subscribed'] ?? true,
+        });
         final url = Uri.tryParse(feed.feedUrl);
+        final protocol =
+            feed.protocol >= 0 && feed.protocol < FeedProtocol.values.length
+            ? FeedProtocol.values[feed.protocol]
+            : FeedProtocol.syndication;
+        final importedNostrKey = importedNostrKeys[feed.id];
+        final addressKey = protocol == FeedProtocol.nostr
+            ? _nostrPublicKey(feed.feedUrl)
+            : null;
+        final validAddress = protocol == FeedProtocol.nostr
+            ? feed.kind == FeedKind.reader.index &&
+                  importedNostrKey != null &&
+                  addressKey == importedNostrKey
+            : url?.scheme == 'https' &&
+                  url?.host.isNotEmpty == true &&
+                  url?.userInfo.isEmpty == true;
         if (feed.isPrivate ||
             feed.credentialRef != null ||
-            url?.scheme != 'https' ||
-            url!.host.isEmpty ||
-            url.userInfo.isNotEmpty ||
+            !validAddress ||
             feed.kind < 0 ||
             feed.kind > 2) {
           continue;
         }
-        final sameUrl = existingFeedsByUrl[feed.feedUrl];
+        final sameUrl =
+            (importedNostrKey == null
+                ? null
+                : existingNostrFeedsByKey[importedNostrKey]) ??
+            existingFeedsByUrl[feed.feedUrl];
         final idCollision = existingFeedsById[feed.id];
         final actualFeedId =
             sameUrl?.id ??
@@ -245,6 +278,7 @@ final class BackupService {
         final sanitized = feed.copyWith(
           id: actualFeedId,
           kind: kind.index,
+          protocol: protocol.index,
           isPrivate: false,
           credentialRef: const Value(null),
           siteUrl: Value(_https(feed.siteUrl)),
@@ -256,9 +290,13 @@ final class BackupService {
         await _database.into(_database.feeds).insertOnConflictUpdate(sanitized);
         existingFeedsById[actualFeedId] = sanitized;
         existingFeedsByUrl[feed.feedUrl] = sanitized;
+        if (importedNostrKey != null) {
+          existingNostrFeedsByKey[importedNostrKey] = sanitized;
+        }
         acceptedFeeds[feed.id] = actualFeedId;
         feedTitles[actualFeedId] = feed.title;
         feedKinds[actualFeedId] = kind;
+        feedProtocols[actualFeedId] = protocol;
         searchItems.add(
           SearchIndexEntry(
             entityId: actualFeedId,
@@ -270,18 +308,62 @@ final class BackupService {
         );
       }
       for (final json in episodes) {
-        final episode = Episode.fromJson({
+        var episode = Episode.fromJson({
           ...json,
           'automationApplied': json['automationApplied'] ?? false,
         });
         final enclosure = Uri.tryParse(episode.enclosureUrl);
         final actualFeedId = acceptedFeeds[episode.feedId];
         if (actualFeedId == null ||
-            feedKinds[actualFeedId] != FeedKind.podcast ||
+            (feedKinds[actualFeedId] != FeedKind.podcast &&
+                feedProtocols[actualFeedId] != FeedProtocol.nostr) ||
             enclosure?.scheme != 'https' ||
             enclosure!.host.isEmpty ||
             enclosure.userInfo.isNotEmpty) {
           continue;
+        }
+        String? linkedAttachmentId;
+        if (feedProtocols[actualFeedId] == FeedProtocol.nostr) {
+          final attachmentJson = importedAttachmentsById[episode.id];
+          final articleJson = attachmentJson == null
+              ? null
+              : importedArticlesById[attachmentJson['articleId']];
+          if (attachmentJson != null && articleJson != null) {
+            final attachment = ArticleAttachment.fromJson(attachmentJson);
+            final article = Article.fromJson({
+              ...articleJson,
+              'contentFormat':
+                  articleJson['contentFormat'] ??
+                  ArticleContentFormat.html.index,
+              'mediaKind':
+                  articleJson['mediaKind'] ?? ArticleMediaKind.none.index,
+            });
+            final mediaUrl = _https(attachment.url);
+            if (article.feedId == episode.feedId && mediaUrl != null) {
+              var articleIds = articleIdentities[actualFeedId];
+              if (articleIds == null) {
+                final existing = await (_database.select(
+                  _database.articles,
+                )..where((row) => row.feedId.equals(actualFeedId))).get();
+                articleIds = {
+                  for (final item in existing) _articleIdentity(item): item.id,
+                };
+                articleIdentities[actualFeedId] = articleIds;
+              }
+              final articleIdentity = _articleIdentity(article);
+              final actualArticleId =
+                  articleIds[articleIdentity] ??
+                  stableContentId(actualFeedId, articleIdentity);
+              articleIds[articleIdentity] = actualArticleId;
+              linkedAttachmentId = stableContentId(
+                actualArticleId,
+                '${attachment.position.clamp(0, 1000)}:$mediaUrl',
+              );
+              episode = episode.copyWith(
+                guid: Value('nostr-media:$actualArticleId'),
+              );
+            }
+          }
         }
         var identities = episodeIdentities[actualFeedId];
         if (identities == null) {
@@ -295,7 +377,9 @@ final class BackupService {
         }
         final identity = _episodeIdentity(episode);
         final actualEpisodeId =
-            identities[identity] ?? stableContentId(actualFeedId, identity);
+            linkedAttachmentId ??
+            identities[identity] ??
+            stableContentId(actualFeedId, identity);
         identities[identity] = actualEpisodeId;
         final sanitized = episode.copyWith(
           id: actualEpisodeId,
@@ -330,7 +414,12 @@ final class BackupService {
         );
       }
       for (final json in articles) {
-        final article = Article.fromJson(json);
+        final article = Article.fromJson({
+          ...json,
+          'contentFormat':
+              json['contentFormat'] ?? ArticleContentFormat.html.index,
+          'mediaKind': json['mediaKind'] ?? ArticleMediaKind.none.index,
+        });
         final actualFeedId = acceptedFeeds[article.feedId];
         if (actualFeedId == null ||
             feedKinds[actualFeedId] != FeedKind.reader) {
@@ -353,13 +442,26 @@ final class BackupService {
         final sanitized = article.copyWith(
           id: actualArticleId,
           feedId: actualFeedId,
-          canonicalUrl: Value(_https(article.canonicalUrl)),
+          canonicalUrl: Value(
+            feedProtocols[actualFeedId] == FeedProtocol.nostr &&
+                    Uri.tryParse(article.canonicalUrl ?? '')?.scheme == 'nostr'
+                ? article.canonicalUrl
+                : _https(article.canonicalUrl),
+          ),
           imageUrl: Value(_https(article.imageUrl)),
+          contentFormat: article.contentFormat.clamp(
+            0,
+            ArticleContentFormat.values.length - 1,
+          ),
+          mediaKind: article.mediaKind.clamp(
+            0,
+            ArticleMediaKind.values.length - 1,
+          ),
         );
         await _database
             .into(_database.articles)
             .insertOnConflictUpdate(sanitized);
-        acceptedArticles.add(actualArticleId);
+        acceptedArticles[article.id] = actualArticleId;
         searchItems.add(
           SearchIndexEntry(
             entityId: actualArticleId,
@@ -370,6 +472,84 @@ final class BackupService {
             feedTitle: feedTitles[actualFeedId] ?? '',
           ),
         );
+      }
+      final clearedAttachmentArticles = <String>{};
+      for (final json in attachments) {
+        final attachment = ArticleAttachment.fromJson(json);
+        final actualArticleId = acceptedArticles[attachment.articleId];
+        final mediaUrl = _https(attachment.url);
+        if (actualArticleId == null || mediaUrl == null) continue;
+        if (clearedAttachmentArticles.add(actualArticleId)) {
+          await (_database.delete(
+            _database.articleAttachments,
+          )..where((row) => row.articleId.equals(actualArticleId))).go();
+        }
+        await _database
+            .into(_database.articleAttachments)
+            .insertOnConflictUpdate(
+              attachment.copyWith(
+                id: stableContentId(
+                  actualArticleId,
+                  '${attachment.position}:$mediaUrl',
+                ),
+                articleId: actualArticleId,
+                position: attachment.position.clamp(0, 1000),
+                url: mediaUrl,
+                previewUrl: Value(_https(attachment.previewUrl)),
+                width: Value(attachment.width?.clamp(1, 100000)),
+                height: Value(attachment.height?.clamp(1, 100000)),
+                durationMs: Value(
+                  attachment.durationMs?.clamp(1, _maxMediaDurationMs),
+                ),
+                fallbackUrls: Value(_portableUrlList(attachment.fallbackUrls)),
+              ),
+            );
+      }
+      for (final json in nostrProfiles) {
+        NostrProfile profile;
+        try {
+          profile = NostrProfile.fromJson(json);
+        } on Object {
+          continue;
+        }
+        final actualFeedId = acceptedFeeds[profile.feedId];
+        if (actualFeedId == null ||
+            feedProtocols[actualFeedId] != FeedProtocol.nostr ||
+            importedNostrKeys[profile.feedId] != profile.publicKey) {
+          continue;
+        }
+        await _database
+            .into(_database.nostrProfiles)
+            .insertOnConflictUpdate(profile.copyWith(feedId: actualFeedId));
+      }
+      final relayCounts = <String, int>{};
+      final clearedRelayFeeds = <String>{};
+      for (final json in nostrRelays) {
+        NostrRelay relay;
+        try {
+          relay = NostrRelay.fromJson(json);
+        } on Object {
+          continue;
+        }
+        final actualFeedId = acceptedFeeds[relay.feedId];
+        final uri = normalizeNostrRelay(relay.url);
+        if (actualFeedId == null ||
+            feedProtocols[actualFeedId] != FeedProtocol.nostr ||
+            uri == null ||
+            (relayCounts[actualFeedId] ?? 0) >= 4) {
+          continue;
+        }
+        if (clearedRelayFeeds.add(actualFeedId)) {
+          await (_database.delete(
+            _database.nostrRelays,
+          )..where((row) => row.feedId.equals(actualFeedId))).go();
+        }
+        relayCounts[actualFeedId] = (relayCounts[actualFeedId] ?? 0) + 1;
+        await _database
+            .into(_database.nostrRelays)
+            .insertOnConflictUpdate(
+              relay.copyWith(feedId: actualFeedId, url: uri.toString()),
+            );
       }
       await _database.indexSearchItems(searchItems);
       for (final json in _maps(data['progress'])) {
@@ -471,6 +651,61 @@ final class BackupService {
             uri.userInfo.isEmpty
         ? uri.toString()
         : null;
+  }
+
+  String? _nostrPublicKey(String raw) {
+    try {
+      return parseNostrProfile(raw).publicKey;
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<List<Feed>> _portableFeeds() async {
+    final result = <Feed>[];
+    for (final feed in await _database.select(_database.feeds).get()) {
+      if (!feed.isPrivate) {
+        result.add(feed);
+        continue;
+      }
+      final store = _privateFeeds;
+      if (store == null) continue;
+      try {
+        final secret = await store.read(feed.credentialRef ?? '');
+        if (secret == null ||
+            secret.headers.isNotEmpty ||
+            _https(secret.url.toString()) == null) {
+          continue;
+        }
+        result.add(
+          feed.copyWith(
+            feedUrl: secret.url.toString(),
+            isPrivate: false,
+            credentialRef: const Value(null),
+          ),
+        );
+      } on Object {
+        // A missing secure-store entry cannot be exported safely.
+      }
+    }
+    return result;
+  }
+
+  String? _portableUrlList(String? raw) {
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return null;
+      final urls = decoded
+          .whereType<String>()
+          .map(_https)
+          .whereType<String>()
+          .take(10)
+          .toList(growable: false);
+      return urls.isEmpty ? null : jsonEncode(urls);
+    } on Object {
+      return null;
+    }
   }
 
   String _episodeIdentity(Episode episode) {

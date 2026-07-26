@@ -219,7 +219,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         icon: Icons.upload_file_rounded,
                         title: 'Export podcasts as OPML',
                         subtitle:
-                            'Exports podcast subscriptions. Private feeds that require sign-in headers are skipped.',
+                            'Podcast subscriptions. Header-authenticated feeds are skipped.',
                         busy: _busyActions.contains(
                           _SettingsAction.podcastExport,
                         ),
@@ -232,7 +232,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         icon: Icons.rss_feed_rounded,
                         title: 'Export feeds as OPML',
                         subtitle:
-                            'Exports RSS and YouTube subscriptions. Private feeds that require sign-in headers are skipped.',
+                            'RSS and YouTube subscriptions. Use a backup for Nostr profiles or header-authenticated feeds.',
                         busy: _busyActions.contains(
                           _SettingsAction.readerExport,
                         ),
@@ -245,7 +245,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         icon: Icons.dynamic_feed_rounded,
                         title: 'Export all subscriptions as OPML',
                         subtitle:
-                            'Exports podcasts, RSS feeds, and YouTube feeds. Private feeds that require sign-in headers are skipped.',
+                            'Podcast, RSS, and YouTube subscriptions. Use a backup for Nostr profiles or header-authenticated feeds.',
                         busy: _busyActions.contains(_SettingsAction.feedExport),
                         onTap: () => _runTracked(
                           _SettingsAction.feedExport,
@@ -293,7 +293,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         icon: Icons.archive_outlined,
                         title: 'Export local backup',
                         subtitle:
-                            'Exports subscriptions, settings, and progress without credentials or downloads.',
+                            'Subscriptions, settings, and progress. Sign-in headers and downloaded files are excluded.',
                         busy: _busyActions.contains(
                           _SettingsAction.backupExport,
                         ),
@@ -315,7 +315,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       _ActionTile(
                         icon: Icons.unarchive_outlined,
                         title: 'Restore local backup',
-                        subtitle: 'Merges a trickle ZIP into this device.',
+                        subtitle: 'Merges a trickle ZIP with your library.',
                         busy: _busyActions.contains(
                           _SettingsAction.backupImport,
                         ),
@@ -507,9 +507,7 @@ final class _ActionTile extends StatelessWidget {
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      )
-                    else
-                      const Icon(Icons.chevron_right_rounded),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 8),

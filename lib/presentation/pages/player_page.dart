@@ -5,6 +5,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../app/app_providers.dart';
@@ -76,6 +77,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       );
     }
     final explicit = item.extras?['explicit'] == true;
+    final audioPost = item.extras?['articleId'] is String;
     final speed = ref.watch(speedProvider).value ?? AppConstants.defaultSpeed;
     final queue = ref.watch(queueProvider).value ?? const <MediaItem>[];
     final queueIndex = queue.indexWhere((candidate) => candidate.id == item.id);
@@ -108,7 +110,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               icon: const Icon(Icons.bookmark_add_outlined),
             ),
             IconButton(
-              tooltip: 'Share episode',
+              tooltip: audioPost ? 'Share audio post' : 'Share episode',
               onPressed: () => _runPlayback(() => _shareEpisode(item)),
               icon: const Icon(Icons.share_rounded),
             ),
@@ -129,9 +131,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                   unawaited(_runPlayback(() => _shareEpisode(item)));
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'bookmark', child: Text('Add bookmark')),
-                PopupMenuItem(value: 'share', child: Text('Share episode')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'bookmark',
+                  child: Text('Add bookmark'),
+                ),
+                PopupMenuItem(
+                  value: 'share',
+                  child: Text(audioPost ? 'Share audio post' : 'Share episode'),
+                ),
               ],
             ),
         ],
@@ -197,7 +205,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final showQueueNavigation =
-                                    constraints.maxWidth >= 280;
+                                    constraints.maxWidth >= 280 && !audioPost;
                                 return Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceEvenly,
@@ -326,6 +334,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   }
 
   Future<void> _shareEpisode(MediaItem item) async {
+    final articleId = item.extras?['articleId'];
+    if (articleId is String) {
+      final article = await ref.read(databaseProvider).articleById(articleId);
+      if (article == null || !mounted) return;
+      final url = article.canonicalUrl;
+      final box = context.findRenderObject() as RenderBox?;
+      await SharePlus.instance.share(
+        ShareParams(
+          text: url == null ? article.title : '${article.title}\n$url',
+          subject: article.title,
+          sharePositionOrigin: box == null || !box.hasSize || box.size.isEmpty
+              ? const Rect.fromLTWH(0, 0, 1, 1)
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+      return;
+    }
     final episode = await ref.read(databaseProvider).episodeById(item.id);
     if (episode == null) return;
     final feed = await ref.read(databaseProvider).feedById(episode.feedId);

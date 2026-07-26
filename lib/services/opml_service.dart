@@ -177,7 +177,12 @@ final class OpmlService {
     final parsed = Uri.parse(url.trim());
     if (!parsed.hasQuery) {
       final normalized = feedUrlIdentity(url);
-      if (await _database.feedByUrl(normalized) != null) return;
+      final existing = await _database.feedByUrl(normalized);
+      if (existing?.subscribed == true) return;
+      if (existing != null) {
+        await _feeds.resubscribe(existing);
+        return;
+      }
     }
     await _feeds.subscribe(
       url,
@@ -281,11 +286,14 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
 }) async {
   final query = database.select(database.feeds)
     ..where((row) {
-      return switch (scope) {
+      final selected = switch (scope) {
         OpmlExportScope.podcasts => row.kind.equals(FeedKind.podcast.index),
         OpmlExportScope.reading => row.kind.equals(FeedKind.reader.index),
         OpmlExportScope.allSubscriptions => const Constant(true),
       };
+      return row.subscribed.equals(true) &
+          row.protocol.equals(FeedProtocol.syndication.index) &
+          selected;
     })
     ..orderBy([(row) => OrderingTerm.asc(row.title)]);
   final feeds = await query.get();

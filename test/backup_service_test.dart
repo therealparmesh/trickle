@@ -4,10 +4,12 @@ import 'package:archive/archive.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/core/errors.dart';
 import 'package:trickle/core/feed_identity.dart';
 import 'package:trickle/data/database/app_database.dart';
+import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/services/backup_service.dart';
 
 void main() {
@@ -15,6 +17,7 @@ void main() {
   late BackupService backups;
 
   setUp(() async {
+    FlutterSecureStorage.setMockInitialValues({});
     database = AppDatabase.forTesting(NativeDatabase.memory());
     backups = BackupService(database);
     final now = DateTime.utc(2026, 7, 14);
@@ -47,12 +50,59 @@ void main() {
     );
   });
 
+  test(
+    'restore rejects Nostr feeds without a matching profile identity',
+    () async {
+      final now = DateTime.utc(2026, 7, 26);
+      final feed = Feed(
+        id: 'orphan-nostr',
+        title: 'Orphan profile',
+        feedUrl:
+            'nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6',
+        kind: FeedKind.reader.index,
+        protocol: FeedProtocol.nostr.index,
+        subscribed: true,
+        isPrivate: false,
+        autoDownload: false,
+        autoDownloadLimit: 3,
+        notifications: false,
+        introSkipMs: 0,
+        outroSkipMs: 0,
+        autoQueue: false,
+        createdAt: now,
+        updatedAt: now,
+      );
+      final payload = {
+        'format': 'trickle-backup',
+        'version': 2,
+        'feeds': [feed.toJson()],
+        'episodes': <Object?>[],
+        'articles': <Object?>[],
+        'articleAttachments': <Object?>[],
+        'nostrProfiles': <Object?>[],
+        'nostrRelays': <Object?>[],
+        'progress': <Object?>[],
+        'queue': <Object?>[],
+        'bookmarks': <Object?>[],
+        'settings': <Object?>[],
+      };
+      final archive = Archive()
+        ..addFile(ArchiveFile.string('trickle.json', jsonEncode(payload)));
+
+      final result = await backups.importBytes(ZipEncoder().encode(archive));
+
+      expect(result.feeds, 0);
+      expect(await database.feedById(feed.id), isNull);
+    },
+  );
+
   test('restore remaps identities and rejects orphan state', () async {
     final now = DateTime.utc(2026, 7, 14);
     final localFeed = (await database.select(database.feeds).get()).single;
     final importedFeed = localFeed.copyWith(
       id: 'foreign-feed',
       title: 'Restored title',
+      protocol: 999,
     );
     final episode = Episode(
       id: 'foreign-episode',
@@ -118,6 +168,7 @@ void main() {
     final feeds = await database.select(database.feeds).get();
     expect(feeds, hasLength(1));
     expect(feeds.single.id, 'local-feed');
+    expect(feeds.single.protocol, FeedProtocol.syndication.index);
     final episodes = await database.select(database.episodes).get();
     expect(episodes, hasLength(1));
     expect(episodes.single.feedId, 'local-feed');
@@ -221,6 +272,8 @@ void main() {
       feedId: importedFeed.id,
       title: 'Accidental article copy',
       discoveredAt: now,
+      contentFormat: ArticleContentFormat.html.index,
+      mediaKind: ArticleMediaKind.none.index,
       starred: false,
     );
     final payload = {
@@ -245,4 +298,202 @@ void main() {
     expect(result.articles, 0);
     expect(await database.select(database.articles).get(), isEmpty);
   });
+
+  test('version 2 backup round-trips Nostr media and playback state', () async {
+    final now = DateTime.utc(2026, 7, 26);
+    const publicKey =
+        '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d';
+    const eventId =
+        '7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e';
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'nostr-feed',
+            title: 'Signal Author',
+            feedUrl:
+                'nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6',
+            kind: Value(FeedKind.reader.index),
+            protocol: Value(FeedProtocol.nostr.index),
+            subscribed: const Value(false),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await database
+        .into(database.nostrProfiles)
+        .insert(
+          NostrProfilesCompanion.insert(
+            feedId: 'nostr-feed',
+            publicKey: publicKey,
+          ),
+        );
+    await database
+        .into(database.nostrRelays)
+        .insert(
+          NostrRelaysCompanion.insert(
+            feedId: 'nostr-feed',
+            url: 'wss://relay.example',
+          ),
+        );
+    await database
+        .into(database.articles)
+        .insert(
+          ArticlesCompanion.insert(
+            id: 'nostr-article',
+            feedId: 'nostr-feed',
+            guid: const Value(eventId),
+            title: 'Voice update',
+            contentHtml: const Value('## Update'),
+            canonicalUrl: const Value(
+              'nostr:note10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qkz8z5',
+            ),
+            contentFormat: Value(ArticleContentFormat.markdown.index),
+            sourceEventId: const Value(eventId),
+            mediaKind: Value(ArticleMediaKind.audio.index),
+            publishedAt: Value(now),
+            discoveredAt: now,
+            starred: const Value(true),
+          ),
+        );
+    await database
+        .into(database.articleAttachments)
+        .insert(
+          ArticleAttachmentsCompanion.insert(
+            id: 'nostr-audio',
+            articleId: 'nostr-article',
+            position: 0,
+            url: 'https://cdn.example/audio.opus',
+            mimeType: const Value('audio/opus'),
+            durationMs: const Value(12500),
+          ),
+        );
+    await database
+        .into(database.episodes)
+        .insert(
+          EpisodesCompanion.insert(
+            id: 'nostr-audio',
+            feedId: 'nostr-feed',
+            guid: const Value('nostr-media:nostr-article'),
+            title: 'Voice update',
+            enclosureUrl: 'https://cdn.example/audio.opus',
+            discoveredAt: now,
+            automationApplied: const Value(true),
+          ),
+        );
+    await database
+        .into(database.playbackProgresses)
+        .insert(
+          PlaybackProgressesCompanion.insert(
+            episodeId: 'nostr-audio',
+            positionMs: const Value(5000),
+            durationMs: const Value(12500),
+            updatedAt: now,
+          ),
+        );
+
+    final bytes = await backups.exportBytes();
+    await database.close();
+    final restoredDatabase = AppDatabase.forTesting(NativeDatabase.memory());
+    database = restoredDatabase;
+    final result = await BackupService(restoredDatabase).importBytes(bytes);
+
+    expect(result.feeds, 2);
+    final restoredFeed = await restoredDatabase.feedById('nostr-feed');
+    expect(restoredFeed?.protocol, FeedProtocol.nostr.index);
+    expect(restoredFeed?.subscribed, isFalse);
+    expect(
+      (await restoredDatabase.select(restoredDatabase.nostrProfiles).get())
+          .single
+          .publicKey,
+      publicKey,
+    );
+    final restoredArticle =
+        (await restoredDatabase.select(restoredDatabase.articles).get())
+            .where((article) => article.feedId == restoredFeed?.id)
+            .single;
+    final restoredAttachment =
+        (await restoredDatabase
+                .select(restoredDatabase.articleAttachments)
+                .get())
+            .single;
+    final restoredEpisode =
+        (await restoredDatabase.select(restoredDatabase.episodes).get())
+            .where((episode) => episode.feedId == restoredFeed?.id)
+            .single;
+    final restoredProgress =
+        (await restoredDatabase
+                .select(restoredDatabase.playbackProgresses)
+                .get())
+            .single;
+    expect(restoredAttachment.mimeType, 'audio/opus');
+    expect(restoredAttachment.articleId, restoredArticle.id);
+    expect(restoredEpisode.id, restoredAttachment.id);
+    expect(restoredEpisode.guid, 'nostr-media:${restoredArticle.id}');
+    expect(restoredProgress.episodeId, restoredAttachment.id);
+    expect(restoredProgress.positionMs, 5000);
+  });
+
+  test(
+    'URL-token private feeds export without exposing secure-store metadata',
+    () async {
+      final now = DateTime.utc(2026, 7, 26);
+      final privateFeeds = PrivateFeedStore(
+        storage: const FlutterSecureStorage(),
+      );
+      final credentialRef = await privateFeeds.save(
+        PrivateFeedSecret(
+          url: Uri.parse('https://example.com/feed.xml?token=portable'),
+          headers: const {},
+        ),
+      );
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'token-feed',
+              title: 'Token podcast',
+              feedUrl: 'private://$credentialRef',
+              kind: Value(FeedKind.podcast.index),
+              isPrivate: const Value(true),
+              credentialRef: Value(credentialRef),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: 'private-episode',
+              feedId: 'token-feed',
+              title: 'Private episode',
+              enclosureUrl: 'private-media://private-episode',
+              discoveredAt: now,
+            ),
+          );
+      await privateFeeds.saveMediaUrl(
+        'private-episode',
+        Uri.parse('https://cdn.example/audio.mp3?token=portable'),
+      );
+
+      final bytes = await BackupService(database, privateFeeds).exportBytes();
+      await database.close();
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+      await BackupService(database).importBytes(bytes);
+
+      final restored = await database.feedByUrl(
+        'https://example.com/feed.xml?token=portable',
+      );
+      expect(restored?.isPrivate, isFalse);
+      expect(restored?.credentialRef, isNull);
+      expect(
+        (await database.select(database.episodes).get())
+            .where((episode) => episode.feedId == restored?.id)
+            .single
+            .enclosureUrl,
+        'https://cdn.example/audio.mp3?token=portable',
+      );
+    },
+  );
 }

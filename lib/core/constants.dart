@@ -46,6 +46,12 @@ abstract final class AppConstants {
 
 enum FeedKind { podcast, reader }
 
+enum FeedProtocol { syndication, nostr }
+
+enum ArticleContentFormat { html, plainText, markdown }
+
+enum ArticleMediaKind { none, image, audio, video, mixed }
+
 enum DownloadState { queued, running, paused, complete, failed, canceled }
 
 enum AutoDeletePolicy { immediately, after1Day, after1Week }

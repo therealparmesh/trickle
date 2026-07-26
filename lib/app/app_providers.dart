@@ -13,6 +13,7 @@ import '../data/database/app_database.dart';
 import '../data/network/safe_network_client.dart';
 import '../data/repositories/article_repository.dart';
 import '../data/repositories/feed_repository.dart';
+import '../data/repositories/nostr_repository.dart';
 import '../data/repositories/episode_extras_repository.dart';
 import '../data/repositories/podcast_search_repository.dart';
 import '../data/repositories/settings_repository.dart';
@@ -35,6 +36,9 @@ final networkProvider = Provider<SafeNetworkClient>(
 );
 final feedRepositoryProvider = Provider<FeedRepository>(
   (ref) => _uninitialized('feedRepository'),
+);
+final nostrRepositoryProvider = Provider<NostrRepository>(
+  (ref) => _uninitialized('nostrRepository'),
 );
 final podcastSearchProvider = Provider<PodcastSearchRepository>(
   (ref) => _uninitialized('podcastSearch'),
@@ -91,8 +95,11 @@ final readerFeedsProvider = Provider<AsyncValue<List<Feed>>>(
             .toList(growable: false),
       ),
 );
+final _allFeedSnapshotsProvider = StreamProvider<List<Feed>>(
+  (ref) => ref.watch(databaseProvider).watchAllFeeds(),
+);
 final _feedsByIdProvider = Provider<Map<String, Feed>>((ref) {
-  final feeds = ref.watch(feedsProvider).value ?? const <Feed>[];
+  final feeds = ref.watch(_allFeedSnapshotsProvider).value ?? const <Feed>[];
   return {for (final feed in feeds) feed.id: feed};
 });
 final feedSnapshotProvider = Provider.autoDispose.family<Feed?, String>(
@@ -205,6 +212,11 @@ final episodeProgressSnapshotProvider = Provider.autoDispose
 final articleProvider = StreamProvider.autoDispose.family<Article?, String>(
   (ref, id) => ref.watch(databaseProvider).watchArticleById(id),
 );
+final articleAttachmentsProvider = FutureProvider.autoDispose
+    .family<List<ArticleAttachment>, String>((ref, id) {
+      ref.watch(articleProvider(id));
+      return ref.watch(databaseProvider).attachmentsForArticle(id);
+    });
 final articlePreviewImageProvider = FutureProvider.autoDispose
     .family<String?, String>((ref, id) async {
       final repository = ref.watch(articleRepositoryProvider);

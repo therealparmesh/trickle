@@ -35,6 +35,8 @@ class Feeds extends Table {
   TextColumn get imageUrl => text().nullable()();
   TextColumn get author => text().nullable()();
   IntColumn get kind => integer().withDefault(const Constant(1))();
+  IntColumn get protocol => integer().withDefault(const Constant(0))();
+  BoolColumn get subscribed => boolean().withDefault(const Constant(true))();
   BoolColumn get isPrivate => boolean().withDefault(const Constant(false))();
   TextColumn get credentialRef => text().nullable()();
   TextColumn get etag => text().nullable()();
@@ -96,6 +98,11 @@ class Articles extends Table {
   TextColumn get contentHtml => text().nullable()();
   TextColumn get canonicalUrl => text().nullable()();
   TextColumn get imageUrl => text().nullable()();
+  IntColumn get contentFormat => integer().withDefault(const Constant(0))();
+  TextColumn get contentWarning => text().nullable()();
+  TextColumn get sourceEventId => text().nullable()();
+  TextColumn get sourceAddress => text().nullable()();
+  IntColumn get mediaKind => integer().withDefault(const Constant(0))();
   DateTimeColumn get publishedAt => dateTime().nullable()();
   DateTimeColumn get discoveredAt => dateTime()();
   DateTimeColumn get readAt => dateTime().nullable()();
@@ -103,6 +110,47 @@ class Articles extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {id};
+}
+
+class NostrProfiles extends Table {
+  TextColumn get feedId =>
+      text().references(Feeds, #id, onDelete: KeyAction.cascade)();
+  TextColumn get publicKey => text().unique()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {feedId};
+}
+
+class NostrRelays extends Table {
+  TextColumn get feedId =>
+      text().references(Feeds, #id, onDelete: KeyAction.cascade)();
+  TextColumn get url => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {feedId, url};
+}
+
+class ArticleAttachments extends Table {
+  TextColumn get id => text()();
+  TextColumn get articleId =>
+      text().references(Articles, #id, onDelete: KeyAction.cascade)();
+  IntColumn get position => integer()();
+  TextColumn get url => text()();
+  TextColumn get mimeType => text().nullable()();
+  TextColumn get previewUrl => text().nullable()();
+  TextColumn get alt => text().nullable()();
+  IntColumn get width => integer().nullable()();
+  IntColumn get height => integer().nullable()();
+  IntColumn get durationMs => integer().nullable()();
+  TextColumn get fallbackUrls => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+    {articleId, position},
+  ];
 }
 
 class PlaybackProgresses extends Table {
@@ -203,6 +251,9 @@ class SearchCaches extends Table {
     Feeds,
     Episodes,
     Articles,
+    NostrProfiles,
+    NostrRelays,
+    ArticleAttachments,
     PlaybackProgresses,
     QueueEntries,
     MediaDownloads,
@@ -221,7 +272,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -230,12 +281,23 @@ class AppDatabase extends _$AppDatabase {
       await _createIndexes();
       await _createSearchIndex();
     },
-    onUpgrade: (_, from, to) async {
-      if (from != 1 || to != 2) {
+    onUpgrade: (migrator, from, to) async {
+      if (from < 1 || from > 2 || to != 3) {
         throw StateError('Unsupported database migration from $from to $to.');
       }
-      // Version 2 changes feed classification data, not the SQL schema. The
-      // idempotent repair runs in beforeOpen after the search index is ready.
+      await customStatement('DROP INDEX IF EXISTS idx_articles_unread');
+      await customStatement('DROP INDEX IF EXISTS idx_episodes_automation');
+      await customStatement('DROP INDEX IF EXISTS idx_feeds_last_refresh');
+      await migrator.addColumn(feeds, feeds.protocol);
+      await migrator.addColumn(feeds, feeds.subscribed);
+      await migrator.addColumn(articles, articles.contentFormat);
+      await migrator.addColumn(articles, articles.contentWarning);
+      await migrator.addColumn(articles, articles.sourceEventId);
+      await migrator.addColumn(articles, articles.sourceAddress);
+      await migrator.addColumn(articles, articles.mediaKind);
+      await migrator.createTable(nostrProfiles);
+      await migrator.createTable(nostrRelays);
+      await migrator.createTable(articleAttachments);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -273,11 +335,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> _createIndexes() async {
-    await customStatement('DROP INDEX IF EXISTS idx_articles_unread');
-    await customStatement('DROP INDEX IF EXISTS idx_episodes_automation');
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_feeds_last_refresh '
-      'ON feeds(last_refresh)',
+      'ON feeds(subscribed, last_refresh)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_feeds_protocol '
+      'ON feeds(subscribed, protocol, kind)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_episodes_feed_date '
@@ -306,6 +370,14 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_articles_starred '
       'ON articles(starred, published_at DESC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_article_attachments '
+      'ON article_attachments(article_id, position)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_nostr_relays_feed '
+      'ON nostr_relays(feed_id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_episodes_pending_automation '
@@ -342,6 +414,16 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<Feed>> watchFeeds() {
+    return (select(feeds)
+          ..where((row) => row.subscribed.equals(true))
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.title),
+            (row) => OrderingTerm.asc(row.id),
+          ]))
+        .watch();
+  }
+
+  Stream<List<Feed>> watchAllFeeds() {
     return (select(feeds)..orderBy([
           (row) => OrderingTerm.asc(row.title),
           (row) => OrderingTerm.asc(row.id),
@@ -350,37 +432,57 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<Episode>> watchRecentEpisodes({int limit = 50}) {
-    return (select(episodes)
+    final query =
+        select(
+            episodes,
+          ).join([innerJoin(feeds, feeds.id.equalsExp(episodes.feedId))])
+          ..where(
+            feeds.subscribed.equals(true) &
+                feeds.kind.equals(FeedKind.podcast.index),
+          )
           ..orderBy([
-            (row) => OrderingTerm.desc(row.publishedAt),
-            (row) => OrderingTerm.desc(row.discoveredAt),
-            (row) => OrderingTerm.asc(row.id),
+            OrderingTerm.desc(episodes.publishedAt),
+            OrderingTerm.desc(episodes.discoveredAt),
+            OrderingTerm.asc(episodes.id),
           ])
-          ..limit(limit))
-        .watch();
+          ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
+    );
   }
 
   Stream<List<Article>> watchUnreadArticles({int limit = 50}) {
-    return (select(articles)
-          ..where((row) => row.readAt.isNull())
+    final query =
+        select(
+            articles,
+          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
+          ..where(feeds.subscribed.equals(true) & articles.readAt.isNull())
           ..orderBy([
-            (row) => OrderingTerm.desc(row.publishedAt),
-            (row) => OrderingTerm.desc(row.discoveredAt),
-            (row) => OrderingTerm.asc(row.id),
+            OrderingTerm.desc(articles.publishedAt),
+            OrderingTerm.desc(articles.discoveredAt),
+            OrderingTerm.asc(articles.id),
           ])
-          ..limit(limit))
-        .watch();
+          ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(articles)).toList(),
+    );
   }
 
   Stream<List<Article>> watchAllArticles({int limit = 200}) {
-    return (select(articles)
+    final query =
+        select(
+            articles,
+          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
+          ..where(feeds.subscribed.equals(true))
           ..orderBy([
-            (row) => OrderingTerm.desc(row.publishedAt),
-            (row) => OrderingTerm.desc(row.discoveredAt),
-            (row) => OrderingTerm.asc(row.id),
+            OrderingTerm.desc(articles.publishedAt),
+            OrderingTerm.desc(articles.discoveredAt),
+            OrderingTerm.asc(articles.id),
           ])
-          ..limit(limit))
-        .watch();
+          ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(articles)).toList(),
+    );
   }
 
   Stream<List<Article>> watchStarredArticles({required int limit}) {
@@ -397,18 +499,24 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<int> watchUnreadArticleCount() {
     final count = articles.id.count();
-    return (selectOnly(articles)
+    final query =
+        selectOnly(
+            articles,
+          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
           ..addColumns([count])
-          ..where(articles.readAt.isNull()))
-        .watchSingle()
-        .map((row) => row.read(count) ?? 0);
+          ..where(feeds.subscribed.equals(true) & articles.readAt.isNull());
+    return query.watchSingle().map((row) => row.read(count) ?? 0);
   }
 
   Stream<int> watchArticleCount() {
     final count = articles.id.count();
-    return (selectOnly(
-      articles,
-    )..addColumns([count])).watchSingle().map((row) => row.read(count) ?? 0);
+    final query =
+        selectOnly(
+            articles,
+          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
+          ..addColumns([count])
+          ..where(feeds.subscribed.equals(true));
+    return query.watchSingle().map((row) => row.read(count) ?? 0);
   }
 
   Stream<int> watchStarredArticleCount() {
@@ -531,6 +639,16 @@ class AppDatabase extends _$AppDatabase {
     return (select(
       articles,
     )..where((row) => row.id.equals(id))).watchSingleOrNull();
+  }
+
+  Future<List<ArticleAttachment>> attachmentsForArticle(String articleId) {
+    return (select(articleAttachments)
+          ..where((row) => row.articleId.equals(articleId))
+          ..orderBy([
+            (row) => OrderingTerm.asc(row.position),
+            (row) => OrderingTerm.asc(row.id),
+          ]))
+        .get();
   }
 
   Selectable<Episode> _episodesForFeedQuery(

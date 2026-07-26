@@ -179,18 +179,30 @@ final class EpisodeTile extends ConsumerWidget {
   }
 }
 
-final class PodcastPreviewEpisodeTile extends StatelessWidget {
+final class PodcastPreviewEpisodeTile extends StatefulWidget {
   const PodcastPreviewEpisodeTile({
     required this.episode,
+    required this.onPlay,
     this.fallbackArtworkUrl,
     super.key,
   });
 
   final ParsedEpisode episode;
   final Uri? fallbackArtworkUrl;
+  final Future<void> Function() onPlay;
+
+  @override
+  State<PodcastPreviewEpisodeTile> createState() =>
+      _PodcastPreviewEpisodeTileState();
+}
+
+final class _PodcastPreviewEpisodeTileState
+    extends State<PodcastPreviewEpisodeTile> {
+  bool _playing = false;
 
   @override
   Widget build(BuildContext context) {
+    final episode = widget.episode;
     final description = plainText(episode.description);
     final metadata = metadataLine([
       relativeDate(episode.publishedAt),
@@ -212,7 +224,8 @@ final class PodcastPreviewEpisodeTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Artwork(
-                url: (episode.imageUrl ?? fallbackArtworkUrl)?.toString(),
+                url: (episode.imageUrl ?? widget.fallbackArtworkUrl)
+                    ?.toString(),
                 size: 58,
                 radius: 5,
               ),
@@ -259,11 +272,37 @@ final class PodcastPreviewEpisodeTile extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
+              Semantics(
+                button: true,
+                enabled: !_playing,
+                label: 'Play ${episode.title}',
+                excludeSemantics: true,
+                child: IconButton.filledTonal(
+                  tooltip: 'Play episode',
+                  onPressed: _playing ? null : _play,
+                  icon: _playing
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.play_arrow_rounded),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _play() async {
+    setState(() => _playing = true);
+    try {
+      await widget.onPlay();
+    } finally {
+      if (mounted) setState(() => _playing = false);
+    }
   }
 }
 
@@ -274,14 +313,31 @@ final class ArticleTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canonicalUri = Uri.tryParse(article.canonicalUrl ?? '');
+    final isPost = canonicalUri?.scheme == 'nostr';
+    final mediaKind = ArticleMediaKind
+        .values[article.mediaKind.clamp(0, ArticleMediaKind.values.length - 1)];
     final isVideo =
-        youtubeVideoId(Uri.tryParse(article.canonicalUrl ?? '')) != null;
+        youtubeVideoId(canonicalUri) != null ||
+        mediaKind == ArticleMediaKind.video;
+    final isAudio = mediaKind == ArticleMediaKind.audio;
+    final noun = isVideo
+        ? 'video'
+        : isAudio
+        ? 'audio post'
+        : isPost
+        ? 'post'
+        : 'article';
     final sourceTitle = showSource
         ? ref.watch(feedSnapshotProvider(article.feedId))?.title
         : null;
     final metadata = metadataLine([
       if (sourceTitle?.isNotEmpty == true) sourceTitle!,
-      if (article.author?.isNotEmpty == true) article.author!,
+      if (!isPost &&
+          article.author?.isNotEmpty == true &&
+          article.author!.trim().toLowerCase() !=
+              sourceTitle?.trim().toLowerCase())
+        article.author!,
       relativeDate(article.publishedAt),
     ]);
     return _InsetListFrame(
@@ -296,10 +352,9 @@ final class ArticleTile extends ConsumerWidget {
               excludeSemantics: true,
               onTap: () => context.push('/article/${article.id}'),
               label: [
-                if (isVideo)
-                  '${article.readAt == null ? 'Unwatched' : 'Watched'} video ${article.title}'
-                else
-                  '${article.readAt == null ? 'Unread' : 'Read'} article ${article.title}',
+                '${article.readAt == null ? (isVideo ? 'Unwatched' : 'Unread') : (isVideo ? 'Watched' : 'Read')} $noun ${article.title}',
+                if (article.contentWarning?.trim().isNotEmpty == true)
+                  'Content warning',
                 if (article.starred) 'Saved',
                 if (metadata.isNotEmpty) metadata,
               ].join('. '),
@@ -310,7 +365,12 @@ final class ArticleTile extends ConsumerWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _ArticleThumbnail(article: article, isVideo: isVideo),
+                      _ArticleThumbnail(
+                        article: article,
+                        isVideo: isVideo,
+                        hidden:
+                            article.contentWarning?.trim().isNotEmpty == true,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -378,7 +438,7 @@ final class ArticleTile extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.only(right: 8, top: 8),
             child: PopupMenuButton<String>(
-              tooltip: isVideo ? 'Video actions' : 'Article actions',
+              tooltip: '${noun[0].toUpperCase()}${noun.substring(1)} actions',
               icon: const Icon(Icons.more_horiz_rounded),
               onSelected: (action) => _action(context, ref, action),
               itemBuilder: (_) => [
@@ -428,13 +488,26 @@ final class ArticleTile extends ConsumerWidget {
 }
 
 final class _ArticleThumbnail extends StatelessWidget {
-  const _ArticleThumbnail({required this.article, required this.isVideo});
+  const _ArticleThumbnail({
+    required this.article,
+    required this.isVideo,
+    required this.hidden,
+  });
 
   final Article article;
   final bool isVideo;
+  final bool hidden;
 
   @override
   Widget build(BuildContext context) {
+    if (hidden) {
+      return Artwork(
+        size: isVideo ? 112 : 72,
+        aspectRatio: isVideo ? 16 / 9 : 1,
+        radius: 5,
+        icon: Icons.visibility_off_outlined,
+      );
+    }
     if (!isVideo) {
       return ArticleArtwork(article: article, size: 72, radius: 5);
     }

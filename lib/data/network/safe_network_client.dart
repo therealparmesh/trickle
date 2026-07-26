@@ -41,6 +41,21 @@ final class NetworkResource {
   final Map<String, String> headers;
 }
 
+final class NetworkWebSocket {
+  NetworkWebSocket(this.socket, this._client);
+
+  final WebSocket socket;
+  final HttpClient _client;
+
+  Future<void> close() async {
+    try {
+      await socket.close();
+    } finally {
+      _client.close(force: true);
+    }
+  }
+}
+
 final class SafeNetworkClient {
   SafeNetworkClient._(this._dio, [this._addressValidator]);
 
@@ -69,63 +84,44 @@ final class SafeNetworkClient {
         },
       ),
     );
-    final httpClient = HttpClient();
-    // The pinned connection factory connects to the validated origin address
-    // directly; it does not implement HTTP proxy tunneling.
-    httpClient.findProxy = (_) => 'DIRECT';
-    httpClient.connectionFactory = (uri, proxyHost, proxyPort) async {
-      final addresses = await InternetAddress.lookup(
-        uri.host,
-      ).timeout(AppConstants.networkConnectionTimeout);
-      if (addresses.isEmpty || addresses.any(isPrivateOrReservedAddress)) {
-        throw const SocketException('Unsafe server address');
-      }
-      // Retain explicit nonstandard ports and defensively supply HTTPS's
-      // standard port if a platform omits it from the factory URI.
-      final port = uri.port > 0 ? uri.port : 443;
-      // Connect only to addresses from the validated lookup, trying the next
-      // public address when a host's first IPv4/IPv6 route is unavailable.
-      var canceled = false;
-      ConnectionTask<Socket>? active;
-      Socket? connected;
-      final socket = () async {
-        Object? lastError;
-        for (final address in addresses) {
-          if (canceled) {
-            throw const SocketException('Connection attempt canceled');
-          }
-          try {
-            active = await Socket.startConnect(address, port);
-            final rawSocket = await active!.socket;
-            connected = rawSocket;
-            if (canceled) {
-              rawSocket.destroy();
-              throw const SocketException('Connection attempt canceled');
-            }
-            // A custom HttpClient connectionFactory must perform TLS itself
-            // for direct HTTPS connections. Upgrade the pinned raw socket
-            // using the original hostname for SNI and certificate checks.
-            return await SecureSocket.secure(rawSocket, host: uri.host);
-          } on Object catch (error) {
-            connected?.destroy();
-            connected = null;
-            lastError = error;
-          }
-        }
-        throw SocketException(
-          'Could not connect to any resolved server address: $lastError',
-        );
-      }();
-      return ConnectionTask.fromSocket(socket, () {
-        canceled = true;
-        active?.cancel();
-        connected?.destroy();
-      });
-    };
+    final httpClient = _pinnedHttpClient();
     dio.httpClientAdapter = IOHttpClientAdapter(
       createHttpClient: () => httpClient,
     );
     return SafeNetworkClient._(dio);
+  }
+
+  Future<NetworkWebSocket> connectWebSocket(
+    Uri requested, {
+    Duration totalTimeout = AppConstants.interactiveRequestTimeout,
+  }) async {
+    if (requested.scheme.toLowerCase() != 'wss' ||
+        requested.host.isEmpty ||
+        requested.userInfo.isNotEmpty ||
+        totalTimeout <= Duration.zero) {
+      throw const NetworkException('Use a public secure relay address.');
+    }
+    final stopwatch = Stopwatch()..start();
+    final uri = requested.replace(scheme: 'https');
+    final validator = _addressValidator;
+    if (validator == null) {
+      await _validatePublicHttps(uri, totalTimeout);
+    } else {
+      await validator(uri).timeout(totalTimeout);
+    }
+    final client = _pinnedHttpClient();
+    try {
+      // The returned NetworkWebSocket owns and closes this sink.
+      // ignore: close_sinks
+      final socket = await WebSocket.connect(
+        requested.toString(),
+        customClient: client,
+      ).timeout(_remaining(totalTimeout, stopwatch));
+      return NetworkWebSocket(socket, client);
+    } on Object {
+      client.close(force: true);
+      rethrow;
+    }
   }
 
   Future<NetworkDocument> get(
@@ -353,7 +349,7 @@ final class SafeNetworkClient {
                 contentType.contains('json') ||
                 contentType.contains('xml'))) {
           throw const NetworkException(
-            'The media server did not return playable audio.',
+            'The media server did not return playable media.',
           );
         }
         return NetworkResource(
@@ -437,6 +433,56 @@ final class SafeNetworkClient {
   }
 
   void close() => _dio.close(force: true);
+}
+
+HttpClient _pinnedHttpClient() {
+  final client = HttpClient();
+  // The pinned connection factory connects to a validated origin address
+  // directly; it does not implement HTTP proxy tunneling.
+  client.findProxy = (_) => 'DIRECT';
+  client.connectionFactory = (uri, proxyHost, proxyPort) async {
+    final addresses = await InternetAddress.lookup(
+      uri.host,
+    ).timeout(AppConstants.networkConnectionTimeout);
+    if (addresses.isEmpty || addresses.any(isPrivateOrReservedAddress)) {
+      throw const SocketException('Unsafe server address');
+    }
+    final port = uri.port > 0 ? uri.port : 443;
+    var canceled = false;
+    ConnectionTask<Socket>? active;
+    Socket? connected;
+    final socket = () async {
+      Object? lastError;
+      for (final address in addresses) {
+        if (canceled) {
+          throw const SocketException('Connection attempt canceled');
+        }
+        try {
+          active = await Socket.startConnect(address, port);
+          final rawSocket = await active!.socket;
+          connected = rawSocket;
+          if (canceled) {
+            rawSocket.destroy();
+            throw const SocketException('Connection attempt canceled');
+          }
+          return await SecureSocket.secure(rawSocket, host: uri.host);
+        } on Object catch (error) {
+          connected?.destroy();
+          connected = null;
+          lastError = error;
+        }
+      }
+      throw SocketException(
+        'Could not connect to any resolved server address: $lastError',
+      );
+    }();
+    return ConnectionTask.fromSocket(socket, () {
+      canceled = true;
+      active?.cancel();
+      connected?.destroy();
+    });
+  };
+  return client;
 }
 
 /// Returns whether [address] must not be contacted by feed-controlled URLs.

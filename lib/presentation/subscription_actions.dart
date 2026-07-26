@@ -25,18 +25,20 @@ Future<void> deleteSubscriptionThenCleanup({
 Future<bool> confirmUnsubscribe(BuildContext context, Feed feed) async {
   final kind = FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
   final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
-  final noun = switch ((kind, youtubeKind)) {
-    (FeedKind.podcast, _) => 'podcast',
-    (FeedKind.reader, YouTubeFeedKind.channel) => 'YouTube channel',
-    (FeedKind.reader, YouTubeFeedKind.playlist) => 'YouTube playlist',
-    (FeedKind.reader, null) => 'feed',
-  };
+  final noun = feed.protocol == FeedProtocol.nostr.index
+      ? 'Nostr profile'
+      : switch ((kind, youtubeKind)) {
+          (FeedKind.podcast, _) => 'podcast',
+          (FeedKind.reader, YouTubeFeedKind.channel) => 'YouTube channel',
+          (FeedKind.reader, YouTubeFeedKind.playlist) => 'YouTube playlist',
+          (FeedKind.reader, null) => 'feed',
+        };
   return await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: Text('Unsubscribe from this $noun?'),
           content: const Text(
-            'This removes its episodes, articles, playback and reading progress, Up Next items, downloads, and private credentials from this device.',
+            'Saved articles and saved, downloaded, queued, bookmarked, or in-progress episodes stay in your library. Other items are removed.',
           ),
           actions: [
             TextButton(
@@ -74,18 +76,37 @@ Future<void> removeSubscription(WidgetRef ref, Feed feed) async {
           ])..where(database.episodes.feedId.equals(feed.id)))
           .map((row) => row.readTable(database.mediaDownloads))
           .get();
+  var removedEpisodeIds = const <String>[];
+  var removedDownloads = const <MediaDownload>[];
   await deleteSubscriptionThenCleanup(
-    deleteSubscription: () =>
-        ref.read(feedRepositoryProvider).deleteFeed(feed.id),
+    deleteSubscription: () async {
+      await ref.read(feedRepositoryProvider).deleteFeed(feed.id);
+      final retainedEpisodeIds =
+          (await (database.selectOnly(database.episodes)
+                    ..addColumns([database.episodes.id])
+                    ..where(database.episodes.feedId.equals(feed.id)))
+                  .map((row) => row.read(database.episodes.id)!)
+                  .get())
+              .toSet();
+      final removedEpisodeIdSet = episodeIds
+          .where((id) => !retainedEpisodeIds.contains(id))
+          .toSet();
+      removedEpisodeIds = removedEpisodeIdSet.toList(growable: false);
+      removedDownloads = downloadRows
+          .where((download) => removedEpisodeIdSet.contains(download.episodeId))
+          .toList(growable: false);
+    },
     cleanupOperations: [
-      if (episodeIds.isNotEmpty)
-        () => ref
-            .read(audioHandlerProvider)
-            .removeEpisodesFromLibrary(episodeIds),
-      if (downloadRows.isNotEmpty)
-        () => ref
-            .read(downloadCoordinatorProvider)
-            .discardTasksForDeletedEpisodes(downloadRows),
+      () => removedEpisodeIds.isEmpty
+          ? Future<void>.value()
+          : ref
+                .read(audioHandlerProvider)
+                .removeEpisodesFromLibrary(removedEpisodeIds),
+      () => removedDownloads.isEmpty
+          ? Future<void>.value()
+          : ref
+                .read(downloadCoordinatorProvider)
+                .discardTasksForDeletedEpisodes(removedDownloads),
     ],
   );
 }
