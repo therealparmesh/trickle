@@ -35,6 +35,17 @@ final class SleepTimerStatus {
 final class TrickleAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler {
   static const playbackErrorMessage = 'This episode couldn’t be played.';
+  static const _podcastAudioSessionConfiguration =
+      AudioSessionConfiguration.speech();
+  static const _videoAudioSessionConfiguration = AudioSessionConfiguration(
+    avAudioSessionCategory: AVAudioSessionCategory.playback,
+    avAudioSessionMode: AVAudioSessionMode.moviePlayback,
+    androidAudioAttributes: AndroidAudioAttributes(
+      contentType: AndroidAudioContentType.movie,
+      usage: AndroidAudioUsage.media,
+    ),
+    androidWillPauseWhenDucked: true,
+  );
 
   TrickleAudioHandler({
     required AppDatabase database,
@@ -153,7 +164,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       _throwIfDisposed();
       final session = await AudioSession.instance;
       _throwIfDisposed();
-      await session.configure(AudioSessionConfiguration.speech());
+      await session.configure(_podcastAudioSessionConfiguration);
       _throwIfDisposed();
       _speedPercent = await _settings.speed();
       _throwIfDisposed();
@@ -297,13 +308,15 @@ final class TrickleAudioHandler extends BaseAudioHandler
   /// Activates the app's playback session before WebKit starts video audio.
   Future<void> activateWebVideoAudioSession() async {
     await initialize();
-    await _setSessionActive(true);
+    await _configureSession(_videoAudioSessionConfiguration, activate: true);
   }
 
   Future<void> deactivateWebVideoAudioSession() async {
-    if (_session != null && _player?.playing != true && !_playRequested) {
-      await _setSessionActive(false);
-    }
+    final nativePlaybackActive = _player?.playing == true || _playRequested;
+    await _configureSession(
+      _podcastAudioSessionConfiguration,
+      activate: nativePlaybackActive,
+    );
   }
 
   Future<void> playEpisode(String episodeId) async {
@@ -1260,7 +1273,23 @@ final class TrickleAudioHandler extends BaseAudioHandler
   Future<bool> _setSessionActive(bool active) {
     final session = _session;
     if (session == null) return Future<bool>.value(true);
-    final completer = Completer<bool>();
+    return _queueSessionOperation(() => session.setActive(active));
+  }
+
+  Future<void> _configureSession(
+    AudioSessionConfiguration configuration, {
+    required bool activate,
+  }) {
+    final session = _session;
+    if (session == null) return Future<void>.value();
+    return _queueSessionOperation<void>(() async {
+      await session.configure(configuration);
+      await session.setActive(activate);
+    });
+  }
+
+  Future<T> _queueSessionOperation<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
     final previous = _sessionOperationTail;
     _sessionOperationTail = () async {
       try {
@@ -1269,7 +1298,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
         // A failed activation must not block the next transport command.
       }
       try {
-        completer.complete(await session.setActive(active));
+        completer.complete(await operation());
       } on Object catch (error, stackTrace) {
         completer.completeError(error, stackTrace);
       }

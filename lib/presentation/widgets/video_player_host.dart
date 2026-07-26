@@ -1133,6 +1133,18 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     setState(() => _requestingPictureInPicture = true);
     var awaitingWebResult = false;
     try {
+      try {
+        await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
+      } on Object {
+        // The system can still enter Picture in Picture without explicit focus.
+      }
+      if (!mounted ||
+          generation != _sessionGeneration ||
+          ref.read(videoSessionProvider) == null ||
+          !_videoPlaying ||
+          _videoBuffering) {
+        return;
+      }
       if (defaultTargetPlatform == TargetPlatform.android) {
         final entered =
             await _platformChannel.invokeMethod<bool>(
@@ -1231,11 +1243,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _completePictureInPictureRequest();
     ref.read(videoSessionProvider.notifier).enterPictureInPicture();
-    try {
-      await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
-    } on Object {
-      // System Picture in Picture remains usable without explicit audio focus.
-    }
   }
 
   Future<void> _toggleVideoPlayback(VideoSession session) async {

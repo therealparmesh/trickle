@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 36
+- Build: 37
 
 ## Name
 
@@ -100,6 +100,8 @@ Closing Picture in Picture while trickle is visible returns the same video and t
 Every recognized YouTube video now follows the same initial player path, including video URLs discovered in post attachments, before using the official source as a fallback.
 
 Picture in Picture requests now wait for confirmation, recover cleanly when unavailable, and never leave the player controls stuck in a loading state.
+
+Picture in Picture now activates the correct video audio session before the system request, so playback can continue reliably when the app is hidden or the screen is locked.
 
 Podcasts imported through OPML are recognized as subscribed in catalog search, including feeds whose query credentials stay in secure device storage.
 

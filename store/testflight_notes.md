@@ -24,6 +24,7 @@ Please test the combined podcast and feed flow:
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed
 - Rapidly alternate Play and Pause while expanded, minimized, and buffering; Now Playing must match the active video
 - During Picture in Picture, verify Now Playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading
+- Start Picture in Picture, lock the phone without closing the system window, wait at least 15 seconds, and verify audio and playback position continue before and after unlocking
 - Try Picture in Picture on a video or device where it is unavailable; the request should end with a clear message and immediately restore usable controls
 - With trickle visible, close Picture in Picture with its system X; the same live video and timestamp must continue in the minimized player
 - With trickle backgrounded or locked, close Picture in Picture with its system X; playback and the stored video session must end
