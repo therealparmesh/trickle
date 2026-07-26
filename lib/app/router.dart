@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../domain/feed_models.dart';
 import '../presentation/app_shell.dart';
 import '../presentation/pages/article_page.dart';
 import '../presentation/pages/downloads_page.dart';
@@ -14,7 +16,7 @@ import '../presentation/pages/reader_page.dart';
 import '../presentation/pages/saved_page.dart';
 import '../presentation/pages/search_page.dart';
 import '../presentation/pages/settings_page.dart';
-import '../domain/feed_models.dart';
+import '../presentation/widgets/cyber_glitch.dart';
 
 GoRouter createRouter() {
   return GoRouter(
@@ -40,22 +42,29 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/podcast/:id',
-            builder: (_, state) =>
-                FeedDetailPage(feedId: state.pathParameters['id']!),
+            pageBuilder: (context, state) => _detailPage(
+              context,
+              state,
+              FeedDetailPage(feedId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(
             path: '/podcast-preview',
-            builder: (_, state) => switch (state.extra) {
-              final PodcastSearchResult podcast => FeedDetailPage.catalog(
-                podcast: podcast,
-              ),
-              _ => const FeedDetailPage.catalog(),
-            },
+            pageBuilder: (context, state) =>
+                _detailPage(context, state, switch (state.extra) {
+                  final PodcastSearchResult podcast => FeedDetailPage.catalog(
+                    podcast: podcast,
+                  ),
+                  _ => const FeedDetailPage.catalog(),
+                }),
           ),
           GoRoute(
             path: '/feed/:id',
-            builder: (_, state) =>
-                FeedDetailPage(feedId: state.pathParameters['id']!),
+            pageBuilder: (context, state) => _detailPage(
+              context,
+              state,
+              FeedDetailPage(feedId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(
             path: '/article/:id',
@@ -64,8 +73,11 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/episode/:id',
-            builder: (_, state) =>
-                EpisodePage(episodeId: state.pathParameters['id']!),
+            pageBuilder: (context, state) => _detailPage(
+              context,
+              state,
+              EpisodePage(episodeId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(path: '/queue', builder: (_, _) => const QueuePage()),
           GoRoute(path: '/downloads', builder: (_, _) => const DownloadsPage()),
@@ -82,5 +94,24 @@ GoRouter createRouter() {
       ),
       GoRoute(path: '/player', builder: (_, _) => const PlayerPage()),
     ],
+  );
+}
+
+Page<void> _detailPage(
+  BuildContext context,
+  GoRouterState state,
+  Widget child,
+) {
+  final motionEnabled = CyberGlitchMotion.isEnabled(context);
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    transitionDuration: motionEnabled
+        ? CyberGlitchMotion.routeDuration
+        : Duration.zero,
+    reverseTransitionDuration: motionEnabled
+        ? CyberGlitchMotion.reverseRouteDuration
+        : Duration.zero,
+    transitionsBuilder: CyberGlitchMotion.routeTransition,
+    child: child,
   );
 }
