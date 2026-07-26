@@ -22,7 +22,6 @@ import 'data/security/private_feed_store.dart';
 import 'features/downloads/download_coordinator.dart';
 import 'features/player/trickle_audio_handler.dart';
 import 'presentation/widgets/common.dart';
-import 'presentation/widgets/cyber_glitch.dart';
 import 'services/background_refresh_service.dart';
 import 'services/backup_service.dart';
 import 'services/notification_service.dart';
@@ -90,7 +89,7 @@ final class _TrickleBootstrapState extends State<_TrickleBootstrap> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const CyberGlitchReveal(child: TrickleMark(size: 92)),
+                        const TrickleMark(size: 92),
                         const SizedBox(height: 18),
                         Text(
                           'trickle',
