@@ -22,6 +22,7 @@ Please test the combined podcast and feed flow:
 - During Picture in Picture, verify Now Playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading
 - With trickle visible, close Picture in Picture with its system X; the same live video and timestamp must continue in the minimized player
 - With trickle backgrounded or locked, close Picture in Picture with its system X; playback and the stored video session must end
+- With VoiceOver or TalkBack on the minimized video, verify only the visible expand, play or pause, and close controls are reachable; controls inside the compact page preview must not receive focus
 - Close the in-app Now Playing bar with its X; it must discard the player so reopening starts fresh
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews; images should crop without stretching

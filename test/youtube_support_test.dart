@@ -334,4 +334,20 @@ void main() {
       );
     }
   });
+
+  test('PiP resume ignores interim state until playback is acknowledged', () {
+    for (final scenario in [
+      (awaiting: false, resumeResult: false, expected: true),
+      (awaiting: true, resumeResult: false, expected: false),
+      (awaiting: true, resumeResult: true, expected: true),
+    ]) {
+      expect(
+        shouldApplyVideoPlaybackState(
+          awaitingPictureInPictureResume: scenario.awaiting,
+          isPictureInPictureResumeResult: scenario.resumeResult,
+        ),
+        scenario.expected,
+      );
+    }
+  });
 }

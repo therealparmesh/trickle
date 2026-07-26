@@ -50,6 +50,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   bool _pausedForBackground = false;
   bool _requestingPictureInPicture = false;
   bool _pictureInPictureBackgrounded = false;
+  bool _awaitingPictureInPictureResume = false;
   AppLifecycleState _lifecycleState =
       WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
   VideoPlaybackSource _source = VideoPlaybackSource.privacyWrapper;
@@ -98,6 +99,10 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     if (state == AppLifecycleState.resumed) {
       _pausedForBackground = false;
+      if (defaultTargetPlatform == TargetPlatform.iOS &&
+          session?.presentation == VideoPresentation.pictureInPicture) {
+        unawaited(_syncPictureInPictureAfterResume());
+      }
       return;
     }
     if (state == AppLifecycleState.detached) {
@@ -335,9 +340,12 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       fit: StackFit.expand,
       children: [
         if (controller != null)
-          WebViewWidget(
-            key: const ValueKey('persistent-video-webview'),
-            controller: controller,
+          ExcludeSemantics(
+            excluding: compact,
+            child: WebViewWidget(
+              key: const ValueKey('persistent-video-webview'),
+              controller: controller,
+            ),
           ),
         if (!_pageLoaded || _error != null)
           ColoredBox(
@@ -677,6 +685,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         _ready = false;
         _videoPlaying = false;
         _videoBuffering = false;
+        _awaitingPictureInPictureResume = false;
         _error = null;
       });
     }
@@ -793,6 +802,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _pausedForBackground = false;
     _requestingPictureInPicture = false;
     _pictureInPictureBackgrounded = false;
+    _awaitingPictureInPictureResume = false;
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
     _source = VideoPlaybackSource.privacyWrapper;
@@ -882,6 +892,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     switch (event.state) {
       case 'pip-start':
         unawaited(_markPictureInPictureActive());
+      case 'pip-active':
+        _pictureInPictureBackgrounded = false;
+        unawaited(_markPictureInPictureActive());
       case 'pip-restored':
         unawaited(
           _handlePictureInPictureExit(VideoPictureInPictureExit.restored),
@@ -893,30 +906,57 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             backgroundedAtExit: event.backgrounded,
           ),
         );
+      case 'pip-resume-result':
+        _handleObservedVideoPlayback(event, pictureInPictureResumeResult: true);
       case 'video-state':
-        final session = ref.read(videoSessionProvider)!;
-        if (event.playing &&
-            shouldPauseVideoForLifecycle(
-              _lifecycleState,
-              session.presentation,
-            )) {
-          if (!_pausedForBackground) unawaited(_pauseForBackground());
-        } else {
-          _updateVideoPlayback(
-            playing: event.playing,
-            buffering: event.buffering,
-          );
-        }
+        _handleObservedVideoPlayback(
+          event,
+          pictureInPictureResumeResult: false,
+        );
       case 'video-error':
+        _awaitingPictureInPictureResume = false;
         _fallbackOrShowError();
     }
+  }
+
+  void _handleObservedVideoPlayback(
+    _VideoEvent event, {
+    required bool pictureInPictureResumeResult,
+  }) {
+    if (!shouldApplyVideoPlaybackState(
+      awaitingPictureInPictureResume: _awaitingPictureInPictureResume,
+      isPictureInPictureResumeResult: pictureInPictureResumeResult,
+    )) {
+      return;
+    }
+    if (pictureInPictureResumeResult) {
+      _awaitingPictureInPictureResume = false;
+    }
+    _applyVideoPlaybackEvent(event);
+  }
+
+  void _applyVideoPlaybackEvent(_VideoEvent event) {
+    final session = ref.read(videoSessionProvider);
+    if (session == null) return;
+    if (event.playing &&
+        shouldPauseVideoForLifecycle(_lifecycleState, session.presentation)) {
+      if (!_pausedForBackground) unawaited(_pauseForBackground());
+      return;
+    }
+    _updateVideoPlayback(playing: event.playing, buffering: event.buffering);
   }
 
   Future<void> _handlePictureInPictureExit(
     VideoPictureInPictureExit exit, {
     bool? backgroundedAtExit,
   }) async {
-    if (!mounted || ref.read(videoSessionProvider) == null) return;
+    if (!mounted) return;
+    final session = ref.read(videoSessionProvider);
+    if (session == null ||
+        session.presentation != VideoPresentation.pictureInPicture) {
+      return;
+    }
+    final generation = _sessionGeneration;
     final wasBackgrounded =
         _pictureInPictureBackgrounded || backgroundedAtExit == true
         ? true
@@ -930,18 +970,23 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       case VideoPictureInPictureExitAction.close:
         await _close();
       case VideoPictureInPictureExitAction.minimize:
+        _awaitingPictureInPictureResume = false;
         ref.read(videoSessionProvider.notifier).leavePictureInPicture();
       case VideoPictureInPictureExitAction.resumeInMiniPlayer:
         ref.read(videoSessionProvider.notifier).leavePictureInPicture();
         _pausedForBackground = false;
+        _awaitingPictureInPictureResume = true;
         if (_ready) {
           _updateVideoPlayback(playing: true, buffering: true);
         }
         try {
-          await _sendVideoCommand('play');
+          await _sendVideoCommand('resume-after-picture-in-picture');
         } on Object {
-          if (mounted && _ready) {
-            _updateVideoPlayback(playing: false, buffering: false);
+          if (_isCurrentSession(session, generation)) {
+            _awaitingPictureInPictureResume = false;
+            if (_ready) {
+              _updateVideoPlayback(playing: false, buffering: false);
+            }
           }
         }
     }
@@ -965,7 +1010,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       if (sourceUri == null) return null;
       final playing = value['playing'];
       final buffering = value['buffering'];
-      if (state == 'video-state' && (playing is! bool || buffering is! bool)) {
+      if ((state == 'video-state' || state == 'pip-resume-result') &&
+          (playing is! bool || buffering is! bool)) {
         return null;
       }
       return _VideoEvent(
@@ -1005,6 +1051,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     final generation = _sessionGeneration;
     final audioHandler = ref.read(audioHandlerProvider);
     _pausedForBackground = true;
+    _awaitingPictureInPictureResume = false;
     if (mounted &&
         generation == _sessionGeneration &&
         _ready &&
@@ -1031,6 +1078,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     final generation = _sessionGeneration;
     _pictureInPictureBackgrounded = false;
+    _awaitingPictureInPictureResume = false;
     setState(() => _requestingPictureInPicture = true);
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
@@ -1095,6 +1143,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (!_ready) return;
     final generation = _sessionGeneration;
     final pause = _videoPlaying;
+    if (pause) _awaitingPictureInPictureResume = false;
     try {
       await _sendVideoCommand(pause ? 'pause' : 'play');
       if (pause &&
@@ -1114,6 +1163,14 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     await controller.runJavaScript(
       'window.postMessage({__trickleVideoCommand: ${_javascriptString(command)}}, "*");',
     );
+  }
+
+  Future<void> _syncPictureInPictureAfterResume() async {
+    try {
+      await _sendVideoCommand('picture-in-picture-status');
+    } on Object {
+      // The next WebKit presentation callback remains authoritative.
+    }
   }
 
   bool _isCurrentSession(VideoSession session, int generation) =>
@@ -1157,6 +1214,7 @@ String _videoPresentationObserver(int observerToken) =>
   window.__trickleVideoObserverToken = observerToken;
 
   let revision = 0;
+  let lastPlaybackSignature = null;
   const cleanups = [];
   const send = (state, details = {}) => {
     if (window.__trickleVideoObserverToken !== observerToken) return;
@@ -1197,17 +1255,21 @@ String _videoPresentationObserver(int observerToken) =>
       (selected, video) => area(video) > area(selected) ? video : selected
     );
   };
-  const reportState = (forceBuffering = false) => {
+  const playbackDetails = (video, buffering = false) => {
+    const playing = !video.paused && !video.ended;
+    return {
+      playing: playing,
+      buffering: playing && buffering,
+    };
+  };
+  const reportState = (buffering = false) => {
     const video = selectVideo();
     if (!video) return;
-    const playing = !video.paused && !video.ended;
-    send('video-state', {
-      playing: playing,
-      buffering: playing && (
-        forceBuffering ||
-        video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA
-      ),
-    });
+    const details = playbackDetails(video, buffering);
+    const signature = details.playing + ':' + details.buffering;
+    if (signature === lastPlaybackSignature) return;
+    lastPlaybackSignature = signature;
+    send('video-state', details);
   };
   window.__trickleVideoReportState = reportState;
 
@@ -1245,7 +1307,10 @@ String _videoPresentationObserver(int observerToken) =>
     listen('pause', () => reportState());
     listen('waiting', () => reportState(true));
     listen('stalled', () => reportState(true));
+    listen('seeking', () => reportState(true));
     listen('canplay', () => reportState());
+    listen('seeked', () => reportState());
+    listen('timeupdate', () => reportState());
     listen('ended', () => reportState());
     listen('emptied', () => reportState());
     listen('error', () => {
@@ -1254,7 +1319,38 @@ String _videoPresentationObserver(int observerToken) =>
     reportState();
   };
   const command = (video, action) => {
-    if (action === 'play') video.play().catch(() => {});
+    if (action === 'play') {
+      try {
+        const result = video.play();
+        if (result && typeof result.catch === 'function') {
+          result.catch(() => {});
+        }
+      } catch (_) {}
+    }
+    if (action === 'resume-after-picture-in-picture') {
+      try {
+        const result = video.play();
+        if (result && typeof result.then === 'function') {
+          result.then(
+            () => send('pip-resume-result', playbackDetails(video)),
+            () => send('pip-resume-result', {
+              playing: false,
+              buffering: false,
+            }),
+          );
+        } else {
+          setTimeout(
+            () => send('pip-resume-result', playbackDetails(video)),
+            0,
+          );
+        }
+      } catch (_) {
+        send('pip-resume-result', {
+          playing: false,
+          buffering: false,
+        });
+      }
+    }
     if (action === 'pause') video.pause();
     if (action === 'picture-in-picture') {
       if (video.webkitSupportsPresentationMode &&
@@ -1272,15 +1368,35 @@ String _videoPresentationObserver(int observerToken) =>
       return;
     }
     const video = selectVideo();
-    if (!video) return;
+    if (!video) {
+      if (action === 'resume-after-picture-in-picture') {
+        send('pip-resume-result', {
+          playing: false,
+          buffering: false,
+        });
+      } else if (action === 'picture-in-picture-status') {
+        send('pip-dismissed');
+      }
+      return;
+    }
+    if (action === 'picture-in-picture-status') {
+      const active = mode(video) === 'picture-in-picture';
+      send(active ? 'pip-active' : (
+        video.paused ? 'pip-dismissed' : 'pip-restored'
+      ));
+      return;
+    }
     command(video, action);
+    if (action === 'resume-after-picture-in-picture') return;
     setTimeout(() => reportState(), 0);
     setTimeout(() => reportState(), 250);
   };
   const receiveCommand = (event) => {
     const action = event.data && event.data.__trickleVideoCommand;
     if (action === 'play' || action === 'pause' ||
-        action === 'picture-in-picture') {
+        action === 'picture-in-picture' ||
+        action === 'resume-after-picture-in-picture' ||
+        action === 'picture-in-picture-status') {
       dispatchCommand(action);
     }
   };

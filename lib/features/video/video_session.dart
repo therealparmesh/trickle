@@ -48,6 +48,11 @@ bool shouldAcceptVideoStateRevision({
   required int revision,
 }) => observerToken == activeObserverToken && revision > lastRevision;
 
+bool shouldApplyVideoPlaybackState({
+  required bool awaitingPictureInPictureResume,
+  required bool isPictureInPictureResumeResult,
+}) => !awaitingPictureInPictureResume || isPictureInPictureResumeResult;
+
 extension VideoPlaybackSourceFallback on VideoPlaybackSource {
   VideoPlaybackSource? get fallbackAfterFailure => switch (this) {
     VideoPlaybackSource.privacyWrapper => VideoPlaybackSource.officialYouTube,
