@@ -386,15 +386,6 @@ final class SafeNetworkClient {
     return uri;
   }
 
-  Future<Uri> validatePublicAddress(
-    Uri input, {
-    Duration timeout = AppConstants.networkConnectionTimeout,
-  }) async {
-    final uri = normalizeHttps(input);
-    await _validatePublicHttps(uri, timeout);
-    return uri;
-  }
-
   Duration _remaining(Duration total, Stopwatch stopwatch) {
     final remaining = total - stopwatch.elapsed;
     if (remaining <= Duration.zero) {

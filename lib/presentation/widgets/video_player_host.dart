@@ -42,6 +42,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   int _videoObserverToken = 0;
   int _activeVideoObserverToken = 0;
   int _lastVideoStateRevision = 0;
+  int _videoControlRevision = 0;
   int _progress = 0;
   bool _pageLoaded = false;
   bool _ready = false;
@@ -412,10 +413,15 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                 IconButton(
                   tooltip: _requestingPictureInPicture
                       ? 'Opening Picture in Picture'
+                      : _videoBuffering
+                      ? 'Wait for video playback'
                       : _videoPlaying
                       ? 'Picture in Picture'
                       : 'Play video before Picture in Picture',
-                  onPressed: _videoPlaying && !_requestingPictureInPicture
+                  onPressed:
+                      _videoPlaying &&
+                          !_videoBuffering &&
+                          !_requestingPictureInPicture
                       ? () => unawaited(_enterPictureInPicture())
                       : null,
                   icon: const Icon(Icons.picture_in_picture_alt_rounded),
@@ -675,6 +681,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     _activeRequestUri = requestUri;
     _source = source;
+    _videoControlRevision++;
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
     _loadTimeout?.cancel();
@@ -1050,6 +1057,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   Future<void> _pauseForBackground() async {
     final generation = _sessionGeneration;
     final audioHandler = ref.read(audioHandlerProvider);
+    _videoControlRevision++;
     _pausedForBackground = true;
     _awaitingPictureInPictureResume = false;
     if (mounted &&
@@ -1073,6 +1081,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   Future<void> _enterPictureInPicture() async {
     if (_requestingPictureInPicture ||
         !_videoPlaying ||
+        _videoBuffering ||
         ref.read(videoSessionProvider) == null) {
       return;
     }
@@ -1113,6 +1122,15 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           'Picture in Picture isn’t available on this device.',
         );
       }
+    } on Object {
+      if (mounted &&
+          generation == _sessionGeneration &&
+          ref.read(videoSessionProvider) != null) {
+        showMessageSnackBar(
+          context,
+          'Picture in Picture isn’t available right now.',
+        );
+      }
     } finally {
       if (mounted && generation == _sessionGeneration) {
         setState(() => _requestingPictureInPicture = false);
@@ -1142,27 +1160,42 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     if (!_ready) return;
     final generation = _sessionGeneration;
-    final pause = _videoPlaying;
-    if (pause) _awaitingPictureInPictureResume = false;
+    final wasPlaying = _videoPlaying;
+    final wasBuffering = _videoBuffering;
+    final play = !wasPlaying;
+    final controlRevision = ++_videoControlRevision;
+    if (!play) _awaitingPictureInPictureResume = false;
+    _updateVideoPlayback(playing: play, buffering: play);
     try {
-      await _sendVideoCommand(pause ? 'pause' : 'play');
-      if (pause &&
-          mounted &&
-          generation == _sessionGeneration &&
-          ref.read(videoSessionProvider)?.articleId == session.articleId) {
-        _updateVideoPlayback(playing: false, buffering: false);
-      }
+      await _sendVideoCommand(play ? 'play' : 'pause');
     } on Object catch (error) {
-      if (mounted) showErrorSnackBar(context, error);
+      if (mounted &&
+          generation == _sessionGeneration &&
+          controlRevision == _videoControlRevision &&
+          ref.read(videoSessionProvider)?.articleId == session.articleId &&
+          ref.read(videoSessionProvider)?.playbackUri == session.playbackUri) {
+        _updateVideoPlayback(playing: wasPlaying, buffering: wasBuffering);
+        showErrorSnackBar(context, error);
+      }
     }
   }
 
   Future<void> _sendVideoCommand(String command) async {
     final controller = _controller;
-    if (controller == null || ref.read(videoSessionProvider) == null) return;
-    await controller.runJavaScript(
-      'window.postMessage({__trickleVideoCommand: ${_javascriptString(command)}}, "*");',
-    );
+    final generation = _sessionGeneration;
+    final controllerToken = _controllerToken;
+    if (controller == null || ref.read(videoSessionProvider) == null) {
+      throw StateError('The video player is no longer available.');
+    }
+    await _serializeNavigation(() async {
+      if (!_isCurrentSessionGeneration(generation) ||
+          !_isCurrentController(controller, controllerToken)) {
+        throw StateError('The video player changed before the command ran.');
+      }
+      await controller.runJavaScript(
+        'window.postMessage({__trickleVideoCommand: ${_javascriptString(command)}}, "*");',
+      );
+    });
   }
 
   Future<void> _syncPictureInPictureAfterResume() async {
@@ -1178,6 +1211,11 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       generation == _sessionGeneration &&
       ref.read(videoSessionProvider)?.articleId == session.articleId &&
       ref.read(videoSessionProvider)?.playbackUri == session.playbackUri;
+
+  bool _isCurrentSessionGeneration(int generation) =>
+      mounted &&
+      generation == _sessionGeneration &&
+      ref.read(videoSessionProvider) != null;
 
   bool _isCurrentController(WebViewController controller, int token) =>
       mounted &&
@@ -1322,10 +1360,23 @@ String _videoPresentationObserver(int observerToken) =>
     if (action === 'play') {
       try {
         const result = video.play();
-        if (result && typeof result.catch === 'function') {
-          result.catch(() => {});
+        if (result && typeof result.then === 'function') {
+          result.then(
+            () => reportState(),
+            () => send('video-state', {
+              playing: false,
+              buffering: false,
+            }),
+          );
+        } else {
+          setTimeout(() => reportState(), 0);
         }
-      } catch (_) {}
+      } catch (_) {
+        send('video-state', {
+          playing: false,
+          buffering: false,
+        });
+      }
     }
     if (action === 'resume-after-picture-in-picture') {
       try {

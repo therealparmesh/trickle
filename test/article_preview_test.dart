@@ -47,8 +47,8 @@ void main() {
     final article = await _seedArticle(database);
 
     final results = await Future.wait([
-      repository.previewImage(article),
-      repository.previewImage(article),
+      repository.previewImageById(article.id),
+      repository.previewImageById(article.id),
     ]);
 
     expect(results, everyElement('https://publisher.test/images/launch.jpg'));
@@ -68,8 +68,8 @@ void main() {
     final repository = ArticleRepository(database, network, privateFeeds);
     final article = await _seedArticle(database);
 
-    expect(await repository.previewImage(article), isNull);
-    expect(await repository.previewImage(article), isNull);
+    expect(await repository.previewImageById(article.id), isNull);
+    expect(await repository.previewImageById(article.id), isNull);
     expect(adapter.requests, 1);
     expect((await database.articleById(article.id))?.imageUrl, isNull);
   });
@@ -91,10 +91,8 @@ void main() {
       await (database.update(database.articles)
             ..where((row) => row.id.equals(article.id)))
           .write(const ArticlesCompanion(imageUrl: Value('   ')));
-      final stored = (await database.articleById(article.id))!;
-
       expect(
-        await repository.previewImage(stored),
+        await repository.previewImageById(article.id),
         'https://publisher.test/images/discovered.jpg',
       );
       expect(adapter.requests, 1);
@@ -275,7 +273,8 @@ void main() {
         privateFeeds,
       );
 
-      final image = await repository.previewImage(await _seedArticle(database));
+      final article = await _seedArticle(database);
+      final image = await repository.previewImageById(article.id);
 
       expect(image, 'https://publisher.test/images/card-large.jpg');
     },

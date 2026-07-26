@@ -60,15 +60,6 @@ final class ArticleRepository {
     });
   }
 
-  Future<String?> previewImage(Article article, {PreviewLease? lease}) async {
-    if (article.imageUrl?.trim().isNotEmpty == true) {
-      return article.imageUrl!.trim();
-    }
-    final stored = await _database.articleById(article.id);
-    if (stored == null) return null;
-    return _previewImageForStored(stored, lease: lease);
-  }
-
   Future<String?> previewImageById(
     String articleId, {
     PreviewLease? lease,
