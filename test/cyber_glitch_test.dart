@@ -57,7 +57,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('route signal remains visible midway through its motion', (
+  testWidgets('route signal uses stepped displacement midway through motion', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -80,7 +80,12 @@ void main() {
       ),
       isTrue,
     );
-    expect(find.byType(CustomPaint), findsWidgets);
+    expect(
+      tester
+          .widgetList<Opacity>(find.byType(Opacity))
+          .any((opacity) => opacity.opacity < 0.9),
+      isTrue,
+    );
     expect(
       CyberGlitchMotion.routeDuration.inMilliseconds,
       greaterThanOrEqualTo(250),
