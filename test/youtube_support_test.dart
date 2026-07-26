@@ -178,7 +178,9 @@ void main() {
       articleId: 'video',
       title: 'Video',
       sourceUri: source,
-      playbackUri: privacyYouTubePlaybackUri(source)!,
+      // Callers that discover a YouTube URL as an attachment can pass the
+      // resolved source here. The session still owns the primary mapping.
+      playbackUri: source,
       presentation: VideoPresentation.expanded,
     );
 
@@ -186,6 +188,7 @@ void main() {
       session.playbackUriFor(VideoPlaybackSource.privacyWrapper),
       Uri.parse('https://www.yout-ube.com/watch?v=dQw4w9WgXcQ'),
     );
+    expect(session.initialPlaybackSource, VideoPlaybackSource.privacyWrapper);
     expect(
       VideoPlaybackSource.privacyWrapper.fallbackAfterFailure,
       VideoPlaybackSource.officialYouTube,
@@ -195,6 +198,23 @@ void main() {
       Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
     );
     expect(VideoPlaybackSource.officialYouTube.fallbackAfterFailure, isNull);
+
+    final directMedia = Uri.parse('https://media.example.com/video.mp4');
+    final directSession = VideoSession(
+      articleId: 'attachment',
+      title: 'Attachment',
+      sourceUri: directMedia,
+      playbackUri: directMedia,
+      presentation: VideoPresentation.expanded,
+    );
+    expect(
+      directSession.initialPlaybackSource,
+      VideoPlaybackSource.directMedia,
+    );
+    expect(
+      directSession.playbackUriFor(VideoPlaybackSource.directMedia),
+      directMedia,
+    );
   });
 
   test('video presentation has one valid state through minimize and PiP', () {

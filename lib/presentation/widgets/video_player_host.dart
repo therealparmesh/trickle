@@ -52,6 +52,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   bool _requestingPictureInPicture = false;
   bool _pictureInPictureBackgrounded = false;
   bool _awaitingPictureInPictureResume = false;
+  Timer? _pictureInPictureRequestTimeout;
   AppLifecycleState _lifecycleState =
       WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
   VideoPlaybackSource _source = VideoPlaybackSource.privacyWrapper;
@@ -77,6 +78,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       _platformChannel.setMethodCallHandler(null);
     }
     _loadTimeout?.cancel();
+    _pictureInPictureRequestTimeout?.cancel();
     unawaited(
       ref
           .read(audioHandlerProvider)
@@ -617,6 +619,12 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               ? _isOfficialYouTubeHost(uri?.host)
               : _isWrapperHost(uri?.host) || _isPlaybackHost(uri?.host);
           final requestedVideo = _usingDirectMedia ? null : youtubeVideoId(uri);
+          if (_source == VideoPlaybackSource.privacyWrapper &&
+              _isOfficialYouTubeHost(uri?.host) &&
+              _isCurrentVideo(uri)) {
+            _fallbackOrShowError();
+            return NavigationDecision.prevent;
+          }
           if (uri?.scheme == 'about' ||
               (_usingDirectMedia && allowedHost) ||
               (allowedHost &&
@@ -690,6 +698,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
     _loadTimeout?.cancel();
+    _pictureInPictureRequestTimeout?.cancel();
+    _pictureInPictureRequestTimeout = null;
     if (mounted) {
       setState(() {
         _progress = 0;
@@ -697,6 +707,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         _ready = false;
         _videoPlaying = false;
         _videoBuffering = false;
+        _requestingPictureInPicture = false;
         _awaitingPictureInPictureResume = false;
         _error = null;
       });
@@ -767,7 +778,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           ? _isOfficialYouTubeHost(uri?.host)
           : _usingDirectMedia
           ? true
-          : _isPlaybackHost(uri?.host));
+          : _isWrapperHost(uri?.host) || _isPlaybackHost(uri?.host));
 
   bool _isActiveLoadUri(Uri? uri) =>
       (_usingDirectMedia ? _isCurrentDirectMedia(uri) : _isCurrentVideo(uri)) &&
@@ -800,11 +811,14 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     _loadTimeout?.cancel();
+    _pictureInPictureRequestTimeout?.cancel();
+    _pictureInPictureRequestTimeout = null;
     setState(() {
       _pageLoaded = false;
       _ready = false;
       _videoPlaying = false;
       _videoBuffering = false;
+      _requestingPictureInPicture = false;
       _error = message;
     });
   }
@@ -816,6 +830,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _controllerToken++;
     ref.read(videoSessionProvider.notifier).close();
     _loadTimeout?.cancel();
+    _pictureInPictureRequestTimeout?.cancel();
+    _pictureInPictureRequestTimeout = null;
     _loadedArticleId = null;
     _loadedUri = null;
     _activeRequestUri = null;
@@ -915,10 +931,17 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _lastVideoStateRevision = event.revision;
     switch (event.state) {
       case 'pip-start':
+        _completePictureInPictureRequest();
         unawaited(_markPictureInPictureActive());
       case 'pip-active':
+        _completePictureInPictureRequest();
         _pictureInPictureBackgrounded = false;
         unawaited(_markPictureInPictureActive());
+      case 'pip-request-succeeded':
+        _completePictureInPictureRequest();
+        unawaited(_markPictureInPictureActive());
+      case 'pip-request-failed':
+        _completePictureInPictureRequest(showUnavailable: true);
       case 'pip-restored':
         unawaited(
           _handlePictureInPictureExit(VideoPictureInPictureExit.restored),
@@ -981,6 +1004,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     final generation = _sessionGeneration;
+    _pictureInPictureRequestTimeout?.cancel();
+    _pictureInPictureRequestTimeout = null;
     final wasBackgrounded =
         _pictureInPictureBackgrounded || backgroundedAtExit == true
         ? true
@@ -1106,6 +1131,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _pictureInPictureBackgrounded = false;
     _awaitingPictureInPictureResume = false;
     setState(() => _requestingPictureInPicture = true);
+    var awaitingWebResult = false;
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
         final entered =
@@ -1124,8 +1150,24 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         }
         return;
       }
+      awaitingWebResult = true;
+      _pictureInPictureRequestTimeout?.cancel();
+      _pictureInPictureRequestTimeout = Timer(
+        AppConstants.shortOperationTimeout,
+        () {
+          if (mounted &&
+              generation == _sessionGeneration &&
+              ref.read(videoSessionProvider)?.presentation !=
+                  VideoPresentation.pictureInPicture) {
+            _completePictureInPictureRequest(showUnavailable: true);
+          }
+        },
+      );
       await _sendVideoCommand('picture-in-picture');
     } on MissingPluginException {
+      awaitingWebResult = false;
+      _pictureInPictureRequestTimeout?.cancel();
+      _pictureInPictureRequestTimeout = null;
       if (mounted) {
         showMessageSnackBar(
           context,
@@ -1133,6 +1175,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         );
       }
     } on PlatformException {
+      awaitingWebResult = false;
+      _pictureInPictureRequestTimeout?.cancel();
+      _pictureInPictureRequestTimeout = null;
       if (mounted) {
         showMessageSnackBar(
           context,
@@ -1140,6 +1185,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         );
       }
     } on Object {
+      awaitingWebResult = false;
+      _pictureInPictureRequestTimeout?.cancel();
+      _pictureInPictureRequestTimeout = null;
       if (mounted &&
           generation == _sessionGeneration &&
           ref.read(videoSessionProvider) != null) {
@@ -1149,9 +1197,28 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         );
       }
     } finally {
-      if (mounted && generation == _sessionGeneration) {
+      if (mounted && generation == _sessionGeneration && !awaitingWebResult) {
         setState(() => _requestingPictureInPicture = false);
       }
+    }
+  }
+
+  void _completePictureInPictureRequest({bool showUnavailable = false}) {
+    _pictureInPictureRequestTimeout?.cancel();
+    _pictureInPictureRequestTimeout = null;
+    if (!mounted) return;
+    final alreadyActive =
+        ref.read(videoSessionProvider)?.presentation ==
+        VideoPresentation.pictureInPicture;
+    final wasRequesting = _requestingPictureInPicture;
+    if (wasRequesting) {
+      setState(() => _requestingPictureInPicture = false);
+    }
+    if (showUnavailable && wasRequesting && !alreadyActive) {
+      showMessageSnackBar(
+        context,
+        'Picture in Picture isn’t available for this video.',
+      );
     }
   }
 
@@ -1162,6 +1229,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         session.presentation == VideoPresentation.pictureInPicture) {
       return;
     }
+    _completePictureInPictureRequest();
     ref.read(videoSessionProvider.notifier).enterPictureInPicture();
     try {
       await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
@@ -1423,9 +1491,18 @@ String _videoPresentationObserver(int observerToken) =>
     if (action === 'picture-in-picture') {
       if (video.webkitSupportsPresentationMode &&
           video.webkitSetPresentationMode) {
-        try { video.webkitSetPresentationMode('picture-in-picture'); } catch (_) {}
+        try {
+          video.webkitSetPresentationMode('picture-in-picture');
+        } catch (_) {
+          send('pip-request-failed');
+        }
       } else if (video.requestPictureInPicture) {
-        video.requestPictureInPicture().catch(() => {});
+        video.requestPictureInPicture().then(
+          () => send('pip-request-succeeded'),
+          () => send('pip-request-failed'),
+        );
+      } else {
+        send('pip-request-failed');
       }
     }
   };
@@ -1444,6 +1521,8 @@ String _videoPresentationObserver(int observerToken) =>
         });
       } else if (action === 'picture-in-picture-status') {
         send('pip-dismissed');
+      } else if (action === 'picture-in-picture') {
+        send('pip-request-failed');
       }
       return;
     }

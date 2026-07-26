@@ -82,7 +82,8 @@ final class VideoSession {
       : VideoPlaybackSource.privacyWrapper;
 
   Uri? playbackUriFor(VideoPlaybackSource source) => switch (source) {
-    VideoPlaybackSource.privacyWrapper => playbackUri,
+    VideoPlaybackSource.privacyWrapper =>
+      privacyYouTubePlaybackUri(sourceUri) ?? playbackUri,
     VideoPlaybackSource.officialYouTube => officialYouTubePlaybackUri(
       sourceUri,
     ),
