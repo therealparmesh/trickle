@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 37
+- Build: 38
 
 ## Name
 
@@ -58,7 +58,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-Five 1320×2868 iPhone screenshots were verified against the current visual system on July 26, 2026. Home was regenerated for the current direct-play episode shelf. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
+Five 1320×2868 iPhone screenshots were verified against the current visual system on July 28, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
 
 1. Home
 2. Podcast
@@ -79,7 +79,7 @@ Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app t
 
 Follow Nostr profiles from an npub or nprofile address. trickle verifies events, shows the profile's own posts without replies or reposts, respects content warnings, renders Markdown, and supports attached images, native audio, and direct video.
 
-Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then move into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Subscription counts stay attached to their exact destinations, and podcast details remain visible throughout subscribe and unsubscribe actions.
+Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then move into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Only Up Next and Sources or Feeds carry number badges, with exact counts that hide at zero. Podcast details remain visible throughout subscribe and unsubscribe actions.
 
 The Feeds collection now includes a consistent See all action that opens the complete reader.
 
@@ -87,7 +87,7 @@ Four-button Home collections now use even spacing, and longer actions such as Ad
 
 Navigation now uses standard platform behavior without experimental visual effects.
 
-Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists, while the Podcasts shortcut mirrors Sources with a subscription-count badge.
+Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists. Explicit episodes use a compact leading marker that stays aligned when titles wrap or truncate.
 
 One-line and two-line collection shortcuts now keep identical icon, label, and touch-target alignment.
 

@@ -23,7 +23,7 @@ appId: com.parmscript.trickle
 - takeScreenshot: "store/apple/screenshots/04-unread"
 - tapOn: "Feeds\nTab 2 of 2"
 - tapOn: "(?s)Hacker News: Front Page.*"
-- tapOn: "Unread article .*"
+- tapOn: ".*article Donate to GrapheneOS.*"
 - assertVisible: ".*Hacker News: Front Page.*"
 - swipe:
     start: "50%,20%"

@@ -5,13 +5,14 @@ Please test the combined podcast and feed flow:
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
 - Cold-launch trickle, open Library, Podcasts, Feeds, Search, or Settings, and open podcast, feed, and episode details; startup and navigation should use standard platform behavior without persistent lines, flashing, duplicate controls, or delayed interaction
 - On Home, play and resume episodes directly from the two-row shelf; verify its cards reflow at large text, four-button collections are evenly spaced, Add YouTube is fully visible, and Feeds See all opens the reader
-- Verify badge rules: Podcasts and Sources count subscriptions; other collection shortcuts count their own items; zero counts and Add actions show no badge
+- Verify badge rules: only Up Next and Sources or Feeds show number badges; they display exact counts and hide at zero
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Type a lowercase podcast query, then allow autocorrect or capitalization to change only its letter case; results must remain visible without a new loading flash
 - Open a podcast result and verify its description, art, dates, durations, and summaries appear before subscription and after unsubscribing
 - Partially play an episode; verify lists change from New to In Progress, show saved progress and Resume, then change to Played after completion
+- Compare explicit episodes with one-line and wrapped titles; the E marker should remain immediately before the first title line
 - Verify a failed audio source shows a clear message and Retry action; retry after restoring the network
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
