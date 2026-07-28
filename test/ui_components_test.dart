@@ -272,9 +272,6 @@ void main() {
             5,
           ).overrideWith((_) => Stream.value(const [])),
           queueProvider.overrideWith((_) => Stream.value(const [])),
-          downloadsProvider.overrideWith((_) => Stream.value(const [])),
-          starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
-          starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
         ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
@@ -350,19 +347,26 @@ void main() {
         automationApplied: false,
       ),
     );
+    final readerFeed = feed.copyWith(
+      id: 'reader-feed',
+      title: 'Example Feed',
+      feedUrl: 'https://example.test/articles.xml',
+      kind: FeedKind.reader.index,
+    );
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           recentEpisodesProvider.overrideWith((_) => Stream.value(episodes)),
-          feedsProvider.overrideWith((_) => Stream.value([feed])),
+          feedsProvider.overrideWith((_) => Stream.value([feed, readerFeed])),
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
-          queueProvider.overrideWith((_) => Stream.value(const [])),
-          downloadsProvider.overrideWith((_) => Stream.value(const [])),
-          starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
-          starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
+          queueProvider.overrideWith(
+            (_) => Stream.value([
+              const MediaItem(id: 'queued', title: 'Queued episode'),
+            ]),
+          ),
           currentMediaProvider.overrideWith((_) => Stream.value(null)),
           playbackStateProvider.overrideWith(
             (_) => Stream.value(PlaybackState()),
@@ -394,8 +398,16 @@ void main() {
     expect(second.dy, greaterThan(first.dy));
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
-    expect(find.bySemanticsLabel('Podcasts, 1 item'), findsOneWidget);
+    expect(find.bySemanticsLabel('Podcasts, 1 item'), findsNothing);
+    expect(find.bySemanticsLabel('Up Next, 1 item'), findsOneWidget);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Sources'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.bySemanticsLabel('Sources, 1 item'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -421,9 +433,6 @@ void main() {
             5,
           ).overrideWith((_) => Stream.value(const [])),
           queueProvider.overrideWith((_) => Stream.value(const [])),
-          downloadsProvider.overrideWith((_) => Stream.value(const [])),
-          starredEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
-          starredArticleCountProvider.overrideWith((_) => Stream.value(0)),
         ],
         child: MaterialApp.router(
           theme: TrickleTheme.dark,
@@ -893,9 +902,7 @@ void main() {
     expect(find.text('Nothing is Up Next'), findsNothing);
   });
 
-  testWidgets('explicit badge stays visible when a long title is truncated', (
-    tester,
-  ) async {
+  testWidgets('explicit badge leads a truncated title', (tester) async {
     const title =
         'A deliberately long episode title that cannot fit on one narrow line';
     await tester.pumpWidget(
@@ -915,8 +922,8 @@ void main() {
 
     expect(find.text('E'), findsOneWidget);
     expect(
-      tester.getTopRight(find.text(title)).dx,
-      lessThan(tester.getTopLeft(find.text('E')).dx),
+      tester.getTopRight(find.text('E')).dx,
+      lessThan(tester.getTopLeft(find.text(title)).dx),
     );
     expect(find.bySemanticsLabel('$title, explicit'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -947,6 +954,14 @@ void main() {
     expect(titleText.overflow, TextOverflow.visible);
     expect(tester.getSize(find.text(title)).height, greaterThan(30));
     expect(find.text('E'), findsOneWidget);
+    expect(
+      tester.getTopRight(find.text('E')).dx,
+      lessThan(tester.getTopLeft(find.text(title)).dx),
+    );
+    expect(
+      tester.getTopLeft(find.text('E')).dy,
+      lessThan(tester.getCenter(find.text(title)).dy),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -973,14 +988,14 @@ void main() {
                   children: [
                     LibraryShortcut(
                       icon: Icons.download_rounded,
-                      label: 'Downloads',
-                      badge: 3,
+                      label: 'Up Next',
+                      badge: 1234,
                       onTap: _noop,
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
-                      label: 'Saved',
-                      badge: visibleBadgeCount(0),
+                      label: 'Feeds',
+                      badge: 0,
                       onTap: _noop,
                     ),
                   ],
@@ -1006,16 +1021,16 @@ void main() {
           .hasAction(SemanticsAction.tap),
       isTrue,
     );
-    expect(find.bySemanticsLabel('Downloads, 3 items'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
+    expect(find.bySemanticsLabel('Up Next, 1234 items'), findsOneWidget);
+    expect(find.text('1234'), findsOneWidget);
     expect(find.text('0'), findsNothing);
     expect(
-      tester.getTopLeft(find.text('Saved')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
+      tester.getTopLeft(find.text('Feeds')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
     );
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
     final shortcut = tester.getSemantics(
-      find.bySemanticsLabel('Downloads, 3 items'),
+      find.bySemanticsLabel('Up Next, 1234 items'),
     );
     expect(shortcut.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byType(GlassIconButton));

@@ -20,11 +20,7 @@ final class LibraryPage extends ConsumerWidget {
     final queue = queueState.value ?? const [];
     final queuedEpisodes =
         ref.watch(queuedEpisodesProvider).value ?? const <String, Episode>{};
-    final podcastCount = ref.watch(podcastFeedsProvider).value?.length;
     final feedCount = ref.watch(readerFeedsProvider).value?.length;
-    final downloadCount = ref.watch(downloadsProvider).value?.length;
-    final savedEpisodeCount = ref.watch(starredEpisodeCountProvider).value;
-    final savedArticleCount = ref.watch(starredArticleCountProvider).value;
     return Scaffold(
       appBar: AppBar(
         title: const PageTitle('Library'),
@@ -45,38 +41,34 @@ final class LibraryPage extends ConsumerWidget {
                   LibraryShortcut(
                     icon: Icons.podcasts_rounded,
                     label: 'Podcasts',
-                    badge: visibleBadgeCount(podcastCount),
                     onTap: () => context.push('/podcasts'),
                   ),
                   LibraryShortcut(
                     icon: Icons.dynamic_feed_outlined,
                     label: 'Feeds',
-                    badge: visibleBadgeCount(feedCount),
+                    badge: feedCount,
                     color: AppConstants.magenta,
                     onTap: () => context.push('/reader?tab=feeds'),
                   ),
                   LibraryShortcut(
                     icon: Icons.queue_music_rounded,
                     label: 'Up Next',
-                    badge: visibleBadgeCount(queueState.value?.length),
+                    badge: queueState.value?.length,
                     onTap: () => context.push('/queue'),
                   ),
                   LibraryShortcut(
                     icon: Icons.arrow_downward_rounded,
                     label: 'Downloads',
-                    badge: visibleBadgeCount(downloadCount),
                     onTap: () => context.push('/downloads'),
                   ),
                   LibraryShortcut(
                     icon: Icons.bookmark_outline_rounded,
                     label: 'Saved episodes',
-                    badge: visibleBadgeCount(savedEpisodeCount),
                     onTap: () => context.push('/saved'),
                   ),
                   LibraryShortcut(
                     icon: Icons.bookmark_outline_rounded,
                     label: 'Saved articles',
-                    badge: visibleBadgeCount(savedArticleCount),
                     color: AppConstants.magenta,
                     onTap: () => context.push('/saved?tab=articles'),
                   ),

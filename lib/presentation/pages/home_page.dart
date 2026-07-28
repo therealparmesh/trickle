@@ -23,12 +23,8 @@ final class HomePage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
-    final podcastCount = podcastFeeds.value?.length;
     final queueCount = ref.watch(queueProvider).value?.length;
-    final downloadCount = ref.watch(downloadsProvider).value?.length;
-    final savedEpisodeCount = ref.watch(starredEpisodeCountProvider).value;
     final readerFeedCount = ref.watch(readerFeedsProvider).value?.length;
-    final savedArticleCount = ref.watch(starredArticleCountProvider).value;
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
@@ -87,25 +83,22 @@ final class HomePage extends ConsumerWidget {
                     LibraryShortcut(
                       icon: Icons.podcasts_rounded,
                       label: 'Podcasts',
-                      badge: visibleBadgeCount(podcastCount),
                       onTap: () => context.push('/podcasts'),
                     ),
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
                       label: 'Up Next',
-                      badge: visibleBadgeCount(queueCount),
+                      badge: queueCount,
                       onTap: () => context.push('/queue'),
                     ),
                     LibraryShortcut(
                       icon: Icons.arrow_downward_rounded,
                       label: 'Downloads',
-                      badge: visibleBadgeCount(downloadCount),
                       onTap: () => context.push('/downloads'),
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
                       label: 'Saved episodes',
-                      badge: visibleBadgeCount(savedEpisodeCount),
                       onTap: () => context.push('/saved'),
                     ),
                   ],
@@ -154,14 +147,13 @@ final class HomePage extends ConsumerWidget {
                     LibraryShortcut(
                       icon: Icons.dynamic_feed_outlined,
                       label: 'Sources',
-                      badge: visibleBadgeCount(readerFeedCount),
+                      badge: readerFeedCount,
                       color: AppConstants.magenta,
                       onTap: () => context.push('/reader?tab=feeds'),
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
                       label: 'Saved articles',
-                      badge: visibleBadgeCount(savedArticleCount),
                       color: AppConstants.magenta,
                       onTap: () => context.push('/saved?tab=articles'),
                     ),

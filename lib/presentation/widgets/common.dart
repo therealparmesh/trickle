@@ -22,9 +22,6 @@ void showMessageSnackBar(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
-int? visibleBadgeCount(int? value) =>
-    value == null || value <= 0 ? null : value;
-
 final class PageTitle extends StatelessWidget {
   const PageTitle(this.title, {super.key});
 
@@ -166,6 +163,11 @@ final class EpisodeTitle extends StatelessWidget {
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (explicit)
+            Padding(
+              padding: EdgeInsets.only(right: 5, top: badgeTop),
+              child: const _ExplicitBadge(),
+            ),
           Flexible(
             fit: FlexFit.loose,
             child: Text(
@@ -178,11 +180,6 @@ final class EpisodeTitle extends StatelessWidget {
               style: style,
             ),
           ),
-          if (explicit)
-            Padding(
-              padding: EdgeInsets.only(left: 5, top: badgeTop),
-              child: const _ExplicitBadge(),
-            ),
         ],
       ),
     );
@@ -692,18 +689,18 @@ final class LibraryShortcut extends StatelessWidget {
         (labelStyle.height ?? 1.2) *
         textScale *
         2;
-    final badgeText = switch (badge) {
-      final count? when count > 99 => '99+',
-      final count? => '$count',
-      null => null,
+    final visibleBadge = switch (badge) {
+      final count? when count > 0 => count,
+      _ => null,
     };
+    final badgeText = visibleBadge?.toString();
     return SizedBox(
       width: (94 + (textScale - 1) * 32).clamp(94.0, 164.0),
       child: Semantics(
         button: true,
-        label: badge == null
+        label: visibleBadge == null
             ? label
-            : '$label, $badge ${badge == 1 ? 'item' : 'items'}',
+            : '$label, $visibleBadge ${visibleBadge == 1 ? 'item' : 'items'}',
         excludeSemantics: true,
         onTap: onTap,
         child: InkWell(
