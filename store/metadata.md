@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 38
+- Build: 39
 
 ## Name
 
@@ -58,7 +58,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-Five 1320×2868 iPhone screenshots were verified against the current visual system on July 28, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
+Five 1320×2868 iPhone screenshots were verified against the current visual system on July 29, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
 
 1. Home
 2. Podcast
@@ -79,7 +79,7 @@ Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app t
 
 Follow Nostr profiles from an npub or nprofile address. trickle verifies events, shows the profile's own posts without replies or reposts, respects content warnings, renders Markdown, and supports attached images, native audio, and direct video.
 
-Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then move into Up Next, downloads, saved items, podcast subscriptions, and feed sources. Only Up Next and Sources or Feeds carry number badges, with exact counts that hide at zero. Podcast details remain visible throughout subscribe and unsubscribe actions.
+Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then filter the Podcasts screen by New, In Progress, or All. Move into Up Next, downloads, saved items, podcast subscriptions, and feed sources without confusing listening progress with queue order. Only the Home screen’s Sources shortcut carries a number badge, with an exact feed subscription count that hides at zero. Podcast details remain visible throughout subscribe and unsubscribe actions.
 
 The Feeds collection now includes a consistent See all action that opens the complete reader.
 
@@ -105,7 +105,7 @@ Picture in Picture now activates the correct video audio session before the syst
 
 Podcasts imported through OPML are recognized as subscribed in catalog search, including feeds whose query credentials stay in secure device storage.
 
-Local ZIP backup now preserves Nostr profiles, post attachments, reading and playback state, queues, bookmarks, settings, and portable URL-token feeds. Standard OPML remains available for compatible podcast, RSS, and YouTube subscriptions.
+Local ZIP backup now preserves Nostr profiles, post attachments, reading and playback state, queues, bookmarks, settings, and portable tokenized feed URLs. Standard OPML remains available for compatible podcast, RSS, and YouTube subscriptions.
 
 Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 

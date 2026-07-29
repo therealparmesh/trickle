@@ -5,7 +5,8 @@ Please test the combined podcast and feed flow:
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
 - Cold-launch trickle, open Library, Podcasts, Feeds, Search, or Settings, and open podcast, feed, and episode details; startup and navigation should use standard platform behavior without persistent lines, flashing, duplicate controls, or delayed interaction
 - On Home, play and resume episodes directly from the two-row shelf; verify its cards reflow at large text, four-button collections are evenly spaced, Add YouTube is fully visible, and Feeds See all opens the reader
-- Verify badge rules: only Up Next and Sources or Feeds show number badges; they display exact counts and hide at zero
+- Verify the Podcasts episode filters: New contains untouched episodes, In Progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
+- Verify badge rules: only the Home screen’s Sources shortcut shows a number badge; it displays the exact feed subscription count and hides at zero
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
@@ -36,12 +37,12 @@ Please test the combined podcast and feed flow:
 - Fail the initial video page and verify the same player loads the official feed URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
-- Import a public podcast through OPML, repeat with a query-token feed URL, search for the same podcasts, and verify their catalog rows show Unsubscribe
+- Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Unsubscribe
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
 - During refresh or OPML import, confirm the row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker
 - Export podcasts, feeds, and all subscriptions separately; verify each file's contents
-- Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and URL-token private feeds survive, while sign-in headers and downloaded files are absent
+- Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and tokenized private feed URLs survive, while sign-in headers and downloaded files are absent
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views
