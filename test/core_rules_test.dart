@@ -9,89 +9,85 @@ void main() {
     expect(metadataLine(['Signal', ' signal ', '', null, '2h']), 'Signal · 2h');
   });
 
-  group('played threshold', () {
-    test('handles short, long, and unknown-duration episodes', () {
-      const duration = Duration(minutes: 20);
-      expect(
-        isPlaybackComplete(const Duration(minutes: 18, seconds: 59), duration),
-        isFalse,
-      );
-      expect(isPlaybackComplete(const Duration(minutes: 19), duration), isTrue);
-      const longDuration = Duration(hours: 2);
-      expect(
-        isPlaybackComplete(
-          const Duration(hours: 1, minutes: 58, seconds: 59),
-          longDuration,
-        ),
-        isFalse,
-      );
-      expect(
-        isPlaybackComplete(const Duration(hours: 1, minutes: 59), longDuration),
-        isTrue,
-      );
-      expect(
-        isPlaybackComplete(const Duration(hours: 4), Duration.zero),
-        isFalse,
-      );
-    });
+  test('played threshold handles short, long, and unknown durations', () {
+    const duration = Duration(minutes: 20);
+    expect(
+      isPlaybackComplete(const Duration(minutes: 18, seconds: 59), duration),
+      isFalse,
+    );
+    expect(isPlaybackComplete(const Duration(minutes: 19), duration), isTrue);
+    const longDuration = Duration(hours: 2);
+    expect(
+      isPlaybackComplete(
+        const Duration(hours: 1, minutes: 58, seconds: 59),
+        longDuration,
+      ),
+      isFalse,
+    );
+    expect(
+      isPlaybackComplete(const Duration(hours: 1, minutes: 59), longDuration),
+      isTrue,
+    );
+    expect(
+      isPlaybackComplete(const Duration(hours: 4), Duration.zero),
+      isFalse,
+    );
   });
 
-  group('interruption resume intent', () {
-    test('explicit intent wins and otherwise falls back to player state', () {
-      for (final scenario in const [
-        (playing: false, requested: true, expected: true),
-        (playing: false, requested: false, expected: false),
-        (playing: true, requested: false, expected: false),
-        (playing: true, requested: null, expected: true),
-      ]) {
-        expect(
-          shouldResumeAfterInterruption(
-            playing: scenario.playing,
-            playRequested: scenario.requested,
-          ),
-          scenario.expected,
-        );
-      }
-    });
+  test('interruption resume honors explicit intent before player state', () {
+    for (final scenario in const [
+      (playing: false, requested: true, expected: true),
+      (playing: false, requested: false, expected: false),
+      (playing: true, requested: false, expected: false),
+      (playing: true, requested: null, expected: true),
+    ]) {
+      expect(
+        shouldResumeAfterInterruption(
+          playing: scenario.playing,
+          playRequested: scenario.requested,
+        ),
+        scenario.expected,
+      );
+    }
+  });
 
-    test('only removed current or pending episodes invalidate playback', () {
-      expect(
-        removedEpisodesAffectPlayback(
-          removedEpisodeIds: {'other'},
-          currentEpisodeId: 'current',
-          pendingSelectionEpisodeId: 'pending-selection',
-          pendingLoadEpisodeId: 'pending-load',
-        ),
-        isFalse,
-      );
-      expect(
-        removedEpisodesAffectPlayback(
-          removedEpisodeIds: {'current'},
-          currentEpisodeId: 'current',
-          pendingSelectionEpisodeId: null,
-          pendingLoadEpisodeId: null,
-        ),
-        isTrue,
-      );
-      expect(
-        removedEpisodesAffectPlayback(
-          removedEpisodeIds: {'pending-selection'},
-          currentEpisodeId: 'current',
-          pendingSelectionEpisodeId: 'pending-selection',
-          pendingLoadEpisodeId: null,
-        ),
-        isTrue,
-      );
-      expect(
-        removedEpisodesAffectPlayback(
-          removedEpisodeIds: {'pending-load'},
-          currentEpisodeId: 'current',
-          pendingSelectionEpisodeId: null,
-          pendingLoadEpisodeId: 'pending-load',
-        ),
-        isTrue,
-      );
-    });
+  test('subscription removal invalidates only affected playback', () {
+    expect(
+      removedEpisodesAffectPlayback(
+        removedEpisodeIds: {'other'},
+        currentEpisodeId: 'current',
+        pendingSelectionEpisodeId: 'pending-selection',
+        pendingLoadEpisodeId: 'pending-load',
+      ),
+      isFalse,
+    );
+    expect(
+      removedEpisodesAffectPlayback(
+        removedEpisodeIds: {'current'},
+        currentEpisodeId: 'current',
+        pendingSelectionEpisodeId: null,
+        pendingLoadEpisodeId: null,
+      ),
+      isTrue,
+    );
+    expect(
+      removedEpisodesAffectPlayback(
+        removedEpisodeIds: {'pending-selection'},
+        currentEpisodeId: 'current',
+        pendingSelectionEpisodeId: 'pending-selection',
+        pendingLoadEpisodeId: null,
+      ),
+      isTrue,
+    );
+    expect(
+      removedEpisodesAffectPlayback(
+        removedEpisodeIds: {'pending-load'},
+        currentEpisodeId: 'current',
+        pendingSelectionEpisodeId: null,
+        pendingLoadEpisodeId: 'pending-load',
+      ),
+      isTrue,
+    );
   });
 
   group('native completion events', () {
@@ -213,53 +209,33 @@ void main() {
     });
   });
 
-  group('outro skip', () {
-    test('runs only for started current media inside the outro', () {
+  test('outro skip runs only for started current media inside the outro', () {
+    expect(
+      shouldHandleOutroSkip(
+        loadingMedia: false,
+        playbackStarted: true,
+        position: const Duration(minutes: 19, seconds: 30),
+        duration: const Duration(minutes: 20),
+        outro: const Duration(seconds: 45),
+      ),
+      isTrue,
+    );
+    for (final state in const [
+      (loading: true, started: true, position: Duration(minutes: 20)),
+      (loading: false, started: false, position: Duration(minutes: 20)),
+      (loading: false, started: true, position: Duration(minutes: 19)),
+    ]) {
       expect(
         shouldHandleOutroSkip(
-          loadingMedia: false,
-          playbackStarted: true,
-          position: const Duration(minutes: 19, seconds: 30),
+          loadingMedia: state.loading,
+          playbackStarted: state.started,
+          position: state.position,
           duration: const Duration(minutes: 20),
           outro: const Duration(seconds: 45),
         ),
-        isTrue,
+        isFalse,
       );
-      for (final state in const [
-        (loading: true, started: true, position: Duration(minutes: 20)),
-        (loading: false, started: false, position: Duration(minutes: 20)),
-        (loading: false, started: true, position: Duration(minutes: 19)),
-      ]) {
-        expect(
-          shouldHandleOutroSkip(
-            loadingMedia: state.loading,
-            playbackStarted: state.started,
-            position: state.position,
-            duration: const Duration(minutes: 20),
-            outro: const Duration(seconds: 45),
-          ),
-          isFalse,
-        );
-      }
-    });
-
-    test('outro skip uses feed duration after native duration resets', () {
-      final duration = effectivePlaybackDuration(
-        nativeDuration: Duration.zero,
-        fallbackDuration: const Duration(minutes: 20),
-      );
-
-      expect(
-        shouldHandleOutroSkip(
-          loadingMedia: false,
-          playbackStarted: true,
-          position: const Duration(minutes: 19, seconds: 20),
-          duration: duration,
-          outro: const Duration(seconds: 45),
-        ),
-        isTrue,
-      );
-    });
+    }
   });
 
   test('network and refresh deadlines use the standard timing tiers', () {

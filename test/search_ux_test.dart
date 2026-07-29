@@ -26,7 +26,7 @@ import 'package:trickle/services/opml_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('OPML podcast, including a URL token, matches catalog search', (
+  testWidgets('an OPML podcast with a tokenized URL matches catalog search', (
     tester,
   ) async {
     FlutterSecureStorage.setMockInitialValues({});
@@ -636,7 +636,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a feed subscription does not trap the add dialog', (
+  testWidgets('feed subscription leaves the add dialog dismissible', (
     tester,
   ) async {
     FlutterSecureStorage.setMockInitialValues({});

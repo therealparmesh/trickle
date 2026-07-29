@@ -48,7 +48,7 @@ void main() {
   });
 
   test(
-    'podcast export includes URL-token feeds and skips header auth',
+    'podcast export includes tokenized URLs and excludes header auth',
     () async {
       FlutterSecureStorage.setMockInitialValues({});
       final database = AppDatabase.forTesting(NativeDatabase.memory());

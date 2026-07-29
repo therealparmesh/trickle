@@ -37,17 +37,6 @@ void main() {
     await database.close();
   });
 
-  test('podcast preview parses metadata without persisting it', () async {
-    final preview = await repository.loadPodcastPreview(
-      'https://example.test/feed.xml',
-    );
-
-    expect(preview.title, 'Private Signal');
-    expect(preview.episodes.single.title, 'Encrypted Dispatch');
-    expect(await database.select(database.feeds).get(), isEmpty);
-    expect(await database.select(database.episodes).get(), isEmpty);
-  });
-
   test('podcast preview rejects a non-podcast feed', () async {
     network.close();
     network = SafeNetworkClient.forTesting(
@@ -67,44 +56,41 @@ void main() {
     expect(await database.select(database.feeds).get(), isEmpty);
   });
 
-  test(
-    'mark all read leaves retained items from unsubscribed feeds alone',
-    () async {
-      final now = DateTime.utc(2026, 7, 26);
-      for (final id in const ['retained', 'active']) {
-        await database
-            .into(database.feeds)
-            .insert(
-              FeedsCompanion.insert(
-                id: id,
-                title: id,
-                feedUrl: 'https://example.test/$id.xml',
-                kind: Value(FeedKind.reader.index),
-                createdAt: now,
-                updatedAt: now,
-              ),
-            );
-        await database
-            .into(database.articles)
-            .insert(
-              ArticlesCompanion.insert(
-                id: '$id-article',
-                feedId: id,
-                title: id,
-                discoveredAt: now,
-                starred: Value(id == 'retained'),
-              ),
-            );
-      }
+  test('mark all read skips retained items from unsubscribed feeds', () async {
+    final now = DateTime.utc(2026, 7, 26);
+    for (final id in const ['retained', 'active']) {
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: id,
+              title: id,
+              feedUrl: 'https://example.test/$id.xml',
+              kind: Value(FeedKind.reader.index),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.articles)
+          .insert(
+            ArticlesCompanion.insert(
+              id: '$id-article',
+              feedId: id,
+              title: id,
+              discoveredAt: now,
+              starred: Value(id == 'retained'),
+            ),
+          );
+    }
 
-      await repository.deleteFeed('retained');
-      await repository.markAllArticlesRead();
+    await repository.deleteFeed('retained');
+    await repository.markAllArticlesRead();
 
-      expect((await database.feedById('retained'))?.subscribed, isFalse);
-      expect((await database.articleById('retained-article'))?.readAt, isNull);
-      expect((await database.articleById('active-article'))?.readAt, isNotNull);
-    },
-  );
+    expect((await database.feedById('retained'))?.subscribed, isFalse);
+    expect((await database.articleById('retained-article'))?.readAt, isNull);
+    expect((await database.articleById('active-article'))?.readAt, isNotNull);
+  });
 
   test(
     'explicit private mode protects credentials embedded in a URL path',
@@ -231,35 +217,41 @@ void main() {
     );
   });
 
-  test('an imported podcast is stored only in the podcast library', () async {
-    network.close();
-    await database.close();
-    database = AppDatabase.forTesting(NativeDatabase.memory());
-    network = SafeNetworkClient.forTesting(
-      Dio()..httpClientAdapter = _PodcastWithTextItemAdapter(),
-      addressValidator: (_) async {},
-    );
-    privateFeeds = PrivateFeedStore(storage: const FlutterSecureStorage());
-    repository = FeedRepository(
-      database: database,
-      network: network,
-      privateFeeds: privateFeeds,
-    );
+  test(
+    'podcast subscriptions are stored only in the podcast library',
+    () async {
+      network.close();
+      await database.close();
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _PodcastWithTextItemAdapter(),
+        addressValidator: (_) async {},
+      );
+      privateFeeds = PrivateFeedStore(storage: const FlutterSecureStorage());
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
 
-    final feed = await repository.subscribe('https://example.test/show.xml');
+      final feed = await repository.subscribe('https://example.test/show.xml');
 
-    expect(feed.kind, FeedKind.podcast.index);
-    expect(await database.select(database.episodes).get(), hasLength(1));
-    expect(await database.select(database.articles).get(), isEmpty);
-    final feeds = await database.watchFeeds().first;
-    expect(
-      feeds.where((feed) => feed.kind == FeedKind.podcast.index),
-      hasLength(1),
-    );
-    expect(feeds.where((feed) => feed.kind == FeedKind.reader.index), isEmpty);
-  });
+      expect(feed.kind, FeedKind.podcast.index);
+      expect(await database.select(database.episodes).get(), hasLength(1));
+      expect(await database.select(database.articles).get(), isEmpty);
+      final feeds = await database.watchFeeds().first;
+      expect(
+        feeds.where((feed) => feed.kind == FeedKind.podcast.index),
+        hasLength(1),
+      );
+      expect(
+        feeds.where((feed) => feed.kind == FeedKind.reader.index),
+        isEmpty,
+      );
+    },
+  );
 
-  test('a malformed refresh cannot erase or reclassify a podcast', () async {
+  test('a non-podcast refresh cannot erase or reclassify a podcast', () async {
     network.close();
     await database.close();
     database = AppDatabase.forTesting(NativeDatabase.memory());

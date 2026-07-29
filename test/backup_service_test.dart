@@ -185,7 +185,7 @@ void main() {
     expect(await database.select(database.appSettings).get(), isEmpty);
   });
 
-  test('restore keeps no-GUID items that reuse a media URL', () async {
+  test('restore keeps items without GUIDs that reuse a media URL', () async {
     final localFeed = (await database.select(database.feeds).get()).single;
     final importedFeed = localFeed.copyWith(id: 'foreign-feed');
     final firstDate = DateTime.utc(2026, 7, 14);
@@ -435,7 +435,7 @@ void main() {
   });
 
   test(
-    'URL-token private feeds export without exposing secure-store metadata',
+    'tokenized private feeds export without secure-store metadata',
     () async {
       final now = DateTime.utc(2026, 7, 26);
       final privateFeeds = PrivateFeedStore(

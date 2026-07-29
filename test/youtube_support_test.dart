@@ -217,51 +217,54 @@ void main() {
     );
   });
 
-  test('video presentation has one valid state through minimize and PiP', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final notifier = container.read(videoSessionProvider.notifier);
-    notifier.open(
-      articleId: 'video',
-      title: 'Video',
-      sourceUri: Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
-      playbackUri: Uri.parse('https://www.yout-ube.com/watch?v=dQw4w9WgXcQ'),
-    );
+  test(
+    'video presentation stays valid through minimize and Picture in Picture',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(videoSessionProvider.notifier);
+      notifier.open(
+        articleId: 'video',
+        title: 'Video',
+        sourceUri: Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
+        playbackUri: Uri.parse('https://www.yout-ube.com/watch?v=dQw4w9WgXcQ'),
+      );
 
-    expect(
-      container.read(videoSessionProvider)?.presentation,
-      VideoPresentation.expanded,
-    );
-    notifier.minimize();
-    expect(
-      container.read(videoSessionProvider)?.presentation,
-      VideoPresentation.minimized,
-    );
-    notifier.expand();
-    expect(
-      container.read(videoSessionProvider)?.presentation,
-      VideoPresentation.expanded,
-    );
+      expect(
+        container.read(videoSessionProvider)?.presentation,
+        VideoPresentation.expanded,
+      );
+      notifier.minimize();
+      expect(
+        container.read(videoSessionProvider)?.presentation,
+        VideoPresentation.minimized,
+      );
+      notifier.expand();
+      expect(
+        container.read(videoSessionProvider)?.presentation,
+        VideoPresentation.expanded,
+      );
 
-    notifier.enterPictureInPicture();
-    expect(
-      container.read(videoSessionProvider)?.presentation,
-      VideoPresentation.pictureInPicture,
-    );
-    notifier.expand();
-    expect(
-      container.read(videoSessionProvider)?.presentation,
-      VideoPresentation.pictureInPicture,
-    );
+      notifier.enterPictureInPicture();
+      expect(
+        container.read(videoSessionProvider)?.presentation,
+        VideoPresentation.pictureInPicture,
+      );
+      notifier.expand();
+      expect(
+        container.read(videoSessionProvider)?.presentation,
+        VideoPresentation.pictureInPicture,
+      );
 
-    notifier.leavePictureInPicture();
-    expect(
-      container.read(videoSessionProvider)?.presentation,
-      VideoPresentation.minimized,
-    );
-    notifier.close();
-    expect(container.read(videoSessionProvider), isNull);
-  });
+      notifier.leavePictureInPicture();
+      expect(
+        container.read(videoSessionProvider)?.presentation,
+        VideoPresentation.minimized,
+      );
+      notifier.close();
+      expect(container.read(videoSessionProvider), isNull);
+    },
+  );
 
   test('only Picture in Picture can continue while the app is hidden', () {
     for (final lifecycle in [
@@ -355,19 +358,22 @@ void main() {
     }
   });
 
-  test('PiP resume ignores interim state until playback is acknowledged', () {
-    for (final scenario in [
-      (awaiting: false, resumeResult: false, expected: true),
-      (awaiting: true, resumeResult: false, expected: false),
-      (awaiting: true, resumeResult: true, expected: true),
-    ]) {
-      expect(
-        shouldApplyVideoPlaybackState(
-          awaitingPictureInPictureResume: scenario.awaiting,
-          isPictureInPictureResumeResult: scenario.resumeResult,
-        ),
-        scenario.expected,
-      );
-    }
-  });
+  test(
+    'Picture in Picture resume ignores state until playback is acknowledged',
+    () {
+      for (final scenario in [
+        (awaiting: false, resumeResult: false, expected: true),
+        (awaiting: true, resumeResult: false, expected: false),
+        (awaiting: true, resumeResult: true, expected: true),
+      ]) {
+        expect(
+          shouldApplyVideoPlaybackState(
+            awaitingPictureInPictureResume: scenario.awaiting,
+            isPictureInPictureResumeResult: scenario.resumeResult,
+          ),
+          scenario.expected,
+        );
+      }
+    },
+  );
 }
