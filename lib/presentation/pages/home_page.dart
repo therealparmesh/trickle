@@ -23,7 +23,6 @@ final class HomePage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
-    final queueCount = ref.watch(queueProvider).value?.length;
     final readerFeedCount = ref.watch(readerFeedsProvider).value?.length;
     return Scaffold(
       body: AppBackdrop(
@@ -88,7 +87,6 @@ final class HomePage extends ConsumerWidget {
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
                       label: 'Up Next',
-                      badge: queueCount,
                       onTap: () => context.push('/queue'),
                     ),
                     LibraryShortcut(

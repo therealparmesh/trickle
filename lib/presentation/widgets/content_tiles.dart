@@ -56,7 +56,7 @@ final class EpisodeTile extends ConsumerWidget {
               excludeSemantics: true,
               onTap: () => context.push('/episode/${episode.id}'),
               label: [
-                '${listeningState.semanticLabel} episode ${episode.title}',
+                '${listeningState.label} episode ${episode.title}',
                 if (episode.explicit) 'Explicit',
                 if (episode.starred) 'Saved',
                 if (downloadState == DownloadState.complete) 'Downloaded',

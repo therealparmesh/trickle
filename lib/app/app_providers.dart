@@ -108,6 +108,12 @@ final feedSnapshotProvider = Provider.autoDispose.family<Feed?, String>(
 final recentEpisodesProvider = StreamProvider<List<Episode>>(
   (ref) => ref.watch(databaseProvider).watchRecentEpisodes(),
 );
+final newEpisodesProvider = StreamProvider<List<Episode>>(
+  (ref) => ref.watch(databaseProvider).watchNewEpisodes(),
+);
+final inProgressEpisodesProvider = StreamProvider<List<Episode>>(
+  (ref) => ref.watch(databaseProvider).watchInProgressEpisodes(),
+);
 final readerUnreadArticlesProvider = StreamProvider.autoDispose
     .family<List<Article>, int>(
       (ref, limit) =>

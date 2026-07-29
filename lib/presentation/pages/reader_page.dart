@@ -187,38 +187,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _limit = _pageSize;
     });
 
-    if (MediaQuery.textScalerOf(context).scale(1) > 1.8) {
-      return AdaptiveDropdownField<_ReaderFilter>(
-        label: 'Show',
-        initialValue: _filter,
-        items: const [
-          DropdownMenuItem(value: _ReaderFilter.unread, child: Text('Unread')),
-          DropdownMenuItem(value: _ReaderFilter.all, child: Text('All')),
-          DropdownMenuItem(value: _ReaderFilter.starred, child: Text('Saved')),
-        ],
-        onChanged: (value) {
-          if (value != null) select(value);
-        },
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: constraints.maxWidth),
-          child: SegmentedButton<_ReaderFilter>(
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: _ReaderFilter.unread, label: Text('Unread')),
-              ButtonSegment(value: _ReaderFilter.all, label: Text('All')),
-              ButtonSegment(value: _ReaderFilter.starred, label: Text('Saved')),
-            ],
-            selected: {_filter},
-            onSelectionChanged: (value) => select(value.first),
-          ),
-        ),
-      ),
+    return AdaptiveFilterControl<_ReaderFilter>(
+      value: _filter,
+      options: const [
+        AdaptiveFilterOption(_ReaderFilter.unread, 'Unread'),
+        AdaptiveFilterOption(_ReaderFilter.all, 'All'),
+        AdaptiveFilterOption(_ReaderFilter.starred, 'Saved'),
+      ],
+      onChanged: select,
     );
   }
 

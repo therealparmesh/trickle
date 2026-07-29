@@ -34,13 +34,7 @@ double? episodeProgressFraction(
 extension EpisodeListeningStatePresentation on EpisodeListeningState {
   String get label => switch (this) {
     EpisodeListeningState.newEpisode => 'New',
-    EpisodeListeningState.inProgress => 'In progress',
-    EpisodeListeningState.played => 'Played',
-  };
-
-  String get semanticLabel => switch (this) {
-    EpisodeListeningState.newEpisode => 'Unplayed',
-    EpisodeListeningState.inProgress => 'Partially played',
+    EpisodeListeningState.inProgress => 'In Progress',
     EpisodeListeningState.played => 'Played',
   };
 

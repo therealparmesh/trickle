@@ -20,6 +20,7 @@ import 'package:trickle/presentation/pages/episode_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/home_page.dart';
 import 'package:trickle/presentation/pages/player_page.dart';
+import 'package:trickle/presentation/pages/podcasts_page.dart';
 import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
@@ -271,7 +272,6 @@ void main() {
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
-          queueProvider.overrideWith((_) => Stream.value(const [])),
         ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
@@ -362,11 +362,6 @@ void main() {
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
-          queueProvider.overrideWith(
-            (_) => Stream.value([
-              const MediaItem(id: 'queued', title: 'Queued episode'),
-            ]),
-          ),
           currentMediaProvider.overrideWith((_) => Stream.value(null)),
           playbackStateProvider.overrideWith(
             (_) => Stream.value(PlaybackState()),
@@ -399,7 +394,7 @@ void main() {
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
     expect(find.bySemanticsLabel('Podcasts, 1 item'), findsNothing);
-    expect(find.bySemanticsLabel('Up Next, 1 item'), findsOneWidget);
+    expect(find.bySemanticsLabel('Up Next, 1 item'), findsNothing);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
 
     await tester.scrollUntilVisible(
@@ -411,7 +406,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Feeds See all opens the complete reader', (tester) async {
+  testWidgets('the Feeds See all action opens the complete reader', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(393, 3000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final router = GoRouter(
@@ -432,7 +429,6 @@ void main() {
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
-          queueProvider.overrideWith((_) => Stream.value(const [])),
         ],
         child: MaterialApp.router(
           theme: TrickleTheme.dark,
@@ -456,6 +452,57 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Complete reader'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('podcast episode filters keep their empty states distinct', (
+    tester,
+  ) async {
+    final now = DateTime.utc(2026, 7, 29);
+    final feed = Feed(
+      id: 'podcast',
+      title: 'Podcast',
+      feedUrl: 'https://example.test/podcast.xml',
+      kind: FeedKind.podcast.index,
+      protocol: FeedProtocol.syndication.index,
+      subscribed: true,
+      isPrivate: false,
+      autoDownload: false,
+      autoDownloadLimit: 3,
+      notifications: false,
+      introSkipMs: 0,
+      outroSkipMs: 0,
+      autoQueue: false,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          feedsProvider.overrideWith((_) => Stream.value([feed])),
+          newEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+          inProgressEpisodesProvider.overrideWith(
+            (_) => Stream.value(const []),
+          ),
+          recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const PodcastsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No new episodes'), findsOneWidget);
+
+    await tester.tap(find.text('In Progress'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing in progress'), findsOneWidget);
+
+    await tester.tap(find.text('All'));
+    await tester.pumpAndSettle();
+    expect(find.text('No episodes yet'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -988,7 +1035,7 @@ void main() {
                   children: [
                     LibraryShortcut(
                       icon: Icons.download_rounded,
-                      label: 'Up Next',
+                      label: 'Sources',
                       badge: 1234,
                       onTap: _noop,
                     ),
@@ -1021,16 +1068,16 @@ void main() {
           .hasAction(SemanticsAction.tap),
       isTrue,
     );
-    expect(find.bySemanticsLabel('Up Next, 1234 items'), findsOneWidget);
+    expect(find.bySemanticsLabel('Sources, 1234 items'), findsOneWidget);
     expect(find.text('1234'), findsOneWidget);
     expect(find.text('0'), findsNothing);
     expect(
       tester.getTopLeft(find.text('Feeds')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
+      greaterThan(tester.getBottomLeft(find.text('Sources')).dy),
     );
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
     final shortcut = tester.getSemantics(
-      find.bySemanticsLabel('Up Next, 1234 items'),
+      find.bySemanticsLabel('Sources, 1234 items'),
     );
     expect(shortcut.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byType(GlassIconButton));
@@ -1340,7 +1387,7 @@ void main() {
     expect(find.text('E'), findsOneWidget);
     expect(find.bySemanticsLabel(RegExp(r'Explicit')), findsOneWidget);
     for (final label in [
-      RegExp(r'Unplayed episode Episode title'),
+      RegExp(r'New episode Episode title'),
       RegExp(r'Unread article Article title'),
     ]) {
       final node = tester.getSemantics(find.bySemanticsLabel(label));
@@ -1410,10 +1457,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.textContaining('In progress'), findsOneWidget);
+    expect(find.textContaining('In Progress'), findsOneWidget);
     expect(
       find.bySemanticsLabel(
-        RegExp(r'Partially played episode Partially played episode'),
+        RegExp(r'In Progress episode Partially played episode'),
       ),
       findsOneWidget,
     );

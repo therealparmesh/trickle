@@ -451,6 +451,64 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Stream<List<Episode>> watchNewEpisodes({int limit = 50}) {
+    final query =
+        select(episodes).join([
+            innerJoin(feeds, feeds.id.equalsExp(episodes.feedId)),
+            leftOuterJoin(
+              playbackProgresses,
+              playbackProgresses.episodeId.equalsExp(episodes.id),
+            ),
+          ])
+          ..where(
+            feeds.subscribed.equals(true) &
+                feeds.kind.equals(FeedKind.podcast.index) &
+                episodes.played.equals(false) &
+                (playbackProgresses.episodeId.isNull() |
+                    (playbackProgresses.completed.equals(false) &
+                        playbackProgresses.positionMs.isSmallerOrEqualValue(
+                          0,
+                        ))),
+          )
+          ..orderBy([
+            OrderingTerm.desc(episodes.publishedAt),
+            OrderingTerm.desc(episodes.discoveredAt),
+            OrderingTerm.asc(episodes.id),
+          ])
+          ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
+    );
+  }
+
+  Stream<List<Episode>> watchInProgressEpisodes({int limit = 50}) {
+    final query =
+        select(episodes).join([
+            innerJoin(feeds, feeds.id.equalsExp(episodes.feedId)),
+            innerJoin(
+              playbackProgresses,
+              playbackProgresses.episodeId.equalsExp(episodes.id),
+            ),
+          ])
+          ..where(
+            feeds.subscribed.equals(true) &
+                feeds.kind.equals(FeedKind.podcast.index) &
+                episodes.played.equals(false) &
+                playbackProgresses.completed.equals(false) &
+                playbackProgresses.positionMs.isBiggerThanValue(0),
+          )
+          ..orderBy([
+            OrderingTerm.desc(playbackProgresses.updatedAt),
+            OrderingTerm.desc(episodes.publishedAt),
+            OrderingTerm.desc(episodes.discoveredAt),
+            OrderingTerm.asc(episodes.id),
+          ])
+          ..limit(limit);
+    return query.watch().map(
+      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
+    );
+  }
+
   Stream<List<Article>> watchUnreadArticles({int limit = 50}) {
     final query =
         select(

@@ -20,7 +20,6 @@ final class LibraryPage extends ConsumerWidget {
     final queue = queueState.value ?? const [];
     final queuedEpisodes =
         ref.watch(queuedEpisodesProvider).value ?? const <String, Episode>{};
-    final feedCount = ref.watch(readerFeedsProvider).value?.length;
     return Scaffold(
       appBar: AppBar(
         title: const PageTitle('Library'),
@@ -46,14 +45,12 @@ final class LibraryPage extends ConsumerWidget {
                   LibraryShortcut(
                     icon: Icons.dynamic_feed_outlined,
                     label: 'Feeds',
-                    badge: feedCount,
                     color: AppConstants.magenta,
                     onTap: () => context.push('/reader?tab=feeds'),
                   ),
                   LibraryShortcut(
                     icon: Icons.queue_music_rounded,
                     label: 'Up Next',
-                    badge: queueState.value?.length,
                     onTap: () => context.push('/queue'),
                   ),
                   LibraryShortcut(

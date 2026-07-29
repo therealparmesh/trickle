@@ -461,6 +461,63 @@ final class AdaptiveDropdownField<T> extends StatelessWidget {
   }
 }
 
+final class AdaptiveFilterOption<T extends Object> {
+  const AdaptiveFilterOption(this.value, this.label);
+
+  final T value;
+  final String label;
+}
+
+final class AdaptiveFilterControl<T extends Object> extends StatelessWidget {
+  const AdaptiveFilterControl({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.label = 'Show',
+    super.key,
+  }) : assert(options.length > 1, 'A filter needs at least two options');
+
+  final T value;
+  final List<AdaptiveFilterOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.8) {
+      return AdaptiveDropdownField<T>(
+        label: label,
+        initialValue: value,
+        items: [
+          for (final option in options)
+            DropdownMenuItem(value: option.value, child: Text(option.label)),
+        ],
+        onChanged: (selected) {
+          if (selected != null) onChanged(selected);
+        },
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: SegmentedButton<T>(
+            showSelectedIcon: false,
+            segments: [
+              for (final option in options)
+                ButtonSegment(value: option.value, label: Text(option.label)),
+            ],
+            selected: {value},
+            onSelectionChanged: (selected) => onChanged(selected.first),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 final class _SpeedCell extends StatelessWidget {
   const _SpeedCell({
     required this.value,

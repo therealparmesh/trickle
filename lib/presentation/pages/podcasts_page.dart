@@ -12,13 +12,26 @@ import '../../core/youtube_support.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 
-final class PodcastsPage extends ConsumerWidget {
+enum _PodcastEpisodeFilter { newEpisodes, inProgress, all }
+
+final class PodcastsPage extends ConsumerStatefulWidget {
   const PodcastsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PodcastsPage> createState() => _PodcastsPageState();
+}
+
+class _PodcastsPageState extends ConsumerState<PodcastsPage> {
+  _PodcastEpisodeFilter _filter = _PodcastEpisodeFilter.newEpisodes;
+
+  @override
+  Widget build(BuildContext context) {
     final feeds = ref.watch(podcastFeedsProvider);
-    final episodes = ref.watch(recentEpisodesProvider);
+    final episodes = switch (_filter) {
+      _PodcastEpisodeFilter.newEpisodes => ref.watch(newEpisodesProvider),
+      _PodcastEpisodeFilter.inProgress => ref.watch(inProgressEpisodesProvider),
+      _PodcastEpisodeFilter.all => ref.watch(recentEpisodesProvider),
+    };
     return Scaffold(
       appBar: AppBar(
         title: const PageTitle('Podcasts'),
@@ -73,17 +86,33 @@ final class PodcastsPage extends ConsumerWidget {
                 ),
               ),
               if (feeds.value?.isNotEmpty == true) ...[
-                const SliverToBoxAdapter(
-                  child: SectionHeader('Recent Episodes'),
+                const SliverToBoxAdapter(child: SectionHeader('Episodes')),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: _episodeFilterControl(),
+                  ),
                 ),
                 episodes.when(
                   data: (items) => items.isEmpty
-                      ? const SliverToBoxAdapter(
+                      ? SliverToBoxAdapter(
                           child: EmptyState(
                             icon: Icons.multitrack_audio_rounded,
-                            title: 'No episodes yet',
-                            message:
-                                'Refresh a subscription or subscribe to a podcast.',
+                            title: switch (_filter) {
+                              _PodcastEpisodeFilter.newEpisodes =>
+                                'No new episodes',
+                              _PodcastEpisodeFilter.inProgress =>
+                                'Nothing in progress',
+                              _PodcastEpisodeFilter.all => 'No episodes yet',
+                            },
+                            message: switch (_filter) {
+                              _PodcastEpisodeFilter.newEpisodes =>
+                                'You’re caught up.',
+                              _PodcastEpisodeFilter.inProgress =>
+                                'Start an episode to continue it here.',
+                              _PodcastEpisodeFilter.all =>
+                                'Refresh a subscription to check for episodes.',
+                            },
                             compact: true,
                           ),
                         )
@@ -98,7 +127,7 @@ final class PodcastsPage extends ConsumerWidget {
                   error: (error, _) => SliverToBoxAdapter(
                     child: ErrorView(
                       friendlyError(error),
-                      onRetry: () => ref.invalidate(recentEpisodesProvider),
+                      onRetry: _invalidateEpisodes,
                     ),
                   ),
                 ),
@@ -109,6 +138,33 @@ final class PodcastsPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Widget _episodeFilterControl() {
+    void select(_PodcastEpisodeFilter value) {
+      if (value != _filter) setState(() => _filter = value);
+    }
+
+    return AdaptiveFilterControl<_PodcastEpisodeFilter>(
+      value: _filter,
+      options: const [
+        AdaptiveFilterOption(_PodcastEpisodeFilter.newEpisodes, 'New'),
+        AdaptiveFilterOption(_PodcastEpisodeFilter.inProgress, 'In Progress'),
+        AdaptiveFilterOption(_PodcastEpisodeFilter.all, 'All'),
+      ],
+      onChanged: select,
+    );
+  }
+
+  void _invalidateEpisodes() {
+    switch (_filter) {
+      case _PodcastEpisodeFilter.newEpisodes:
+        ref.invalidate(newEpisodesProvider);
+      case _PodcastEpisodeFilter.inProgress:
+        ref.invalidate(inProgressEpisodesProvider);
+      case _PodcastEpisodeFilter.all:
+        ref.invalidate(recentEpisodesProvider);
+    }
   }
 }
 

@@ -203,6 +203,86 @@ void main() {
     expect(progresses.map((progress) => progress.episodeId), ['partial']);
   });
 
+  test('podcast status views separate new and in-progress episodes', () async {
+    final now = DateTime.utc(2026, 7, 29);
+    await database.batch((batch) {
+      batch.insertAll(database.feeds, [
+        FeedsCompanion.insert(
+          id: 'podcast',
+          title: 'Podcast',
+          feedUrl: 'https://example.com/podcast.xml',
+          kind: Value(FeedKind.podcast.index),
+          createdAt: now,
+          updatedAt: now,
+        ),
+        FeedsCompanion.insert(
+          id: 'reader',
+          title: 'Reader',
+          feedUrl: 'https://example.com/reader.xml',
+          kind: Value(FeedKind.reader.index),
+          createdAt: now,
+          updatedAt: now,
+        ),
+        FeedsCompanion.insert(
+          id: 'unsubscribed',
+          title: 'Unsubscribed',
+          feedUrl: 'https://example.com/unsubscribed.xml',
+          kind: Value(FeedKind.podcast.index),
+          subscribed: const Value(false),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+      batch.insertAll(database.episodes, [
+        for (final entry in const [
+          ('new', 'podcast', false),
+          ('partial-newer', 'podcast', false),
+          ('partial-older', 'podcast', false),
+          ('completed', 'podcast', false),
+          ('played', 'podcast', true),
+          ('reader-new', 'reader', false),
+          ('unsubscribed-new', 'unsubscribed', false),
+        ])
+          EpisodesCompanion.insert(
+            id: entry.$1,
+            feedId: entry.$2,
+            title: entry.$1,
+            enclosureUrl: 'https://example.com/${entry.$1}.mp3',
+            discoveredAt: now,
+            played: Value(entry.$3),
+          ),
+      ]);
+      batch.insertAll(database.playbackProgresses, [
+        PlaybackProgressesCompanion.insert(
+          episodeId: 'partial-newer',
+          positionMs: const Value(2000),
+          updatedAt: now,
+        ),
+        PlaybackProgressesCompanion.insert(
+          episodeId: 'partial-older',
+          positionMs: const Value(1000),
+          updatedAt: now.subtract(const Duration(hours: 1)),
+        ),
+        PlaybackProgressesCompanion.insert(
+          episodeId: 'completed',
+          positionMs: const Value(3000),
+          completed: const Value(true),
+          completedAt: Value(now),
+          updatedAt: now,
+        ),
+      ]);
+    });
+
+    final newEpisodes = await database.watchNewEpisodes().first;
+    final inProgress = await database.watchInProgressEpisodes().first;
+
+    expect(newEpisodes.map((episode) => episode.id), ['new']);
+    expect(inProgress.map((episode) => episode.id), [
+      'partial-newer',
+      'partial-older',
+    ]);
+  });
+
   test('podcast automation uses one targeted pending-item index', () async {
     final indexes = await database
         .customSelect(
