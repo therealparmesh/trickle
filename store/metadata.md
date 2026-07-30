@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 40
+- Build: 41
 
 ## Name
 
@@ -71,7 +71,7 @@ Five 1320×2868 iPhone screenshots were verified against the current visual syst
 - Price: Free ($0.00)
 - Base country or region: United States (USD)
 - Distribution: Public App Store
-- Release option: Automatically release after App Review approval
+- Release option: Manually release after App Review approval
 
 ## Version 1.0.0 release notes
 
@@ -85,7 +85,7 @@ The Feeds collection now includes a consistent See all action that opens the com
 
 Four-button Home collections now use even spacing, and longer actions such as Add YouTube remain fully visible.
 
-Route changes now use a brief full-surface signal glitch that settles immediately, preserves screen state, and respects Reduced Motion.
+Route changes now use a brief full-surface signal glitch after an instantaneous handoff, so the effect remains visible, settles immediately, preserves screen state, and respects Reduced Motion.
 
 Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists. Explicit episodes use a compact leading marker that stays aligned when titles wrap or truncate.
 
