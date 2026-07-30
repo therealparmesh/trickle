@@ -21,12 +21,19 @@ import '../presentation/widgets/navigation_glitch.dart';
 GoRouter createRouter() {
   final rootNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
   final shellNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
-  Widget navigationScreen(Widget child) {
-    return NavigationGlitch(
-      routeObserver: shellNavigationObserver,
-      child: child,
+  Page<void> navigationPage(
+    GoRouterState state,
+    Widget child, {
+    required RouteObserver<ModalRoute<dynamic>> observer,
+  }) {
+    return NoTransitionPage<void>(
+      key: state.pageKey,
+      child: NavigationGlitch(routeObserver: observer, child: child),
     );
   }
+
+  Page<void> shellPage(GoRouterState state, Widget child) =>
+      navigationPage(state, child, observer: shellNavigationObserver);
 
   return GoRouter(
     observers: [rootNavigationObserver],
@@ -38,15 +45,16 @@ GoRouter createRouter() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, _) => navigationScreen(const HomePage()),
+            pageBuilder: (_, state) => shellPage(state, const HomePage()),
           ),
           GoRoute(
             path: '/podcasts',
-            builder: (_, _) => navigationScreen(const PodcastsPage()),
+            pageBuilder: (_, state) => shellPage(state, const PodcastsPage()),
           ),
           GoRoute(
             path: '/reader',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               ReaderPage(
                 initialFeeds: state.uri.queryParameters['tab'] == 'feeds',
                 initialFilter: state.uri.queryParameters['filter'] ?? 'unread',
@@ -55,11 +63,12 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/library',
-            builder: (_, _) => navigationScreen(const LibraryPage()),
+            pageBuilder: (_, state) => shellPage(state, const LibraryPage()),
           ),
           GoRoute(
             path: '/search',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               SearchPage(
                 initialCatalog: state.uri.queryParameters['tab'] == 'podcasts',
               ),
@@ -67,13 +76,14 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/podcast/:id',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               FeedDetailPage(feedId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/podcast-preview',
-            builder: (_, state) => navigationScreen(switch (state.extra) {
+            pageBuilder: (_, state) => shellPage(state, switch (state.extra) {
               final PodcastSearchResult podcast => FeedDetailPage.catalog(
                 podcast: podcast,
               ),
@@ -82,33 +92,37 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/feed/:id',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               FeedDetailPage(feedId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/article/:id',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               ArticlePage(articleId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/episode/:id',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               EpisodePage(episodeId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/queue',
-            builder: (_, _) => navigationScreen(const QueuePage()),
+            pageBuilder: (_, state) => shellPage(state, const QueuePage()),
           ),
           GoRoute(
             path: '/downloads',
-            builder: (_, _) => navigationScreen(const DownloadsPage()),
+            pageBuilder: (_, state) => shellPage(state, const DownloadsPage()),
           ),
           GoRoute(
             path: '/saved',
-            builder: (_, state) => navigationScreen(
+            pageBuilder: (_, state) => shellPage(
+              state,
               SavedPage(
                 initialTab: state.uri.queryParameters['tab'] == 'articles'
                     ? 1
@@ -118,15 +132,16 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/settings',
-            builder: (_, _) => navigationScreen(const SettingsPage()),
+            pageBuilder: (_, state) => shellPage(state, const SettingsPage()),
           ),
         ],
       ),
       GoRoute(
         path: '/player',
-        builder: (_, _) => NavigationGlitch(
-          routeObserver: rootNavigationObserver,
-          child: const PlayerPage(),
+        pageBuilder: (_, state) => navigationPage(
+          state,
+          const PlayerPage(),
+          observer: rootNavigationObserver,
         ),
       ),
     ],

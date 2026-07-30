@@ -595,6 +595,10 @@ void main() {
 
     await tester.pump();
     expect(glitch, findsOneWidget);
+    final glitchController = tester
+        .widget<AnimatedGlitchWithoutShader>(glitch)
+        .controller;
+    expect(glitchController.isActive, isTrue);
     expect(find.bySemanticsLabel('Settings'), findsOneWidget);
     expect(find.text('Route content'), findsOneWidget);
     expect(
@@ -605,7 +609,14 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.pump(NavigationGlitch.duration);
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 19));
+    expect(glitchController.colorChannels, isNotEmpty);
+    expect(glitchController.distortions, isNotEmpty);
+
+    await tester.pump(
+      NavigationGlitch.duration - const Duration(milliseconds: 139),
+    );
     expect(glitch, findsNothing);
     expect(pageKey.currentState, same(initialState));
     expect(find.bySemanticsLabel('Settings'), findsOneWidget);
@@ -660,8 +671,10 @@ void main() {
 
     unawaited(
       navigatorKey.currentState!.push(
-        MaterialPageRoute<void>(
-          builder: (_) => const Scaffold(body: Text('Second screen')),
+        PageRouteBuilder<void>(
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+          pageBuilder: (_, _, _) => const Scaffold(body: Text('Second screen')),
         ),
       ),
     );
@@ -678,6 +691,24 @@ void main() {
     await tester.pump(NavigationGlitch.duration);
     await tester.pumpAndSettle();
     expect(glitch, findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('navigation glitch disposes safely during an active effect', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: NavigationGlitch(child: Scaffold(body: Text('First screen'))),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(AnimatedGlitchWithoutShader), findsOneWidget);
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump(NavigationGlitch.duration);
+
+    expect(find.byType(NavigationGlitch), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
