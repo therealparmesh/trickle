@@ -3,7 +3,8 @@
 Please test the combined podcast and feed flow:
 
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
-- Cold-launch trickle, open Library, Podcasts, Feeds, Search, or Settings, and open podcast, feed, and episode details; startup and navigation should use standard platform behavior without persistent lines, flashing, duplicate controls, or delayed interaction
+- Cold-launch trickle, open Library, Podcasts, Feeds, Search, or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
+- Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - On Home, play and resume episodes directly from the two-row shelf; verify its cards reflow at large text, four-button collections are evenly spaced, Add YouTube is fully visible, and Feeds See all opens the reader
 - Verify the Podcasts episode filters: New contains untouched episodes, In Progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
 - Verify badge rules: only the Home screen’s Sources shortcut shows a number badge; it displays the exact feed subscription count and hides at zero
