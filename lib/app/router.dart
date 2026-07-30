@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../domain/feed_models.dart';
@@ -15,72 +16,119 @@ import '../presentation/pages/reader_page.dart';
 import '../presentation/pages/saved_page.dart';
 import '../presentation/pages/search_page.dart';
 import '../presentation/pages/settings_page.dart';
+import '../presentation/widgets/navigation_glitch.dart';
 
 GoRouter createRouter() {
+  final rootNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
+  final shellNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
+  Widget navigationScreen(Widget child) {
+    return NavigationGlitch(
+      routeObserver: shellNavigationObserver,
+      child: child,
+    );
+  }
+
   return GoRouter(
+    observers: [rootNavigationObserver],
     routes: [
       ShellRoute(
+        notifyRootObserver: false,
+        observers: [shellNavigationObserver],
         builder: (_, _, child) => AppShell(child: child),
         routes: [
-          GoRoute(path: '/', builder: (_, _) => const HomePage()),
-          GoRoute(path: '/podcasts', builder: (_, _) => const PodcastsPage()),
+          GoRoute(
+            path: '/',
+            builder: (_, _) => navigationScreen(const HomePage()),
+          ),
+          GoRoute(
+            path: '/podcasts',
+            builder: (_, _) => navigationScreen(const PodcastsPage()),
+          ),
           GoRoute(
             path: '/reader',
-            builder: (_, state) => ReaderPage(
-              initialFeeds: state.uri.queryParameters['tab'] == 'feeds',
-              initialFilter: state.uri.queryParameters['filter'] ?? 'unread',
+            builder: (_, state) => navigationScreen(
+              ReaderPage(
+                initialFeeds: state.uri.queryParameters['tab'] == 'feeds',
+                initialFilter: state.uri.queryParameters['filter'] ?? 'unread',
+              ),
             ),
           ),
-          GoRoute(path: '/library', builder: (_, _) => const LibraryPage()),
+          GoRoute(
+            path: '/library',
+            builder: (_, _) => navigationScreen(const LibraryPage()),
+          ),
           GoRoute(
             path: '/search',
-            builder: (_, state) => SearchPage(
-              initialCatalog: state.uri.queryParameters['tab'] == 'podcasts',
+            builder: (_, state) => navigationScreen(
+              SearchPage(
+                initialCatalog: state.uri.queryParameters['tab'] == 'podcasts',
+              ),
             ),
           ),
           GoRoute(
             path: '/podcast/:id',
-            builder: (_, state) =>
-                FeedDetailPage(feedId: state.pathParameters['id']!),
+            builder: (_, state) => navigationScreen(
+              FeedDetailPage(feedId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(
             path: '/podcast-preview',
-            builder: (_, state) => switch (state.extra) {
+            builder: (_, state) => navigationScreen(switch (state.extra) {
               final PodcastSearchResult podcast => FeedDetailPage.catalog(
                 podcast: podcast,
               ),
               _ => const FeedDetailPage.catalog(),
-            },
+            }),
           ),
           GoRoute(
             path: '/feed/:id',
-            builder: (_, state) =>
-                FeedDetailPage(feedId: state.pathParameters['id']!),
+            builder: (_, state) => navigationScreen(
+              FeedDetailPage(feedId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(
             path: '/article/:id',
-            builder: (_, state) =>
-                ArticlePage(articleId: state.pathParameters['id']!),
+            builder: (_, state) => navigationScreen(
+              ArticlePage(articleId: state.pathParameters['id']!),
+            ),
           ),
           GoRoute(
             path: '/episode/:id',
-            builder: (_, state) =>
-                EpisodePage(episodeId: state.pathParameters['id']!),
-          ),
-          GoRoute(path: '/queue', builder: (_, _) => const QueuePage()),
-          GoRoute(path: '/downloads', builder: (_, _) => const DownloadsPage()),
-          GoRoute(
-            path: '/saved',
-            builder: (_, state) => SavedPage(
-              initialTab: state.uri.queryParameters['tab'] == 'articles'
-                  ? 1
-                  : 0,
+            builder: (_, state) => navigationScreen(
+              EpisodePage(episodeId: state.pathParameters['id']!),
             ),
           ),
-          GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+          GoRoute(
+            path: '/queue',
+            builder: (_, _) => navigationScreen(const QueuePage()),
+          ),
+          GoRoute(
+            path: '/downloads',
+            builder: (_, _) => navigationScreen(const DownloadsPage()),
+          ),
+          GoRoute(
+            path: '/saved',
+            builder: (_, state) => navigationScreen(
+              SavedPage(
+                initialTab: state.uri.queryParameters['tab'] == 'articles'
+                    ? 1
+                    : 0,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (_, _) => navigationScreen(const SettingsPage()),
+          ),
         ],
       ),
-      GoRoute(path: '/player', builder: (_, _) => const PlayerPage()),
+      GoRoute(
+        path: '/player',
+        builder: (_, _) => NavigationGlitch(
+          routeObserver: rootNavigationObserver,
+          child: const PlayerPage(),
+        ),
+      ),
     ],
   );
 }

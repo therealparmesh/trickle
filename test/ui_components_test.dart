@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show SemanticsAction;
 
+import 'package:animated_glitch/animated_glitch.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' hide Column, isNotNull, isNull;
@@ -26,6 +27,7 @@ import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
 import 'package:trickle/presentation/widgets/episode_playback_button.dart';
+import 'package:trickle/presentation/widgets/navigation_glitch.dart';
 
 void main() {
   test('subscription cleanup starts only after deletion commits', () async {
@@ -571,6 +573,111 @@ void main() {
       tester.getSize(find.text('Settings')).height,
       lessThan(toolbarHeight),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('navigation screens glitch on entry without remounting content', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final glitch = find.byWidgetPredicate((widget) => widget is AnimatedGlitch);
+    final pageKey = GlobalKey<_NavigationTestPageState>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: NavigationGlitch(
+          child: _NavigationTestPage(key: pageKey, title: 'Settings'),
+        ),
+      ),
+    );
+    final initialState = pageKey.currentState;
+
+    await tester.pump();
+    expect(glitch, findsOneWidget);
+    expect(find.bySemanticsLabel('Settings'), findsOneWidget);
+    expect(find.text('Route content'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(_NavigationTestPage),
+        matching: find.byType(NavigationGlitch),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pump(NavigationGlitch.duration);
+    expect(glitch, findsNothing);
+    expect(pageKey.currentState, same(initialState));
+    expect(find.bySemanticsLabel('Settings'), findsOneWidget);
+    pageKey.currentState!.increment();
+    await tester.pump();
+    expect(find.text('Updates: 1'), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: NavigationGlitch(
+            key: const ValueKey('reduced-motion'),
+            child: _NavigationTestPage(
+              key: GlobalKey<_NavigationTestPageState>(),
+              title: 'Search',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(glitch, findsNothing);
+    expect(find.bySemanticsLabel('Search'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('return navigation replays the existing screen glitch', (
+    tester,
+  ) async {
+    final observer = RouteObserver<ModalRoute<dynamic>>();
+    final navigatorKey = GlobalKey<NavigatorState>();
+    final pageKey = GlobalKey<_NavigationTestPageState>();
+    final glitch = find.byWidgetPredicate((widget) => widget is AnimatedGlitch);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigatorKey,
+        navigatorObservers: [observer],
+        home: NavigationGlitch(
+          routeObserver: observer,
+          child: _NavigationTestPage(key: pageKey, title: 'Library'),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(NavigationGlitch.duration);
+    final initialState = pageKey.currentState;
+
+    unawaited(
+      navigatorKey.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Second screen')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(glitch, findsNothing);
+
+    navigatorKey.currentState!.pop();
+    await tester.pump();
+    await tester.pump();
+
+    expect(glitch, findsOneWidget);
+    expect(pageKey.currentState, same(initialState));
+
+    await tester.pump(NavigationGlitch.duration);
+    await tester.pumpAndSettle();
+    expect(glitch, findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1838,6 +1945,34 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+final class _NavigationTestPage extends StatefulWidget {
+  const _NavigationTestPage({required this.title, super.key});
+
+  final String title;
+
+  @override
+  State<_NavigationTestPage> createState() => _NavigationTestPageState();
+}
+
+final class _NavigationTestPageState extends State<_NavigationTestPage> {
+  int _updates = 0;
+
+  void increment() => setState(() => _updates++);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: PageTitle(widget.title)),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [const Text('Route content'), Text('Updates: $_updates')],
+        ),
+      ),
+    );
+  }
 }
 
 void _noop() {}
