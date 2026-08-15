@@ -93,6 +93,90 @@ void main() {
   });
 
   test(
+    'reader categories normalize, rename, survive refresh, and stay reader-only',
+    () async {
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _ReaderFeedAdapter(),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final reader = await repository.subscribe(
+        'https://example.test/articles.xml',
+      );
+
+      await repository.updateFeedSettings(
+        reader.id,
+        autoDownload: false,
+        autoDownloadLimit: 3,
+        notifications: false,
+        introSkipMs: 0,
+        outroSkipMs: 0,
+        autoQueue: false,
+        category: '  Science   & Tech  ',
+      );
+      final categorized = (await database.feedById(reader.id))!;
+      expect(categorized.category, 'Science & Tech');
+
+      await repository.updateFeedSettings(
+        reader.id,
+        autoDownload: false,
+        autoDownloadLimit: 3,
+        notifications: false,
+        introSkipMs: 0,
+        outroSkipMs: 0,
+        autoQueue: false,
+        category: 'Science & Tech',
+      );
+      expect(
+        (await database.feedById(reader.id))?.updatedAt,
+        categorized.updatedAt,
+      );
+
+      await database
+          .into(database.feeds)
+          .insert(
+            reader.copyWith(
+              id: 'second-reader',
+              feedUrl: 'https://example.test/second.xml',
+              category: const Value('science & tech'),
+            ),
+          );
+      expect(
+        await repository.renameFeedCategory('SCIENCE & TECH', 'Research'),
+        2,
+      );
+      expect((await database.feedById(reader.id))?.category, 'Research');
+      expect((await database.feedById('second-reader'))?.category, 'Research');
+
+      expect(await repository.refreshFeed(reader), isTrue);
+      expect((await database.feedById(reader.id))?.category, 'Research');
+      await repository.updateFeedCategory(reader.id, '   ');
+      expect((await database.feedById(reader.id))?.category, isNull);
+
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _FeedAdapter(),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final podcast = await repository.subscribe(
+        'https://example.test/podcast.xml',
+      );
+      await repository.updateFeedCategory(podcast.id, 'News');
+      expect((await database.feedById(podcast.id))?.category, isNull);
+    },
+  );
+
+  test(
     'explicit private mode protects credentials embedded in a URL path',
     () async {
       const secretUrl = 'https://example.test/private/PATH_SECRET/feed.xml';
@@ -433,6 +517,7 @@ void main() {
         introSkipMs: 1000,
         outroSkipMs: 2000,
         autoQueue: true,
+        category: null,
       );
       network.close();
       network = SafeNetworkClient.forTesting(

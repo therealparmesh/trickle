@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/feed_category.dart';
 import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../../domain/feed_models.dart';
@@ -896,6 +897,10 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
   late final TextEditingController _outro = TextEditingController(
     text: '${widget.feed.outroSkipMs ~/ 1000}',
   );
+  late final TextEditingController _category = TextEditingController(
+    text: widget.feed.category ?? '',
+  );
+  final FocusNode _categoryFocus = FocusNode();
   _FeedSettingsOperation? _operation;
 
   bool get _busy => _operation != null;
@@ -912,11 +917,20 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
   void dispose() {
     _intro.dispose();
     _outro.dispose();
+    _category.dispose();
+    _categoryFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final categoryOptions = _isReader
+        ? feedCategoryOptions(
+            (ref.watch(readerFeedsProvider).value ?? const <Feed>[]).map(
+              (feed) => feed.category,
+            ),
+          )
+        : const <String>[];
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -934,15 +948,18 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                 FeedKind.podcast => 'Podcast settings',
               }, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 14),
+              if (_isReader) ...[
+                _categoryField(context, categoryOptions),
+                const SizedBox(height: 4),
+              ],
               if (!_isReader) ...[
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
+                AdaptiveSwitchTile(
                   value: _autoDownload,
                   onChanged: _busy
                       ? null
                       : (value) => setState(() => _autoDownload = value),
-                  title: const Text('Automatically download new episodes'),
-                  subtitle: const Text('Wi-Fi only; stored by trickle.'),
+                  title: 'Automatically download new episodes',
+                  subtitle: 'Wi-Fi only; stored by trickle.',
                 ),
                 if (_autoDownload)
                   AdaptiveDropdownField<int>(
@@ -962,17 +979,15 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                         ? null
                         : (value) => setState(() => _limit = value ?? 3),
                   ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
+                AdaptiveSwitchTile(
                   value: _autoQueue,
                   onChanged: _busy
                       ? null
                       : (value) => setState(() => _autoQueue = value),
-                  title: const Text('Add new episodes to Up Next'),
+                  title: 'Add new episodes to Up Next',
                 ),
               ],
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
+              AdaptiveSwitchTile(
                 value: _notifications,
                 onChanged: _busy ? null : _setNotifications,
                 secondary: SizedBox.square(
@@ -981,17 +996,16 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                       ? const CircularProgressIndicator(strokeWidth: 2)
                       : const Icon(Icons.notifications_outlined),
                 ),
-                title: Text(switch (_kind) {
+                title: switch (_kind) {
                   FeedKind.reader when _isYouTube => 'New video notifications',
                   FeedKind.reader
                       when widget.feed.protocol == FeedProtocol.nostr.index =>
                     'New post notifications',
                   FeedKind.reader => 'New article notifications',
                   FeedKind.podcast => 'New episode notifications',
-                }),
-                subtitle: const Text(
-                  'Alerts depend on iOS or Android background scheduling.',
-                ),
+                },
+                subtitle:
+                    'Alerts depend on iOS or Android background scheduling.',
               ),
               if (!_isReader) ...[
                 const SizedBox(height: 10),
@@ -1060,6 +1074,120 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
     );
   }
 
+  Widget _categoryField(BuildContext context, List<String> options) {
+    const helper = 'Optional. Choose a category or enter a new one.';
+    final initialCategory = feedCategoryIdentity(widget.feed.category);
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
+    final field = LayoutBuilder(
+      builder: (context, constraints) => RawAutocomplete<String>(
+        textEditingController: _category,
+        focusNode: _categoryFocus,
+        optionsBuilder: (value) {
+          if (_busy) return const Iterable<String>.empty();
+          final query = value.text.trim().toLowerCase();
+          if (query.isEmpty ||
+              feedCategoryIdentity(value.text) == initialCategory) {
+            return options;
+          }
+          return options.where(
+            (category) => category.toLowerCase().contains(query),
+          );
+        },
+        onSelected: (category) {
+          _category.value = TextEditingValue(
+            text: category,
+            selection: TextSelection.collapsed(offset: category.length),
+          );
+        },
+        fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) =>
+            TextField(
+              enabled: !_busy,
+              controller: controller,
+              focusNode: focusNode,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(maxFeedCategoryLength),
+              ],
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                labelText: largeText ? null : 'Category',
+                helperText: largeText ? null : helper,
+                suffixIcon: options.isEmpty
+                    ? null
+                    : const Icon(Icons.arrow_drop_down_rounded),
+              ),
+              onSubmitted: (_) => onFieldSubmitted(),
+            ),
+        optionsViewBuilder: (context, onSelected, matches) {
+          final categories = matches.toList(growable: false);
+          final highlighted = AutocompleteHighlightedOption.of(context);
+          return Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              color: AppConstants.elevated,
+              elevation: 8,
+              shape: const CutCornerBorder(
+                cut: 10,
+                side: BorderSide(color: AppConstants.hairline),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth,
+                  maxHeight: 240,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  itemCount: categories.length,
+                  itemBuilder: (context, index) {
+                    final category = categories[index];
+                    return InkWell(
+                      onTap: () => onSelected(category),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: ColoredBox(
+                          color: index == highlighted
+                              ? AppConstants.cyan.withValues(alpha: 0.1)
+                              : Colors.transparent,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(category),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (!largeText) return field;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('Category'),
+        const SizedBox(height: 8),
+        field,
+        const SizedBox(height: 6),
+        Text(
+          helper,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppConstants.secondaryText),
+        ),
+      ],
+    );
+  }
+
   Future<void> _save() async {
     if (_busy) return;
     final intro = int.tryParse(_intro.text.trim().isEmpty ? '0' : _intro.text);
@@ -1083,6 +1211,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
             introSkipMs: intro * 1000,
             outroSkipMs: outro * 1000,
             autoQueue: _autoQueue,
+            category: _isReader ? _category.text : null,
           );
       if (!mounted) return;
       setState(() => _operation = null);

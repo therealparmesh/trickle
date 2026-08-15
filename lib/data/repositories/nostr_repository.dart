@@ -87,6 +87,7 @@ final class NostrRepository {
               siteUrl: Value(existing?.siteUrl),
               imageUrl: Value(existing?.imageUrl),
               author: Value(existing?.author ?? encodeNpub(address.publicKey)),
+              category: Value(existing?.category),
               kind: Value(FeedKind.reader.index),
               protocol: Value(FeedProtocol.nostr.index),
               subscribed: const Value(true),

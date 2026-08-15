@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
@@ -13,6 +14,7 @@ import 'package:share_plus/share_plus.dart';
 import '../data/database/app_database.dart';
 import '../core/constants.dart';
 import '../core/errors.dart';
+import '../core/feed_category.dart';
 import '../core/feed_identity.dart';
 import '../core/formatters.dart';
 import '../core/nostr_identifier.dart';
@@ -30,10 +32,20 @@ final class BackupResult {
 }
 
 final class BackupService {
-  BackupService(this._database, [this._privateFeeds]);
+  BackupService(
+    this._database, {
+    PrivateFeedStore? privateFeeds,
+    Future<XFile?> Function()? pickFile,
+    Future<void> Function()? onImported,
+  }) : _privateFeeds = privateFeeds,
+       _pickFile = pickFile ?? _pickBackupFile,
+       _onImported = onImported;
 
   final AppDatabase _database;
   final PrivateFeedStore? _privateFeeds;
+  final Future<XFile?> Function() _pickFile;
+  final Future<void> Function()? _onImported;
+  Future<BackupResult?>? _activeImport;
 
   Future<List<int>> exportBytes() async {
     final portableFeeds = await _portableFeeds();
@@ -117,23 +129,52 @@ final class BackupService {
     );
   }
 
-  Future<BackupResult?> pickAndImport() async {
-    final picked = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'trickle backup',
-          extensions: ['zip'],
-          mimeTypes: ['application/zip'],
-          uniformTypeIdentifiers: ['public.zip-archive'],
-        ),
-      ],
+  Future<BackupResult?> pickAndImport() {
+    final active = _activeImport;
+    if (active != null) return active;
+    final future = _pickAndImport();
+    _activeImport = future;
+    unawaited(
+      future.then<void>(
+        (_) => _clearActiveImport(future),
+        onError: (Object _, StackTrace _) => _clearActiveImport(future),
+      ),
     );
-    if (picked == null) return null;
-    if (await picked.length() > 50 * 1024 * 1024) {
-      throw const BackupException('Backup exceeds the 50 MiB import limit.');
+    return future;
+  }
+
+  void _clearActiveImport(Future<BackupResult?> future) {
+    if (identical(_activeImport, future)) _activeImport = null;
+  }
+
+  Future<BackupResult?> _pickAndImport() async {
+    XFile? picked;
+    try {
+      picked = await _pickFile();
+    } on Object {
+      throw const BackupException('Couldn’t open the file picker.');
     }
-    final bytes = await picked.readAsBytes();
-    return importBytes(bytes);
+    if (picked == null) return null;
+    late List<int> bytes;
+    try {
+      if (await picked.length() > 50 * 1024 * 1024) {
+        throw const BackupException('Backup exceeds the 50 MiB import limit.');
+      }
+      bytes = await picked.readAsBytes();
+    } on BackupException {
+      rethrow;
+    } on Object {
+      throw const BackupException('Couldn’t read that backup file.');
+    }
+    final result = await importBytes(bytes);
+    try {
+      await _onImported?.call();
+    } on Object {
+      throw const BackupException(
+        'Backup restored, but playback state couldn’t reload. Restart trickle to finish.',
+      );
+    }
+    return result;
   }
 
   Future<BackupResult> importBytes(List<int> bytes) async {
@@ -279,6 +320,11 @@ final class BackupService {
           id: actualFeedId,
           kind: kind.index,
           protocol: protocol.index,
+          category: Value(
+            kind == FeedKind.reader
+                ? normalizeFeedCategory(feed.category)
+                : null,
+          ),
           isPrivate: false,
           credentialRef: const Value(null),
           siteUrl: Value(_https(feed.siteUrl)),
@@ -729,6 +775,22 @@ final class BackupService {
     );
   }
 }
+
+Future<XFile?> _pickBackupFile() => openFile(
+  acceptedTypeGroups: const [
+    XTypeGroup(
+      label: 'trickle backup',
+      extensions: ['zip'],
+      mimeTypes: [
+        'application/zip',
+        // Some Android document providers use a generic binary MIME type.
+        // The archive contents are still size-limited and validated.
+        'application/octet-stream',
+      ],
+      uniformTypeIdentifiers: ['public.zip-archive'],
+    ),
+  ],
+);
 
 const _maxMediaDurationMs = 365 * 24 * 60 * 60 * 1000;
 

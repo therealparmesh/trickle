@@ -307,6 +307,43 @@ void main() {
     );
   });
 
+  test('version 3 migration adds categories without losing feeds', () async {
+    await database.close();
+    final underlying = sqlite3.openInMemory();
+    addTearDown(underlying.close);
+    database = AppDatabase.forTesting(
+      NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+    );
+    final now = DateTime.utc(2026, 8, 14);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'reader',
+            title: 'Reader feed',
+            feedUrl: 'https://example.com/reader.xml',
+            kind: Value(FeedKind.reader.index),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await database.customStatement('ALTER TABLE feeds DROP COLUMN category');
+    await database.close();
+    underlying.userVersion = 3;
+
+    database = AppDatabase.forTesting(
+      NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+    );
+    final migrated = await database.feedById('reader');
+
+    expect(migrated?.title, 'Reader feed');
+    expect(migrated?.category, equals(null));
+    await (database.update(database.feeds)
+          ..where((row) => row.id.equals('reader')))
+        .write(const FeedsCompanion(category: Value('Technology')));
+    expect((await database.feedById('reader'))?.category, 'Technology');
+  });
+
   test('version 1 mixed feeds migrate into exactly one library', () async {
     await database.close();
     final underlying = sqlite3.openInMemory();
@@ -370,6 +407,7 @@ void main() {
     await database.customStatement('DROP TABLE article_attachments');
     await database.customStatement('DROP TABLE nostr_relays');
     await database.customStatement('DROP TABLE nostr_profiles');
+    await database.customStatement('ALTER TABLE feeds DROP COLUMN category');
     await database.customStatement('ALTER TABLE feeds DROP COLUMN protocol');
     await database.customStatement('ALTER TABLE feeds DROP COLUMN subscribed');
     await database.customStatement(
@@ -403,6 +441,8 @@ void main() {
 
     expect(feeds['podcast']?.kind, FeedKind.podcast.index);
     expect(feeds['reader']?.kind, FeedKind.reader.index);
+    expect(feeds['podcast']?.category, equals(null));
+    expect(feeds['reader']?.category, equals(null));
     expect(await database.select(database.episodes).get(), hasLength(1));
     expect(await database.select(database.articles).get(), hasLength(1));
     expect(

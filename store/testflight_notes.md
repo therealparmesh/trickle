@@ -10,6 +10,7 @@ Please test the combined podcast and feed flow:
 - Verify badge rules: only the Home screen’s Sources shortcut shows a number badge; it displays the exact feed subscription count and hides at zero
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
+- While audio buffers or changes between playing and paused, scroll a long episode list; unrelated rows should remain stable and responsive
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Type a lowercase podcast query, then allow autocorrect or capitalization to change only its letter case; results must remain visible without a new loading flash
 - Open a podcast result and verify its description, art, dates, durations, and summaries appear before subscription and after unsubscribing
@@ -40,10 +41,11 @@ Please test the combined podcast and feed flow:
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
 - Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Unsubscribe
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
-- During refresh or OPML import, confirm the row reports progress, Settings remains usable, and Back works immediately
+- Assign categories to RSS, YouTube, and Nostr sources from Feed settings; verify the field suggests previous categories case-insensitively, accepts a new category, and moves only that source. In Reader > Feeds, rename a category and verify every matching source moves together, including a case-only rename or a merge into an existing category. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
+- During refresh, OPML import, or local backup restore, confirm the active row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker
-- Export podcasts, feeds, and all subscriptions separately; verify each file's contents
-- Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and tokenized private feed URLs survive, while sign-in headers and downloaded files are absent
+- Import one mixed OPML file containing a podcast and a reading feed; verify each appears exactly once in its matching section, then export podcasts, feeds, and all subscriptions separately and confirm each file's scope and reader-category folders
+- Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and tokenized private feed URLs survive, while sign-in headers and downloaded files are absent. While a restore is active, leave and reopen Settings, tap Restore local backup again, and confirm it rejoins the same restore without another picker or duplicate data
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views

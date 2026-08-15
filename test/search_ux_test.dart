@@ -63,8 +63,8 @@ void main() {
           />
         </body></opml>
         ''',
-        subscribe: (url) async {
-          await repository.subscribe(url);
+        subscribe: (subscription) async {
+          await repository.subscribe(subscription.feedUrl);
         },
       ),
     );

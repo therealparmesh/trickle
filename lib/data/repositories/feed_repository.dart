@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/feed_category.dart';
 import '../../core/feed_identity.dart';
 import '../../core/formatters.dart';
 import '../../core/url_identity.dart';
@@ -186,6 +187,7 @@ final class FeedRepository {
                 (details.imageUrl ?? podcast.artworkUrl)?.toString(),
               ),
               author: Value(details.author ?? podcast.author),
+              category: const Value(null),
               kind: Value(FeedKind.podcast.index),
               protocol: Value(FeedProtocol.syndication.index),
               subscribed: Value(existingFeed?.subscribed ?? false),
@@ -715,24 +717,97 @@ final class FeedRepository {
     required int introSkipMs,
     required int outroSkipMs,
     required bool autoQueue,
+    required String? category,
   }) async {
     await _database.transaction(() async {
       final current = await _database.feedById(feedId);
       if (current == null) return;
+      final normalizedCategory = current.kind == FeedKind.reader.index
+          ? normalizeFeedCategory(category)
+          : null;
+      final downloadLimit = autoDownloadLimit.clamp(1, 10);
+      final intro = introSkipMs.clamp(0, 600000);
+      final outro = outroSkipMs.clamp(0, 600000);
+      if (current.autoDownload == autoDownload &&
+          current.autoDownloadLimit == downloadLimit &&
+          current.notifications == notifications &&
+          current.introSkipMs == intro &&
+          current.outroSkipMs == outro &&
+          current.autoQueue == autoQueue &&
+          current.category == normalizedCategory) {
+        return;
+      }
       final now = DateTime.now().toUtc();
       await (_database.update(
         _database.feeds,
       )..where((row) => row.id.equals(feedId))).write(
         FeedsCompanion(
           autoDownload: Value(autoDownload),
-          autoDownloadLimit: Value(autoDownloadLimit.clamp(1, 10)),
+          autoDownloadLimit: Value(downloadLimit),
           notifications: Value(notifications),
-          introSkipMs: Value(introSkipMs.clamp(0, 600000)),
-          outroSkipMs: Value(outroSkipMs.clamp(0, 600000)),
+          introSkipMs: Value(intro),
+          outroSkipMs: Value(outro),
           autoQueue: Value(autoQueue),
+          category: Value(normalizedCategory),
           updatedAt: Value(_nextFeedRevision(now, current.updatedAt)),
         ),
       );
+    });
+  }
+
+  Future<void> updateFeedCategory(String feedId, String? category) async {
+    await _database.transaction(() async {
+      final current = await _database.feedById(feedId);
+      if (current == null || current.kind != FeedKind.reader.index) return;
+      final normalized = normalizeFeedCategory(category);
+      if (current.category == normalized) return;
+      final now = DateTime.now().toUtc();
+      await (_database.update(
+        _database.feeds,
+      )..where((row) => row.id.equals(feedId))).write(
+        FeedsCompanion(
+          category: Value(normalized),
+          updatedAt: Value(_nextFeedRevision(now, current.updatedAt)),
+        ),
+      );
+    });
+  }
+
+  Future<int> renameFeedCategory(String currentName, String newName) async {
+    final currentCategory = normalizeFeedCategory(currentName);
+    final renamedCategory = normalizeFeedCategory(newName);
+    if (currentCategory == null || renamedCategory == null) return 0;
+
+    return _database.transaction(() async {
+      final readerFeeds = await (_database.select(
+        _database.feeds,
+      )..where((row) => row.kind.equals(FeedKind.reader.index))).get();
+      final matchingFeeds = readerFeeds
+          .where(
+            (feed) =>
+                feedCategoryIdentity(feed.category) ==
+                feedCategoryIdentity(currentCategory),
+          )
+          .toList(growable: false);
+      if (matchingFeeds.isEmpty ||
+          matchingFeeds.every((feed) => feed.category == renamedCategory)) {
+        return 0;
+      }
+
+      final now = DateTime.now().toUtc();
+      await _database.batch((batch) {
+        for (final feed in matchingFeeds) {
+          batch.update(
+            _database.feeds,
+            FeedsCompanion(
+              category: Value(renamedCategory),
+              updatedAt: Value(_nextFeedRevision(now, feed.updatedAt)),
+            ),
+            where: (row) => row.id.equals(feed.id),
+          );
+        }
+      });
+      return matchingFeeds.length;
     });
   }
 
@@ -936,6 +1011,9 @@ final class FeedRepository {
                 siteUrl: Value(parsed.siteUrl?.toString()),
                 imageUrl: Value(parsed.imageUrl?.toString()),
                 author: Value(parsed.author),
+                category: Value(
+                  kind == FeedKind.reader ? effectiveFeed?.category : null,
+                ),
                 kind: Value(kind.index),
                 protocol: Value(
                   effectiveFeed?.protocol ?? FeedProtocol.syndication.index,

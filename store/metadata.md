@@ -31,6 +31,8 @@ trickle brings podcasts, news, blogs, and independent feeds into one focused cyb
 
 Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, paste a public YouTube channel or playlist URL, or follow a Nostr profile's verified posts. Stream or download podcast episodes, build a persistent queue, read clean extracted articles and Markdown posts, play attached audio and video, and open video entries in a persistent player without creating an account. Podcast episodes distinguish New, In Progress, and Played, with saved progress and Resume available for partial listening. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast and attached audio playback use the native system audio engine and include exact global speed choices from 1x to 2x, sleep timers, bookmarks, lock-screen controls, and saved progress. Podcasts also support intro and outro skipping, chapters, publisher transcripts, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
 
+Organize non-podcast sources with reusable optional categories. Move one source from Feed settings, or rename a category for every source in its group. Categories use standard OPML folders when imported or exported.
+
 trickle does not collect your information. Import and export standard OPML subscriptions, or create a local backup that also preserves Nostr profiles and portable local state.
 
 ## Keywords
@@ -83,6 +85,8 @@ Browse recent podcast episodes in a compact two-row shelf with direct Play and R
 
 The Feeds collection now includes a consistent See all action that opens the complete reader.
 
+Non-podcast sources can now be assigned reusable optional categories. Feed settings suggests previous categories without blocking new ones, one source can move between groups, a category can be renamed for every matching source, and standard OPML import and export preserve category folders.
+
 Four-button Home collections now use even spacing, and longer actions such as Add YouTube remain fully visible.
 
 Route changes now use a brief full-surface signal glitch after an instantaneous handoff, so the effect remains visible, settles immediately, preserves screen state, and respects Reduced Motion.
@@ -92,6 +96,8 @@ Podcast episodes now show distinct New, In Progress, and Played states. Partial 
 One-line and two-line collection shortcuts now keep identical icon, label, and touch-target alignment.
 
 Large libraries, feed refreshes, queue automation, search indexing, and long reader pages now avoid repeated work and stay responsive as content grows.
+
+Playback lists now ignore buffer-only engine updates and isolate current-item state, while unchanged feed settings avoid unnecessary database writes.
 
 Video entries play in a persistent player with a live minimized preview and user-started system Picture in Picture on supported devices.
 

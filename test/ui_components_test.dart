@@ -3,6 +3,7 @@ import 'dart:ui' show SemanticsAction;
 
 import 'package:animated_glitch/animated_glitch.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' hide Column, isNotNull, isNull;
 import 'package:drift/native.dart';
@@ -12,8 +13,11 @@ import 'package:go_router/go_router.dart';
 import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/app/theme.dart';
 import 'package:trickle/core/constants.dart';
+import 'package:trickle/core/feed_category.dart';
 import 'package:trickle/data/database/app_database.dart';
+import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/article_repository.dart';
+import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/features/player/trickle_audio_handler.dart';
 import 'package:trickle/presentation/app_shell.dart';
@@ -24,12 +28,27 @@ import 'package:trickle/presentation/pages/player_page.dart';
 import 'package:trickle/presentation/pages/podcasts_page.dart';
 import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
+import 'package:trickle/presentation/pages/reader_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
 import 'package:trickle/presentation/widgets/episode_playback_button.dart';
 import 'package:trickle/presentation/widgets/navigation_glitch.dart';
 
 void main() {
+  test('feed category options are normalized, unique, and ordered', () {
+    expect(
+      feedCategoryOptions(const [
+        ' Technology ',
+        'science',
+        'Science',
+        null,
+        ' ',
+        'Arts  &  Culture',
+      ]),
+      ['Arts & Culture', 'science', 'Technology'],
+    );
+  });
+
   test('subscription cleanup starts only after deletion commits', () async {
     final events = <String>[];
 
@@ -454,6 +473,194 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Complete reader'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reader sources group by category and leave podcasts out', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final now = DateTime.utc(2026, 8, 14);
+    Feed source(String id, String title, String? category) => Feed(
+      id: id,
+      title: title,
+      feedUrl: 'https://example.test/$id.xml',
+      category: category,
+      kind: FeedKind.reader.index,
+      protocol: FeedProtocol.syndication.index,
+      subscribed: true,
+      isPrivate: false,
+      autoDownload: false,
+      autoDownloadLimit: 3,
+      notifications: false,
+      introSkipMs: 0,
+      outroSkipMs: 0,
+      autoQueue: false,
+      createdAt: now,
+      updatedAt: now,
+    );
+    final feeds = [
+      source('space', 'Space Journal', 'Science and Emerging Technology'),
+      source('lab', 'Lab Notes', 'science and emerging technology'),
+      source('world', 'World News', 'News'),
+      source('loose', 'Loose Feed', null),
+      source(
+        'podcast',
+        'Podcast Must Stay Hidden',
+        'Science and Emerging Technology',
+      ).copyWith(kind: FeedKind.podcast.index),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          feedsProvider.overrideWith((_) => Stream.value(feeds)),
+          readerUnreadArticlesProvider(
+            100,
+          ).overrideWith((_) => Stream.value(const [])),
+          unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: const ReaderPage(initialFeeds: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('News'), findsOneWidget);
+    expect(find.text('Science and Emerging Technology'), findsOneWidget);
+    expect(find.text('Uncategorized'), findsOneWidget);
+    expect(find.text('Space Journal'), findsOneWidget);
+    expect(find.text('Lab Notes'), findsOneWidget);
+    expect(find.text('World News'), findsOneWidget);
+    expect(find.text('Loose Feed'), findsOneWidget);
+    expect(find.text('Podcast Must Stay Hidden'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('News')).dy,
+      lessThan(
+        tester.getTopLeft(find.text('Science and Emerging Technology')).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.text('Science and Emerging Technology')).dy,
+      lessThan(tester.getTopLeft(find.text('Uncategorized')).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reader category rename updates every matching feed', (
+    tester,
+  ) async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    addTearDown(() async {
+      network.close();
+      await database.close();
+    });
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: PrivateFeedStore(),
+    );
+    final now = DateTime.utc(2026, 8, 15);
+    final feeds = [
+      Feed(
+        id: 'science-one',
+        title: 'First source',
+        feedUrl: 'https://example.test/one.xml',
+        category: 'Science',
+        kind: FeedKind.reader.index,
+        protocol: FeedProtocol.syndication.index,
+        subscribed: true,
+        isPrivate: false,
+        autoDownload: false,
+        autoDownloadLimit: 3,
+        notifications: false,
+        introSkipMs: 0,
+        outroSkipMs: 0,
+        autoQueue: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Feed(
+        id: 'science-two',
+        title: 'Second source',
+        feedUrl: 'https://example.test/two.xml',
+        category: 'science',
+        kind: FeedKind.reader.index,
+        protocol: FeedProtocol.syndication.index,
+        subscribed: true,
+        isPrivate: false,
+        autoDownload: false,
+        autoDownloadLimit: 3,
+        notifications: false,
+        introSkipMs: 0,
+        outroSkipMs: 0,
+        autoQueue: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ];
+    for (final feed in feeds) {
+      await database.into(database.feeds).insert(feed);
+    }
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          feedsProvider.overrideWith((_) => Stream.value(feeds)),
+          feedRepositoryProvider.overrideWithValue(repository),
+          readerUnreadArticlesProvider(
+            100,
+          ).overrideWith((_) => Stream.value(const [])),
+          unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const ReaderPage(initialFeeds: true),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Rename Science'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Rename'))
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Science'),
+      'Culture',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Rename'))
+          .onPressed,
+      isNotNull,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
+    await tester.pumpAndSettle();
+
+    expect((await database.feedById('science-one'))?.category, 'Culture');
+    expect((await database.feedById('science-two'))?.category, 'Culture');
+    expect(find.text('Reader'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1904,6 +2111,101 @@ void main() {
     expect(finder, findsOne);
     final node = finder.evaluate().single;
     expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('feed categories stay reader-only at large text', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final semantics = tester.ensureSemantics();
+    final reader = _privateFeed().copyWith(
+      id: 'reader',
+      feedUrl: 'https://example.test/reader.xml',
+      category: const Value('Technology'),
+      kind: FeedKind.reader.index,
+      isPrivate: false,
+      credentialRef: const Value(null),
+    );
+    final science = reader.copyWith(
+      id: 'science',
+      feedUrl: 'https://example.test/science.xml',
+      category: const Value('Science'),
+    );
+    final duplicateScience = reader.copyWith(
+      id: 'science-duplicate',
+      feedUrl: 'https://example.test/more-science.xml',
+      category: const Value('science'),
+    );
+    final categorizedPodcast = _privateFeed().copyWith(
+      category: const Value('Podcast category'),
+    );
+
+    Future<void> pumpSettings(Feed feed) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            feedsProvider.overrideWith(
+              (_) => Stream.value([
+                reader,
+                science,
+                duplicateScience,
+                categorizedPodcast,
+              ]),
+            ),
+          ],
+          child: MaterialApp(
+            theme: TrickleTheme.dark,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: Scaffold(body: FeedSettingsSheet(feed: feed)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpSettings(reader);
+    expect(find.text('Category'), findsOneWidget);
+    expect(find.text('Technology'), findsOneWidget);
+    expect(
+      find.text('Optional. Choose a category or enter a new one.'),
+      findsOneWidget,
+    );
+    expect(find.text('New article notifications'), findsOneWidget);
+    expect(
+      find.semantics.byLabel(
+        'New article notifications. '
+        'Alerts depend on iOS or Android background scheduling.',
+      ),
+      findsOne,
+    );
+    expect(find.byType(AdaptiveSwitchTile), findsOneWidget);
+    expect(find.byType(SwitchListTile), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.widgetWithText(TextField, 'Technology'));
+    await tester.pumpAndSettle();
+    expect(find.text('Science'), findsOneWidget);
+    expect(find.text('science'), findsNothing);
+    expect(find.text('Podcast category'), findsNothing);
+    await tester.enterText(find.widgetWithText(TextField, 'Technology'), 'sci');
+    await tester.pumpAndSettle();
+    expect(find.text('Science'), findsOneWidget);
+    await tester.tap(find.text('Science'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Science'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'Culture');
+    expect(find.widgetWithText(TextField, 'Culture'), findsOneWidget);
+
+    await pumpSettings(_privateFeed());
+    expect(find.text('Category'), findsNothing);
+    expect(find.text('Technology'), findsNothing);
     expect(tester.takeException(), isNull);
     semantics.dispose();
   });

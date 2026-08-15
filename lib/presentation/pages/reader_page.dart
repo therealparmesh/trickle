@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/feed_category.dart';
 import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
@@ -220,13 +221,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   ),
                 ],
               )
-            : ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) => _FeedRow(items[index]),
-              ),
+            : _FeedList(items),
         loading: () => const LoadingView(),
         error: (error, _) => ErrorView(
           friendlyError(error),
@@ -320,6 +315,183 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           : const AddFeedDialog(),
     );
   }
+}
+
+final class _FeedList extends ConsumerStatefulWidget {
+  const _FeedList(this.feeds);
+
+  final List<Feed> feeds;
+
+  @override
+  ConsumerState<_FeedList> createState() => _FeedListState();
+}
+
+final class _FeedListState extends ConsumerState<_FeedList> {
+  String? _renamingCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = _feedGroups(widget.feeds);
+    final showHeaders = groups.any((group) => group.category != null);
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        const SliverPadding(padding: EdgeInsets.only(top: 12)),
+        for (final group in groups) ...[
+          if (showHeaders)
+            SliverToBoxAdapter(
+              child: SectionHeader(
+                group.category ?? 'Uncategorized',
+                accent: AppConstants.magenta,
+                compact: true,
+                action: group.category == null
+                    ? null
+                    : _renamingCategory == null
+                    ? 'Rename'
+                    : _renamingCategory == feedCategoryIdentity(group.category)
+                    ? 'Renaming…'
+                    : null,
+                onAction: group.category == null
+                    ? null
+                    : _renamingCategory == null
+                    ? () => _rename(group.category!)
+                    : _renamingCategory == feedCategoryIdentity(group.category)
+                    ? () {}
+                    : null,
+              ),
+            ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverList.builder(
+              itemCount: group.feeds.length,
+              itemBuilder: (context, index) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _FeedRow(group.feeds[index]),
+              ),
+            ),
+          ),
+        ],
+        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+      ],
+    );
+  }
+
+  Future<void> _rename(String currentName) async {
+    if (_renamingCategory != null) return;
+    final renamed = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameCategoryDialog(initialName: currentName),
+    );
+    if (!mounted || renamed == null || renamed == currentName) return;
+
+    setState(() => _renamingCategory = feedCategoryIdentity(currentName));
+    try {
+      await ref
+          .read(feedRepositoryProvider)
+          .renameFeedCategory(currentName, renamed);
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _renamingCategory = null);
+    }
+  }
+}
+
+final class _RenameCategoryDialog extends StatefulWidget {
+  const _RenameCategoryDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameCategoryDialog> createState() => _RenameCategoryDialogState();
+}
+
+final class _RenameCategoryDialogState extends State<_RenameCategoryDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialName,
+  );
+
+  bool get _canRename {
+    final normalized = normalizeFeedCategory(_controller.text);
+    return normalized != null && normalized != widget.initialName;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Rename category'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      maxLength: maxFeedCategoryLength,
+      textCapitalization: TextCapitalization.words,
+      decoration: const InputDecoration(
+        labelText: 'Category name',
+        helperText: 'Updates every feed in this category.',
+      ),
+      onSubmitted: _canRename ? _finish : null,
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _canRename ? () => _finish(_controller.text) : null,
+        child: const Text('Rename'),
+      ),
+    ],
+  );
+
+  void _onChanged() => setState(() {});
+
+  void _finish(String value) {
+    final normalized = normalizeFeedCategory(value);
+    if (normalized != null) Navigator.pop(context, normalized);
+  }
+}
+
+final class _FeedGroup {
+  const _FeedGroup(this.category, this.feeds);
+
+  final String? category;
+  final List<Feed> feeds;
+}
+
+List<_FeedGroup> _feedGroups(List<Feed> feeds) {
+  final categorized = <String, _FeedGroup>{};
+  final uncategorized = <Feed>[];
+  for (final feed in feeds) {
+    final category = normalizeFeedCategory(feed.category);
+    final identity = feedCategoryIdentity(category);
+    if (category == null || identity == null) {
+      uncategorized.add(feed);
+      continue;
+    }
+    categorized
+        .putIfAbsent(identity, () => _FeedGroup(category, []))
+        .feeds
+        .add(feed);
+  }
+  final groups = categorized.values.toList(growable: true)
+    ..sort(
+      (left, right) =>
+          left.category!.toLowerCase().compareTo(right.category!.toLowerCase()),
+    );
+  if (uncategorized.isNotEmpty) groups.add(_FeedGroup(null, uncategorized));
+  return groups;
 }
 
 final class _FeedRow extends StatelessWidget {

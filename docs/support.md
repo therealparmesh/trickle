@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: July 26, 2026_
+_Last updated: August 15, 2026_
 
 ## Contact
 
@@ -30,6 +30,10 @@ Do not include private-feed passwords, bearer tokens, authorization headers, or 
 Confirm the feed uses HTTPS and opens in a browser. For a private feed, verify its URL and authorization values in the feed settings.
 
 If a refresh finishes with failed feeds, open the affected subscription to see its stored refresh error and try again. Other subscriptions and existing items remain available.
+
+### Feed categories
+
+Open a non-podcast source, open Feed settings, and choose a previously used category or enter a new one. This moves that source without affecting the others. From Reader > Feeds, choose Rename beside a category to rename it for every source in that group. Renaming to an existing category merges the groups. Suggestions and grouping match category names without regard to capitalization. Clearing a source's Category field returns it to Uncategorized. Podcasts do not use feed categories.
 
 ### Playback
 
@@ -67,11 +71,11 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 
 ## Backup and migration
 
-Settings can import standard OPML and export podcast subscriptions, RSS and YouTube subscriptions, or all OPML-compatible subscriptions. Nostr profiles are not representable in standard OPML. Imported public podcasts are recognized as subscribed when the same feed appears in podcast search.
+Settings can import standard OPML files containing podcasts, RSS feeds, and YouTube feeds together. Each source is classified from its feed contents and appears in the matching section. Separate exports are available for podcast subscriptions, RSS and YouTube subscriptions, or all OPML-compatible subscriptions. Reader categories use standard OPML folders and survive import and export. Portable tokenized feed URLs are included; feeds that require separate authorization headers are skipped. Nostr profiles are not representable in standard OPML. Imported public podcasts are recognized as subscribed when the same feed appears in podcast search.
 
 The local ZIP backup includes portable podcast and feed subscriptions, Nostr profiles and relay choices, articles and attachments, reading and playback state, queue entries, bookmarks, and settings. A private feed whose token is entirely in its URL is portable and included. Authorization headers, passwords entered separately from a URL, and downloaded media files are excluded.
 
-Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data.
+Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data. Canceling the picker makes no changes. If a restore is already running, tapping Restore local backup again rejoins that operation instead of opening another picker or applying the backup twice.
 
 ## Project
 

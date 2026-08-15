@@ -241,7 +241,14 @@ Future<_TrickleRuntime> _createRuntime() async {
     final search = PodcastSearchRepository(database, network);
     final articles = ArticleRepository(database, network, privateFeeds);
     final extras = EpisodeExtrasRepository(database, network, privateFeeds);
-    final backup = BackupService(database, privateFeeds);
+    final backup = BackupService(
+      database,
+      privateFeeds: privateFeeds,
+      onImported: () async {
+        await audio!.reloadQueueFromDatabase();
+        await audio.reloadSettingsFromDatabase();
+      },
+    );
     final opml = OpmlService(database, feedRepository, privateFeeds);
     final sync = SyncCoordinator(
       database: database,

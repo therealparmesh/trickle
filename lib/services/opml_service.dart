@@ -13,6 +13,7 @@ import 'package:xml/xml.dart';
 
 import '../core/constants.dart';
 import '../core/errors.dart';
+import '../core/feed_category.dart';
 import '../core/url_identity.dart';
 import '../data/database/app_database.dart';
 import '../data/repositories/feed_repository.dart';
@@ -57,11 +58,13 @@ final class OpmlSubscription {
     required this.title,
     required this.feedUrl,
     this.siteUrl,
+    this.category,
   });
 
   final String title;
   final String feedUrl;
   final String? siteUrl;
+  final String? category;
 }
 
 final class OpmlService {
@@ -173,21 +176,33 @@ final class OpmlService {
     }
   }
 
-  Future<void> _subscribeIfMissing(String url) async {
+  Future<void> _subscribeIfMissing(OpmlSubscription subscription) async {
+    final url = subscription.feedUrl;
     final parsed = Uri.parse(url.trim());
+    Feed feed;
     if (!parsed.hasQuery) {
       final normalized = feedUrlIdentity(url);
       final existing = await _database.feedByUrl(normalized);
-      if (existing?.subscribed == true) return;
-      if (existing != null) {
-        await _feeds.resubscribe(existing);
-        return;
+      if (existing?.subscribed == true) {
+        feed = existing!;
+      } else if (existing != null) {
+        feed = await _feeds.resubscribe(existing);
+      } else {
+        feed = await _feeds.subscribe(
+          url,
+          totalTimeout: AppConstants.opmlImportFeedTimeout,
+        );
       }
+    } else {
+      feed = await _feeds.subscribe(
+        url,
+        totalTimeout: AppConstants.opmlImportFeedTimeout,
+      );
     }
-    await _feeds.subscribe(
-      url,
-      totalTimeout: AppConstants.opmlImportFeedTimeout,
-    );
+    final category = normalizeFeedCategory(subscription.category);
+    if (category != null && feed.kind == FeedKind.reader.index) {
+      await _feeds.updateFeedCategory(feed.id, category);
+    }
   }
 }
 
@@ -295,7 +310,10 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
           row.protocol.equals(FeedProtocol.syndication.index) &
           selected;
     })
-    ..orderBy([(row) => OrderingTerm.asc(row.title)]);
+    ..orderBy([
+      (row) => OrderingTerm.asc(row.category),
+      (row) => OrderingTerm.asc(row.title),
+    ]);
   final feeds = await query.get();
   final subscriptions = <OpmlSubscription>[];
   var skippedHeaderAuth = 0;
@@ -325,6 +343,9 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
         title: feed.title,
         feedUrl: feedUrl,
         siteUrl: feed.siteUrl,
+        category: feed.kind == FeedKind.reader.index
+            ? normalizeFeedCategory(feed.category)
+            : null,
       ),
     );
   }
@@ -347,7 +368,55 @@ String buildOpmlDocument({
   required String title,
   required Iterable<OpmlSubscription> subscriptions,
 }) {
+  final uncategorized = <OpmlSubscription>[];
+  final categorized =
+      <String, ({String label, List<OpmlSubscription> feeds})>{};
+  for (final subscription in subscriptions) {
+    final category = normalizeFeedCategory(subscription.category);
+    final identity = feedCategoryIdentity(category);
+    if (category == null || identity == null) {
+      uncategorized.add(subscription);
+      continue;
+    }
+    categorized
+        .putIfAbsent(identity, () => (label: category, feeds: []))
+        .feeds
+        .add(subscription);
+  }
+  int byTitle(OpmlSubscription left, OpmlSubscription right) {
+    final folded = left.title.toLowerCase().compareTo(
+      right.title.toLowerCase(),
+    );
+    if (folded != 0) return folded;
+    final exact = left.title.compareTo(right.title);
+    return exact != 0 ? exact : left.feedUrl.compareTo(right.feedUrl);
+  }
+
+  uncategorized.sort(byTitle);
+  final categoryGroups = categorized.values.toList(growable: false)
+    ..sort((left, right) {
+      final folded = left.label.toLowerCase().compareTo(
+        right.label.toLowerCase(),
+      );
+      return folded != 0 ? folded : left.label.compareTo(right.label);
+    });
+  for (final group in categoryGroups) {
+    group.feeds.sort(byTitle);
+  }
   final builder = XmlBuilder();
+  void addSubscription(OpmlSubscription subscription) {
+    builder.element(
+      'outline',
+      attributes: {
+        'text': subscription.title,
+        'title': subscription.title,
+        'type': 'rss',
+        'xmlUrl': subscription.feedUrl,
+        if (subscription.siteUrl != null) 'htmlUrl': subscription.siteUrl!,
+      },
+    );
+  }
+
   builder.processing('xml', 'version="1.0" encoding="UTF-8"');
   builder.element(
     'opml',
@@ -360,18 +429,19 @@ String buildOpmlDocument({
       builder.element(
         'body',
         nest: () {
-          for (final subscription in subscriptions) {
+          for (final group in categoryGroups) {
             builder.element(
               'outline',
-              attributes: {
-                'text': subscription.title,
-                'title': subscription.title,
-                'type': 'rss',
-                'xmlUrl': subscription.feedUrl,
-                if (subscription.siteUrl != null)
-                  'htmlUrl': subscription.siteUrl!,
+              attributes: {'text': group.label, 'title': group.label},
+              nest: () {
+                for (final subscription in group.feeds) {
+                  addSubscription(subscription);
+                }
               },
             );
+          }
+          for (final subscription in uncategorized) {
+            addSubscription(subscription);
           }
         },
       );
@@ -382,19 +452,19 @@ String buildOpmlDocument({
 
 Future<OpmlImportResult> importOpmlSubscriptions(
   String source, {
-  required Future<void> Function(String url) subscribe,
+  required Future<void> Function(OpmlSubscription subscription) subscribe,
   void Function(int completed, int total)? onProgress,
 }) async {
-  final urls = await compute(extractOpmlUrls, source);
+  final subscriptions = await compute(extractOpmlSubscriptions, source);
   var imported = 0;
   var failed = 0;
-  onProgress?.call(0, urls.length);
-  for (var offset = 0; offset < urls.length; offset += 4) {
-    final end = (offset + 4).clamp(0, urls.length);
+  onProgress?.call(0, subscriptions.length);
+  for (var offset = 0; offset < subscriptions.length; offset += 4) {
+    final end = (offset + 4).clamp(0, subscriptions.length);
     final outcomes = await Future.wait(
-      urls.sublist(offset, end).map((url) async {
+      subscriptions.sublist(offset, end).map((subscription) async {
         try {
-          await subscribe(url);
+          await subscribe(subscription);
           return true;
         } on Object {
           return false;
@@ -403,12 +473,12 @@ Future<OpmlImportResult> importOpmlSubscriptions(
     );
     imported += outcomes.where((success) => success).length;
     failed += outcomes.where((success) => !success).length;
-    onProgress?.call(end, urls.length);
+    onProgress?.call(end, subscriptions.length);
   }
   return OpmlImportResult(imported: imported, failed: failed);
 }
 
-List<String> extractOpmlUrls(String source) {
+List<OpmlSubscription> extractOpmlSubscriptions(String source) {
   final document = XmlDocument.parse(source);
   final root = document.rootElement;
   final body = root.children
@@ -419,16 +489,50 @@ List<String> extractOpmlUrls(String source) {
     throw const FormatException('The selected file is not an OPML document.');
   }
 
-  final urls = <String>[];
+  final subscriptions = <OpmlSubscription>[];
   final identities = <String>{};
   for (final element in body.descendants.whereType<XmlElement>()) {
-    final value = element.attributes
-        .where((attribute) => attribute.name.local.toLowerCase() == 'xmlurl')
-        .map((attribute) => attribute.value.trim())
-        .firstOrNull;
+    final value = _attribute(element, 'xmlurl')?.trim();
     if (value == null || value.isEmpty) continue;
-    if (identities.add(feedUrlIdentity(value))) urls.add(value);
-    if (urls.length == 1000) break;
+    if (!identities.add(feedUrlIdentity(value))) continue;
+    final title =
+        _attribute(element, 'title')?.trim().nullIfEmpty ??
+        _attribute(element, 'text')?.trim().nullIfEmpty ??
+        Uri.tryParse(value)?.host.nullIfEmpty ??
+        'Untitled feed';
+    subscriptions.add(
+      OpmlSubscription(
+        title: title,
+        feedUrl: value,
+        siteUrl: _attribute(element, 'htmlurl')?.trim().nullIfEmpty,
+        category: _opmlCategory(element, body),
+      ),
+    );
+    if (subscriptions.length == 1000) break;
   }
-  return List.unmodifiable(urls);
+  return List.unmodifiable(subscriptions);
+}
+
+String? _opmlCategory(XmlElement element, XmlElement body) {
+  XmlNode? ancestor = element.parent;
+  while (ancestor is XmlElement && !identical(ancestor, body)) {
+    final ancestorFeedUrl = _attribute(ancestor, 'xmlurl')?.trim();
+    if (ancestorFeedUrl == null || ancestorFeedUrl.isEmpty) {
+      final category = normalizeFeedCategory(
+        _attribute(ancestor, 'title') ?? _attribute(ancestor, 'text'),
+      );
+      if (category != null) return category;
+    }
+    ancestor = ancestor.parent;
+  }
+  return null;
+}
+
+String? _attribute(XmlElement element, String name) => element.attributes
+    .where((attribute) => attribute.name.local.toLowerCase() == name)
+    .map((attribute) => attribute.value)
+    .firstOrNull;
+
+extension on String {
+  String? get nullIfEmpty => isEmpty ? null : this;
 }

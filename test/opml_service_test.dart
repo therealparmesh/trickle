@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -47,8 +47,54 @@ void main() {
     expect(outline.getAttribute('htmlUrl'), 'https://example.com/show');
   });
 
+  test('round-trips reader categories as standard OPML folders', () {
+    final source = buildOpmlDocument(
+      title: 'trickle feeds',
+      subscriptions: const [
+        OpmlSubscription(
+          title: 'Science Daily',
+          feedUrl: 'https://science.test/rss',
+          category: 'Science',
+        ),
+        OpmlSubscription(
+          title: 'World News',
+          feedUrl: 'https://news.test/rss',
+          category: 'News',
+        ),
+        OpmlSubscription(
+          title: 'Loose Feed',
+          feedUrl: 'https://loose.test/rss',
+        ),
+      ],
+    );
+
+    final document = XmlDocument.parse(source);
+    final topLevel = document.rootElement
+        .findElements('body')
+        .single
+        .findElements('outline')
+        .toList();
+    final imported = extractOpmlSubscriptions(source);
+
+    expect(topLevel.map((outline) => outline.getAttribute('text')), [
+      'News',
+      'Science',
+      'Loose Feed',
+    ]);
+    expect(
+      imported.map(
+        (subscription) => (subscription.title, subscription.category),
+      ),
+      [
+        ('World News', 'News'),
+        ('Science Daily', 'Science'),
+        ('Loose Feed', null),
+      ],
+    );
+  });
+
   test(
-    'podcast export includes tokenized URLs and excludes header auth',
+    'podcast, feed, and all exports preserve scope and portable URLs',
     () async {
       FlutterSecureStorage.setMockInitialValues({});
       final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -74,6 +120,7 @@ void main() {
                 feedUrl: entry.$4
                     ? 'private://${entry.$1}'
                     : 'https://${entry.$1}.test/rss',
+                category: Value(entry.$1 == 'reader' ? 'Technology' : null),
                 kind: Value(entry.$3.index),
                 isPrivate: Value(entry.$4),
                 credentialRef: Value(entry.$4 ? entry.$1 : null),
@@ -116,20 +163,50 @@ void main() {
         privateFeeds: privateFeeds,
         scope: OpmlExportScope.reading,
       );
-      final podcasts = extractOpmlUrls(podcastDocument.xml);
-      final allSubscriptions = extractOpmlUrls(allDocument.xml);
-      final reading = extractOpmlUrls(readingDocument.xml);
+      final podcasts = _opmlUrls(podcastDocument.xml);
+      final allSubscriptions = _opmlUrls(allDocument.xml);
+      final reading = _opmlUrls(readingDocument.xml);
+      final podcastSubscriptions = extractOpmlSubscriptions(
+        podcastDocument.xml,
+      );
+      final exportedSubscriptions = extractOpmlSubscriptions(allDocument.xml);
+      final readingSubscriptions = extractOpmlSubscriptions(
+        readingDocument.xml,
+      );
 
       expect(podcasts, [
         'https://podcast.test/rss',
         'https://token.test/rss?token=SECRET',
       ]);
       expect(allSubscriptions, [
-        'https://podcast.test/rss',
         'https://reader.test/rss',
+        'https://podcast.test/rss',
         'https://token.test/rss?token=SECRET',
       ]);
       expect(reading, ['https://reader.test/rss']);
+      expect(
+        podcastSubscriptions.map((subscription) => subscription.category),
+        everyElement(isNull),
+      );
+      expect(
+        exportedSubscriptions
+            .singleWhere(
+              (subscription) =>
+                  subscription.feedUrl == 'https://reader.test/rss',
+            )
+            .category,
+        'Technology',
+      );
+      expect(
+        exportedSubscriptions
+            .where(
+              (subscription) =>
+                  subscription.feedUrl != 'https://reader.test/rss',
+            )
+            .map((subscription) => subscription.category),
+        everyElement(isNull),
+      );
+      expect(readingSubscriptions.single.category, 'Technology');
       expect(podcastDocument.exported, 2);
       expect(podcastDocument.skippedHeaderAuth, 1);
       expect(podcastDocument.skippedMissingCredentials, 2);
@@ -139,6 +216,77 @@ void main() {
       expect(readingDocument.exported, 1);
       expect(readingDocument.skippedHeaderAuth, 0);
       expect(readingDocument.skippedMissingCredentials, 0);
+    },
+  );
+
+  test(
+    'mixed import classifies podcasts and reading feeds exactly once',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final dio = Dio()..httpClientAdapter = _MixedOpmlFeedAdapter();
+      final network = SafeNetworkClient.forTesting(
+        dio,
+        addressValidator: (_) async {},
+      );
+      final privateFeeds = PrivateFeedStore(
+        storage: const FlutterSecureStorage(),
+      );
+      final feeds = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      const source = '''
+        <opml version="2.0"><body>
+          <outline text="Podcasts">
+            <outline text="Imported show"
+              xmlUrl="https://podcast.test/rss?token=SECRET" />
+          </outline>
+          <outline text="Technology">
+            <outline text="Written signal"
+              xmlUrl="https://reader.test/rss" />
+          </outline>
+        </body></opml>
+      ''';
+      final service = OpmlService(
+        database,
+        feeds,
+        privateFeeds,
+        pickFile: () async => XFile.fromData(
+          Uint8List.fromList(utf8.encode(source)),
+          name: 'subscriptions.opml',
+          mimeType: 'text/x-opml',
+        ),
+      );
+      addTearDown(() async {
+        network.close();
+        await database.close();
+      });
+
+      final result = await service.pickAndImport();
+
+      expect(result?.imported, 2);
+      expect(result?.failed, 0);
+      final importedFeeds = await database.select(database.feeds).get();
+      expect(importedFeeds, hasLength(2));
+      final podcast = importedFeeds.singleWhere(
+        (feed) => feed.kind == FeedKind.podcast.index,
+      );
+      final reader = importedFeeds.singleWhere(
+        (feed) => feed.kind == FeedKind.reader.index,
+      );
+      expect(podcast.title, 'Imported show');
+      expect(podcast.category, isNull);
+      expect(podcast.isPrivate, isTrue);
+      expect(reader.title, 'Written signal');
+      expect(reader.category, 'Technology');
+      final episodes = await database.select(database.episodes).get();
+      final articles = await database.select(database.articles).get();
+      expect(episodes, hasLength(1));
+      expect(episodes.single.feedId, podcast.id);
+      expect(articles, hasLength(1));
+      expect(articles.single.feedId, reader.id);
     },
   );
 
@@ -165,7 +313,7 @@ void main() {
       <opml version="1.0">
         <head><title>Podcast subscriptions</title></head>
         <body>
-          <outline text="feeds">
+          <outline text="feeds" xmlUrl="">
             <outline text="One" type="rss" xmlUrl="https://one.test/rss" />
             <outline text="Duplicate" xmlUrl=" https://one.test/rss " />
             <outline text="Equivalent" xmlUrl="HTTP://ONE.TEST/rss#fragment" />
@@ -174,14 +322,21 @@ void main() {
         </body>
       </opml>
     ''';
-    final imported = <String>[];
+    final imported = <OpmlSubscription>[];
 
     final result = await importOpmlSubscriptions(
       source,
-      subscribe: (url) async => imported.add(url),
+      subscribe: (subscription) async => imported.add(subscription),
     );
 
-    expect(imported, ['https://one.test/rss', 'https://two.test/feed.xml']);
+    expect(imported.map((subscription) => subscription.feedUrl), [
+      'https://one.test/rss',
+      'https://two.test/feed.xml',
+    ]);
+    expect(
+      imported.map((subscription) => subscription.category),
+      everyElement('feeds'),
+    );
     expect(result.imported, 2);
     expect(result.failed, 0);
   });
@@ -198,9 +353,11 @@ void main() {
 
     final result = await importOpmlSubscriptions(
       source,
-      subscribe: (url) async {
-        attempted.add(url);
-        if (!url.startsWith('https://')) throw const FormatException();
+      subscribe: (subscription) async {
+        attempted.add(subscription.feedUrl);
+        if (!subscription.feedUrl.startsWith('https://')) {
+          throw const FormatException();
+        }
       },
     );
 
@@ -320,12 +477,63 @@ void main() {
       1005,
       (index) => '<outline xmlUrl="https://example.test/$index" />',
     ).join();
-    final urls = extractOpmlUrls(
+    final subscriptions = extractOpmlSubscriptions(
       '<opml version="2.0"><body>$outlines</body></opml>',
     );
 
-    expect(urls, hasLength(1000));
-    expect(urls.first, 'https://example.test/0');
-    expect(urls.last, 'https://example.test/999');
+    expect(subscriptions, hasLength(1000));
+    expect(subscriptions.first.feedUrl, 'https://example.test/0');
+    expect(subscriptions.last.feedUrl, 'https://example.test/999');
   });
+}
+
+List<String> _opmlUrls(String source) => [
+  for (final subscription in extractOpmlSubscriptions(source))
+    subscription.feedUrl,
+];
+
+final class _MixedOpmlFeedAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final source = switch (options.uri.host) {
+      'podcast.test' =>
+        '''
+        <rss version="2.0"><channel>
+          <title>Imported show</title>
+          <item>
+            <guid>episode-1</guid>
+            <title>Playable episode</title>
+            <enclosure url="https://cdn.test/episode.mp3"
+              type="audio/mpeg" />
+          </item>
+        </channel></rss>
+      ''',
+      'reader.test' =>
+        '''
+        <rss version="2.0"><channel>
+          <title>Written signal</title>
+          <item>
+            <guid>article-1</guid>
+            <title>Readable article</title>
+            <link>https://reader.test/article</link>
+          </item>
+        </channel></rss>
+      ''',
+      _ => throw StateError('Unexpected request: ${options.uri}'),
+    };
+    return ResponseBody.fromString(
+      source,
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/rss+xml'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

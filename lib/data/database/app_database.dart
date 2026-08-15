@@ -34,6 +34,7 @@ class Feeds extends Table {
   TextColumn get siteUrl => text().nullable()();
   TextColumn get imageUrl => text().nullable()();
   TextColumn get author => text().nullable()();
+  TextColumn get category => text().nullable()();
   IntColumn get kind => integer().withDefault(const Constant(1))();
   IntColumn get protocol => integer().withDefault(const Constant(0))();
   BoolColumn get subscribed => boolean().withDefault(const Constant(true))();
@@ -272,7 +273,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -282,22 +283,25 @@ class AppDatabase extends _$AppDatabase {
       await _createSearchIndex();
     },
     onUpgrade: (migrator, from, to) async {
-      if (from < 1 || from > 2 || to != 3) {
+      if (from < 1 || from > 3 || to != 4) {
         throw StateError('Unsupported database migration from $from to $to.');
       }
-      await customStatement('DROP INDEX IF EXISTS idx_articles_unread');
-      await customStatement('DROP INDEX IF EXISTS idx_episodes_automation');
-      await customStatement('DROP INDEX IF EXISTS idx_feeds_last_refresh');
-      await migrator.addColumn(feeds, feeds.protocol);
-      await migrator.addColumn(feeds, feeds.subscribed);
-      await migrator.addColumn(articles, articles.contentFormat);
-      await migrator.addColumn(articles, articles.contentWarning);
-      await migrator.addColumn(articles, articles.sourceEventId);
-      await migrator.addColumn(articles, articles.sourceAddress);
-      await migrator.addColumn(articles, articles.mediaKind);
-      await migrator.createTable(nostrProfiles);
-      await migrator.createTable(nostrRelays);
-      await migrator.createTable(articleAttachments);
+      if (from < 3) {
+        await customStatement('DROP INDEX IF EXISTS idx_articles_unread');
+        await customStatement('DROP INDEX IF EXISTS idx_episodes_automation');
+        await customStatement('DROP INDEX IF EXISTS idx_feeds_last_refresh');
+        await migrator.addColumn(feeds, feeds.protocol);
+        await migrator.addColumn(feeds, feeds.subscribed);
+        await migrator.addColumn(articles, articles.contentFormat);
+        await migrator.addColumn(articles, articles.contentWarning);
+        await migrator.addColumn(articles, articles.sourceEventId);
+        await migrator.addColumn(articles, articles.sourceAddress);
+        await migrator.addColumn(articles, articles.mediaKind);
+        await migrator.createTable(nostrProfiles);
+        await migrator.createTable(nostrRelays);
+        await migrator.createTable(articleAttachments);
+      }
+      await migrator.addColumn(feeds, feeds.category);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:archive/archive.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:trickle/core/constants.dart';
@@ -49,6 +51,124 @@ void main() {
       ),
     );
   });
+
+  test('picker restore round-trips an exported backup', () async {
+    final bytes = await backups.exportBytes();
+    await database.close();
+    final restoredDatabase = AppDatabase.forTesting(NativeDatabase.memory());
+    database = restoredDatabase;
+    var reloads = 0;
+    final restored = BackupService(
+      restoredDatabase,
+      pickFile: () async => XFile.fromData(
+        Uint8List.fromList(bytes),
+        name: 'trickle-backup.zip',
+        mimeType: 'application/zip',
+      ),
+      onImported: () async => reloads++,
+    );
+
+    final result = await restored.pickAndImport();
+
+    expect(result?.feeds, 1);
+    expect(result?.episodes, 0);
+    expect(result?.articles, 0);
+    expect(reloads, 1);
+    expect(
+      (await restoredDatabase.select(restoredDatabase.feeds).get())
+          .single
+          .title,
+      'Local title',
+    );
+  });
+
+  test('reuses an active restore instead of reopening the picker', () async {
+    final picker = Completer<XFile?>();
+    var pickerCalls = 0;
+    final service = BackupService(
+      database,
+      pickFile: () {
+        pickerCalls++;
+        return pickerCalls == 1 ? picker.future : Future.value();
+      },
+    );
+
+    final first = service.pickAndImport();
+    final second = service.pickAndImport();
+
+    expect(identical(first, second), isTrue);
+    expect(pickerCalls, 1);
+    picker.complete(null);
+    expect(await first, isNull);
+    expect(await second, isNull);
+    await Future<void>.delayed(Duration.zero);
+    expect(await service.pickAndImport(), isNull);
+    expect(pickerCalls, 2);
+  });
+
+  test('picker and file read failures return specific backup errors', () async {
+    final pickerFailure = BackupService(
+      database,
+      pickFile: () => Future<XFile?>.error(StateError('picker failed')),
+    );
+    final readFailure = BackupService(
+      database,
+      pickFile: () async => XFile(
+        '/definitely-missing/trickle-backup.zip',
+        mimeType: 'application/zip',
+      ),
+    );
+
+    await expectLater(
+      pickerFailure.pickAndImport(),
+      throwsA(
+        isA<BackupException>().having(
+          (error) => error.message,
+          'message',
+          'Couldn’t open the file picker.',
+        ),
+      ),
+    );
+    await expectLater(
+      readFailure.pickAndImport(),
+      throwsA(
+        isA<BackupException>().having(
+          (error) => error.message,
+          'message',
+          'Couldn’t read that backup file.',
+        ),
+      ),
+    );
+  });
+
+  test(
+    'post-restore reload failures report that the data was applied',
+    () async {
+      final bytes = await backups.exportBytes();
+      final service = BackupService(
+        database,
+        pickFile: () async => XFile.fromData(
+          Uint8List.fromList(bytes),
+          name: 'trickle-backup.zip',
+          mimeType: 'application/zip',
+        ),
+        onImported: () => Future<void>.error(StateError('reload failed')),
+      );
+
+      await expectLater(
+        service.pickAndImport(),
+        throwsA(
+          isA<BackupException>().having(
+            (error) => error.message,
+            'message',
+            'Backup restored, but playback state couldn’t reload. '
+                'Restart trickle to finish.',
+          ),
+        ),
+      );
+      expect(await database.feedById('local-feed'), isA<Feed>());
+    },
+  );
 
   test(
     'restore rejects Nostr feeds without a matching profile identity',
@@ -313,6 +433,7 @@ void main() {
             title: 'Signal Author',
             feedUrl:
                 'nostr:npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6',
+            category: const Value('Technology'),
             kind: Value(FeedKind.reader.index),
             protocol: Value(FeedProtocol.nostr.index),
             subscribed: const Value(false),
@@ -402,6 +523,7 @@ void main() {
     final restoredFeed = await restoredDatabase.feedById('nostr-feed');
     expect(restoredFeed?.protocol, FeedProtocol.nostr.index);
     expect(restoredFeed?.subscribed, isFalse);
+    expect(restoredFeed?.category, 'Technology');
     expect(
       (await restoredDatabase.select(restoredDatabase.nostrProfiles).get())
           .single
@@ -477,7 +599,10 @@ void main() {
         Uri.parse('https://cdn.example/audio.mp3?token=portable'),
       );
 
-      final bytes = await BackupService(database, privateFeeds).exportBytes();
+      final bytes = await BackupService(
+        database,
+        privateFeeds: privateFeeds,
+      ).exportBytes();
       await database.close();
       database = AppDatabase.forTesting(NativeDatabase.memory());
       await BackupService(database).importBytes(bytes);

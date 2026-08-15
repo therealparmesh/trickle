@@ -137,18 +137,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         },
                       ),
                       const SizedBox(height: 8),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
+                      AdaptiveSwitchTile(
                         value: images,
                         onChanged: (value) => _runSilent(
                           () => ref
                               .read(settingsRepositoryProvider)
                               .setRemoteImages(value),
                         ),
-                        title: const Text('Remote images'),
-                        subtitle: const Text(
-                          'Loads artwork, reader images, show-note images, and link previews from publishers.',
-                        ),
+                        title: 'Remote images',
+                        subtitle:
+                            'Loads artwork, reader images, show-note images, and link previews from publishers.',
                       ),
                       _ActionTile(
                         icon: Icons.sync_rounded,
@@ -278,7 +276,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               if (context.mounted && result != null) {
                                 showMessageSnackBar(
                                   context,
-                                  '${result.imported} ${result.imported == 1 ? 'feed' : 'feeds'} imported · ${result.failed} failed',
+                                  '${result.imported} ${result.imported == 1 ? 'subscription' : 'subscriptions'} imported · ${result.failed} failed',
                                 );
                               }
                             } finally {
@@ -325,11 +323,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             final result = await ref
                                 .read(backupServiceProvider)
                                 .pickAndImport();
-                            if (result != null) {
-                              final audio = ref.read(audioHandlerProvider);
-                              await audio.reloadQueueFromDatabase();
-                              await audio.reloadSettingsFromDatabase();
-                            }
                             if (context.mounted && result != null) {
                               showMessageSnackBar(
                                 context,
@@ -415,8 +408,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           sharePositionOrigin: _shareOrigin(context),
         );
     if (!mounted) return;
+    final noun = switch (scope) {
+      OpmlExportScope.podcasts => ('podcast', 'podcasts'),
+      OpmlExportScope.reading => ('feed', 'feeds'),
+      OpmlExportScope.allSubscriptions => ('subscription', 'subscriptions'),
+    };
     final details = <String>[
-      '${result.exported} ${result.exported == 1 ? 'feed' : 'feeds'} exported',
+      '${result.exported} ${result.exported == 1 ? noun.$1 : noun.$2} exported',
       if (result.skippedHeaderAuth case final count when count > 0)
         '$count header-authenticated feed${count == 1 ? '' : 's'} skipped',
       if (result.skippedMissingCredentials case final count when count > 0)

@@ -79,6 +79,17 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _kindMeta = const VerificationMeta('kind');
   @override
   late final GeneratedColumn<int> kind = GeneratedColumn<int>(
@@ -296,6 +307,7 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
     siteUrl,
     imageUrl,
     author,
+    category,
     kind,
     protocol,
     subscribed,
@@ -372,6 +384,12 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
       context.handle(
         _authorMeta,
         author.isAcceptableOrUnknown(data['author']!, _authorMeta),
+      );
+    }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
       );
     }
     if (data.containsKey('kind')) {
@@ -548,6 +566,10 @@ class $FeedsTable extends Feeds with TableInfo<$FeedsTable, Feed> {
         DriftSqlType.string,
         data['${effectivePrefix}author'],
       ),
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      ),
       kind: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}kind'],
@@ -633,6 +655,7 @@ class Feed extends DataClass implements Insertable<Feed> {
   final String? siteUrl;
   final String? imageUrl;
   final String? author;
+  final String? category;
   final int kind;
   final int protocol;
   final bool subscribed;
@@ -658,6 +681,7 @@ class Feed extends DataClass implements Insertable<Feed> {
     this.siteUrl,
     this.imageUrl,
     this.author,
+    this.category,
     required this.kind,
     required this.protocol,
     required this.subscribed,
@@ -693,6 +717,9 @@ class Feed extends DataClass implements Insertable<Feed> {
     }
     if (!nullToAbsent || author != null) {
       map['author'] = Variable<String>(author);
+    }
+    if (!nullToAbsent || category != null) {
+      map['category'] = Variable<String>(category);
     }
     map['kind'] = Variable<int>(kind);
     map['protocol'] = Variable<int>(protocol);
@@ -741,6 +768,9 @@ class Feed extends DataClass implements Insertable<Feed> {
       author: author == null && nullToAbsent
           ? const Value.absent()
           : Value(author),
+      category: category == null && nullToAbsent
+          ? const Value.absent()
+          : Value(category),
       kind: Value(kind),
       protocol: Value(protocol),
       subscribed: Value(subscribed),
@@ -782,6 +812,7 @@ class Feed extends DataClass implements Insertable<Feed> {
       siteUrl: serializer.fromJson<String?>(json['siteUrl']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       author: serializer.fromJson<String?>(json['author']),
+      category: serializer.fromJson<String?>(json['category']),
       kind: serializer.fromJson<int>(json['kind']),
       protocol: serializer.fromJson<int>(json['protocol']),
       subscribed: serializer.fromJson<bool>(json['subscribed']),
@@ -812,6 +843,7 @@ class Feed extends DataClass implements Insertable<Feed> {
       'siteUrl': serializer.toJson<String?>(siteUrl),
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'author': serializer.toJson<String?>(author),
+      'category': serializer.toJson<String?>(category),
       'kind': serializer.toJson<int>(kind),
       'protocol': serializer.toJson<int>(protocol),
       'subscribed': serializer.toJson<bool>(subscribed),
@@ -840,6 +872,7 @@ class Feed extends DataClass implements Insertable<Feed> {
     Value<String?> siteUrl = const Value.absent(),
     Value<String?> imageUrl = const Value.absent(),
     Value<String?> author = const Value.absent(),
+    Value<String?> category = const Value.absent(),
     int? kind,
     int? protocol,
     bool? subscribed,
@@ -865,6 +898,7 @@ class Feed extends DataClass implements Insertable<Feed> {
     siteUrl: siteUrl.present ? siteUrl.value : this.siteUrl,
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
     author: author.present ? author.value : this.author,
+    category: category.present ? category.value : this.category,
     kind: kind ?? this.kind,
     protocol: protocol ?? this.protocol,
     subscribed: subscribed ?? this.subscribed,
@@ -896,6 +930,7 @@ class Feed extends DataClass implements Insertable<Feed> {
       siteUrl: data.siteUrl.present ? data.siteUrl.value : this.siteUrl,
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       author: data.author.present ? data.author.value : this.author,
+      category: data.category.present ? data.category.value : this.category,
       kind: data.kind.present ? data.kind.value : this.kind,
       protocol: data.protocol.present ? data.protocol.value : this.protocol,
       subscribed: data.subscribed.present
@@ -946,6 +981,7 @@ class Feed extends DataClass implements Insertable<Feed> {
           ..write('siteUrl: $siteUrl, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('author: $author, ')
+          ..write('category: $category, ')
           ..write('kind: $kind, ')
           ..write('protocol: $protocol, ')
           ..write('subscribed: $subscribed, ')
@@ -976,6 +1012,7 @@ class Feed extends DataClass implements Insertable<Feed> {
     siteUrl,
     imageUrl,
     author,
+    category,
     kind,
     protocol,
     subscribed,
@@ -1005,6 +1042,7 @@ class Feed extends DataClass implements Insertable<Feed> {
           other.siteUrl == this.siteUrl &&
           other.imageUrl == this.imageUrl &&
           other.author == this.author &&
+          other.category == this.category &&
           other.kind == this.kind &&
           other.protocol == this.protocol &&
           other.subscribed == this.subscribed &&
@@ -1032,6 +1070,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
   final Value<String?> siteUrl;
   final Value<String?> imageUrl;
   final Value<String?> author;
+  final Value<String?> category;
   final Value<int> kind;
   final Value<int> protocol;
   final Value<bool> subscribed;
@@ -1058,6 +1097,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     this.siteUrl = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.author = const Value.absent(),
+    this.category = const Value.absent(),
     this.kind = const Value.absent(),
     this.protocol = const Value.absent(),
     this.subscribed = const Value.absent(),
@@ -1085,6 +1125,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     this.siteUrl = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.author = const Value.absent(),
+    this.category = const Value.absent(),
     this.kind = const Value.absent(),
     this.protocol = const Value.absent(),
     this.subscribed = const Value.absent(),
@@ -1116,6 +1157,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     Expression<String>? siteUrl,
     Expression<String>? imageUrl,
     Expression<String>? author,
+    Expression<String>? category,
     Expression<int>? kind,
     Expression<int>? protocol,
     Expression<bool>? subscribed,
@@ -1143,6 +1185,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
       if (siteUrl != null) 'site_url': siteUrl,
       if (imageUrl != null) 'image_url': imageUrl,
       if (author != null) 'author': author,
+      if (category != null) 'category': category,
       if (kind != null) 'kind': kind,
       if (protocol != null) 'protocol': protocol,
       if (subscribed != null) 'subscribed': subscribed,
@@ -1172,6 +1215,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     Value<String?>? siteUrl,
     Value<String?>? imageUrl,
     Value<String?>? author,
+    Value<String?>? category,
     Value<int>? kind,
     Value<int>? protocol,
     Value<bool>? subscribed,
@@ -1199,6 +1243,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
       siteUrl: siteUrl ?? this.siteUrl,
       imageUrl: imageUrl ?? this.imageUrl,
       author: author ?? this.author,
+      category: category ?? this.category,
       kind: kind ?? this.kind,
       protocol: protocol ?? this.protocol,
       subscribed: subscribed ?? this.subscribed,
@@ -1243,6 +1288,9 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
     }
     if (author.present) {
       map['author'] = Variable<String>(author.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
     }
     if (kind.present) {
       map['kind'] = Variable<int>(kind.value);
@@ -1311,6 +1359,7 @@ class FeedsCompanion extends UpdateCompanion<Feed> {
           ..write('siteUrl: $siteUrl, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('author: $author, ')
+          ..write('category: $category, ')
           ..write('kind: $kind, ')
           ..write('protocol: $protocol, ')
           ..write('subscribed: $subscribed, ')
@@ -7464,6 +7513,7 @@ typedef $$FeedsTableCreateCompanionBuilder =
       Value<String?> siteUrl,
       Value<String?> imageUrl,
       Value<String?> author,
+      Value<String?> category,
       Value<int> kind,
       Value<int> protocol,
       Value<bool> subscribed,
@@ -7492,6 +7542,7 @@ typedef $$FeedsTableUpdateCompanionBuilder =
       Value<String?> siteUrl,
       Value<String?> imageUrl,
       Value<String?> author,
+      Value<String?> category,
       Value<int> kind,
       Value<int> protocol,
       Value<bool> subscribed,
@@ -7631,6 +7682,11 @@ class $$FeedsTableFilterComposer extends Composer<_$AppDatabase, $FeedsTable> {
 
   ColumnFilters<String> get author => $composableBuilder(
     column: $table.author,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7864,6 +7920,11 @@ class $$FeedsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get kind => $composableBuilder(
     column: $table.kind,
     builder: (column) => ColumnOrderings(column),
@@ -7981,6 +8042,9 @@ class $$FeedsTableAnnotationComposer
 
   GeneratedColumn<String> get author =>
       $composableBuilder(column: $table.author, builder: (column) => column);
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
 
   GeneratedColumn<int> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
@@ -8194,6 +8258,7 @@ class $$FeedsTableTableManager
                 Value<String?> siteUrl = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> author = const Value.absent(),
+                Value<String?> category = const Value.absent(),
                 Value<int> kind = const Value.absent(),
                 Value<int> protocol = const Value.absent(),
                 Value<bool> subscribed = const Value.absent(),
@@ -8220,6 +8285,7 @@ class $$FeedsTableTableManager
                 siteUrl: siteUrl,
                 imageUrl: imageUrl,
                 author: author,
+                category: category,
                 kind: kind,
                 protocol: protocol,
                 subscribed: subscribed,
@@ -8248,6 +8314,7 @@ class $$FeedsTableTableManager
                 Value<String?> siteUrl = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> author = const Value.absent(),
+                Value<String?> category = const Value.absent(),
                 Value<int> kind = const Value.absent(),
                 Value<int> protocol = const Value.absent(),
                 Value<bool> subscribed = const Value.absent(),
@@ -8274,6 +8341,7 @@ class $$FeedsTableTableManager
                 siteUrl: siteUrl,
                 imageUrl: imageUrl,
                 author: author,
+                category: category,
                 kind: kind,
                 protocol: protocol,
                 subscribed: subscribed,
