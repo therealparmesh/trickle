@@ -41,15 +41,33 @@ final class NetworkResource {
   final Map<String, String> headers;
 }
 
-final class NetworkWebSocket {
-  NetworkWebSocket(this.socket, this._client);
+abstract interface class NetworkWebSocket {
+  Stream<Object?> get messages;
 
-  final WebSocket socket;
+  void add(Object? data);
+
+  Future<void> close();
+}
+
+typedef NetworkWebSocketConnector =
+    Future<NetworkWebSocket> Function(Uri uri, Duration timeout);
+
+final class _IoNetworkWebSocket implements NetworkWebSocket {
+  _IoNetworkWebSocket(this._socket, this._client);
+
+  final WebSocket _socket;
   final HttpClient _client;
 
+  @override
+  Stream<Object?> get messages => _socket;
+
+  @override
+  void add(Object? data) => _socket.add(data);
+
+  @override
   Future<void> close() async {
     try {
-      await socket.close();
+      await _socket.close();
     } finally {
       _client.close(force: true);
     }
@@ -57,16 +75,29 @@ final class NetworkWebSocket {
 }
 
 final class SafeNetworkClient {
-  SafeNetworkClient._(this._dio, [this._addressValidator]);
+  SafeNetworkClient._(
+    this._dio, [
+    this._addressValidator,
+    this._webSocketConnector,
+    this._allowLiveWebSockets = true,
+  ]);
 
   final Dio _dio;
   final Future<void> Function(Uri uri)? _addressValidator;
+  final NetworkWebSocketConnector? _webSocketConnector;
+  final bool _allowLiveWebSockets;
 
   factory SafeNetworkClient.forTesting(
     Dio dio, {
     required Future<void> Function(Uri uri) addressValidator,
+    NetworkWebSocketConnector? webSocketConnector,
   }) {
-    return SafeNetworkClient._(dio, addressValidator);
+    return SafeNetworkClient._(
+      dio,
+      addressValidator,
+      webSocketConnector,
+      false,
+    );
   }
 
   static Future<SafeNetworkClient> create() async {
@@ -101,6 +132,11 @@ final class SafeNetworkClient {
         totalTimeout <= Duration.zero) {
       throw const NetworkException('Use a public secure relay address.');
     }
+    if (!_allowLiveWebSockets && _webSocketConnector == null) {
+      throw const NetworkException(
+        'Live WebSocket connections are disabled for test clients.',
+      );
+    }
     final stopwatch = Stopwatch()..start();
     final uri = requested.replace(scheme: 'https');
     final validator = _addressValidator;
@@ -109,6 +145,11 @@ final class SafeNetworkClient {
     } else {
       await validator(uri).timeout(totalTimeout);
     }
+    final remaining = _remaining(totalTimeout, stopwatch);
+    final connector = _webSocketConnector;
+    if (connector != null) {
+      return connector(requested, remaining).timeout(remaining);
+    }
     final client = _pinnedHttpClient();
     try {
       // The returned NetworkWebSocket owns and closes this sink.
@@ -116,8 +157,8 @@ final class SafeNetworkClient {
       final socket = await WebSocket.connect(
         requested.toString(),
         customClient: client,
-      ).timeout(_remaining(totalTimeout, stopwatch));
-      return NetworkWebSocket(socket, client);
+      ).timeout(remaining);
+      return _IoNetworkWebSocket(socket, client);
     } on Object {
       client.close(force: true);
       rethrow;

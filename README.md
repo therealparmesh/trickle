@@ -86,7 +86,7 @@ The SQLite database uses schema version 4, WAL mode, indexed timeline queries, f
 - `assets/brand/`: source artwork for deterministic app/store asset generation
 - `docs/`: user-facing privacy and support documents
 - `store/`: release checklist, store metadata, App Store screenshots, and signing export configuration
-- `test/`: unit, repository, database, network, and widget regression tests
+- `test/`: unit, repository, database, network, and widget regression tests; Nostr relay protocol tests use injected in-memory sockets and never contact public relays
 - `tool/`: deterministic brand-asset generation, screenshot capture, and command-line release tooling
 
 After changing a brand source, run `tool/generate_brand_assets.sh` to rebuild the required Android, iOS, launch, and store raster assets.

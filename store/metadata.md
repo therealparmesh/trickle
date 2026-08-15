@@ -81,6 +81,8 @@ Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app t
 
 Follow Nostr profiles from an npub or nprofile address. trickle verifies events, shows the profile's own posts without replies or reposts, respects content warnings, renders Markdown, and supports attached images, native audio, and direct video.
 
+Nostr refresh is more resilient to unavailable or misbehaving relays and overlapping refreshes. Existing verified content remains stable when a relay closes early or an older response finishes late.
+
 Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then filter the Podcasts screen by New, In Progress, or All. Move into Up Next, downloads, saved items, podcast subscriptions, and feed sources without confusing listening progress with queue order. Only the Home screen’s Sources shortcut carries a number badge, with an exact feed subscription count that hides at zero. Podcast details remain visible throughout subscribe and unsubscribe actions.
 
 The Feeds collection now includes a consistent See all action that opens the complete reader.

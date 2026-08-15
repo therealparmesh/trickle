@@ -1,11 +1,17 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:bip340/bip340.dart' as bip340;
 import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/core/nostr_identifier.dart';
+import 'package:trickle/data/database/app_database.dart';
+import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/nostr/nostr_event.dart';
+import 'package:trickle/data/repositories/nostr_repository.dart';
 
 void main() {
   test(
@@ -205,6 +211,203 @@ void main() {
       hasLength(10),
     );
   });
+
+  test(
+    'relay events are verified before matching IDs are deduplicated',
+    () async {
+      const privateKey =
+          '0000000000000000000000000000000000000000000000000000000000000003';
+      final publicKey = bip340.getPublicKey(privateKey);
+      final valid = _signedEvent(
+        privateKey: privateKey,
+        publicKey: publicKey,
+        createdAt: 109,
+        kind: 1,
+        tags: const [],
+        content: 'Verified post',
+      );
+      final poisoned = {...valid, 'content': 'Tampered post'};
+      var connectionIndex = 0;
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final network = SafeNetworkClient.forTesting(
+        Dio(),
+        addressValidator: (_) async {},
+        webSocketConnector: (_, _) async {
+          final events = switch (connectionIndex++) {
+            0 => [poisoned],
+            1 => [valid],
+            _ => const <Map<String, Object?>>[],
+          };
+          return _ScriptedRelaySocket(events: events);
+        },
+      );
+      final repository = NostrRepository(database: database, network: network);
+
+      try {
+        final feed = await repository.subscribe(encodeNpub(publicKey));
+        final articles = await database.select(database.articles).get();
+
+        expect(connectionIndex, 3);
+        expect(feed.refreshError, isNull);
+        expect(articles, hasLength(1));
+        expect(articles.single.title, 'Verified post');
+      } finally {
+        network.close();
+        await database.close();
+      }
+    },
+  );
+
+  test('valid relay events survive a cleanup write failure', () async {
+    const privateKey =
+        '0000000000000000000000000000000000000000000000000000000000000003';
+    final publicKey = bip340.getPublicKey(privateKey);
+    final event = _signedEvent(
+      privateKey: privateKey,
+      publicKey: publicKey,
+      createdAt: 110,
+      kind: 1,
+      tags: const [],
+      content: 'Keep this post',
+    );
+    final sockets = <_ScriptedRelaySocket>[];
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+      webSocketConnector: (_, _) async {
+        final socket = _ScriptedRelaySocket(
+          events: [event],
+          failCloseMessage: true,
+        );
+        sockets.add(socket);
+        return socket;
+      },
+    );
+    final repository = NostrRepository(database: database, network: network);
+
+    try {
+      final feed = await repository.subscribe(encodeNpub(publicKey));
+      final articles = await database.select(database.articles).get();
+
+      expect(feed.refreshError, isNull);
+      expect(articles.single.title, 'Keep this post');
+      expect(sockets, hasLength(3));
+      expect(sockets.every((socket) => socket.closed), isTrue);
+    } finally {
+      network.close();
+      await database.close();
+    }
+  });
+
+  test(
+    'a relay that closes without data is not reported as refreshed',
+    () async {
+      const privateKey =
+          '0000000000000000000000000000000000000000000000000000000000000003';
+      final publicKey = bip340.getPublicKey(privateKey);
+      var connections = 0;
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final network = SafeNetworkClient.forTesting(
+        Dio(),
+        addressValidator: (_) async {},
+        webSocketConnector: (_, _) async {
+          connections++;
+          return _ScriptedRelaySocket(closeBeforeData: true);
+        },
+      );
+      final repository = NostrRepository(database: database, network: network);
+
+      try {
+        final feed = await repository.subscribe(encodeNpub(publicKey));
+
+        expect(connections, 3);
+        expect(feed.lastRefresh, isNotNull);
+        expect(feed.refreshError, 'Couldn’t reach this profile’s relays.');
+        expect(await database.select(database.articles).get(), isEmpty);
+      } finally {
+        network.close();
+        await database.close();
+      }
+    },
+  );
+
+  test('an older relay response cannot replace newer content', () async {
+    const privateKey =
+        '0000000000000000000000000000000000000000000000000000000000000003';
+    final publicKey = bip340.getPublicKey(privateKey);
+    final olderEvent = _signedEvent(
+      privateKey: privateKey,
+      publicKey: publicKey,
+      createdAt: 111,
+      kind: 30023,
+      tags: const [
+        ['d', 'daily'],
+        ['title', 'Older article'],
+      ],
+      content: 'Older body',
+    );
+    final newerEvent = _signedEvent(
+      privateKey: privateKey,
+      publicKey: publicKey,
+      createdAt: 112,
+      kind: 30023,
+      tags: const [
+        ['d', 'daily'],
+        ['title', 'Newer article'],
+      ],
+      content: 'Newer body',
+    );
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final initialNetwork = _testNetwork(() => _ScriptedRelaySocket());
+    final feed = await NostrRepository(
+      database: database,
+      network: initialNetwork,
+    ).subscribe(encodeNpub(publicKey));
+    final releaseOlder = Completer<void>();
+    final olderStarted = Completer<void>();
+    var olderRequests = 0;
+    final olderNetwork = _testNetwork(
+      () => _ScriptedRelaySocket(
+        events: [olderEvent],
+        release: releaseOlder.future,
+        onRequest: () {
+          olderRequests++;
+          if (olderRequests == 3) olderStarted.complete();
+        },
+      ),
+    );
+    final newerNetwork = _testNetwork(
+      () => _ScriptedRelaySocket(events: [newerEvent]),
+    );
+    final olderRepository = NostrRepository(
+      database: database,
+      network: olderNetwork,
+    );
+    final newerRepository = NostrRepository(
+      database: database,
+      network: newerNetwork,
+    );
+
+    try {
+      final olderRefresh = olderRepository.refresh(feed);
+      await olderStarted.future.timeout(const Duration(seconds: 1));
+      expect(await newerRepository.refresh(feed), isTrue);
+      releaseOlder.complete();
+      expect(await olderRefresh, isTrue);
+
+      final articles = await database.select(database.articles).get();
+      expect(articles, hasLength(1));
+      expect(articles.single.title, 'Newer article');
+      expect(articles.single.summary, isNull);
+    } finally {
+      if (!releaseOlder.isCompleted) releaseOlder.complete();
+      initialNetwork.close();
+      olderNetwork.close();
+      newerNetwork.close();
+      await database.close();
+    }
+  });
 }
 
 Map<String, Object?> _signedEvent({
@@ -226,4 +429,64 @@ Map<String, Object?> _signedEvent({
     'content': content,
     'sig': bip340.sign(privateKey, id, ''.padLeft(64, '0')),
   };
+}
+
+final class _ScriptedRelaySocket implements NetworkWebSocket {
+  _ScriptedRelaySocket({
+    this.events = const [],
+    this.closeBeforeData = false,
+    this.failCloseMessage = false,
+    this.release,
+    this.onRequest,
+  });
+
+  final List<Map<String, Object?>> events;
+  final bool closeBeforeData;
+  final bool failCloseMessage;
+  final Future<void>? release;
+  final void Function()? onRequest;
+  final StreamController<Object?> _messages = StreamController<Object?>();
+  bool closed = false;
+
+  @override
+  Stream<Object?> get messages => _messages.stream;
+
+  @override
+  void add(Object? data) {
+    final decoded = jsonDecode(data! as String) as List<Object?>;
+    if (decoded.first == 'CLOSE') {
+      if (failCloseMessage) throw StateError('relay already closed');
+      return;
+    }
+    if (decoded.first != 'REQ') return;
+    final subscription = decoded[1];
+    onRequest?.call();
+    scheduleMicrotask(() async {
+      await release;
+      if (closed) return;
+      if (closeBeforeData) {
+        _messages.add(jsonEncode(['CLOSED', subscription, 'closed']));
+        return;
+      }
+      for (final event in events) {
+        _messages.add(jsonEncode(['EVENT', subscription, event]));
+      }
+      _messages.add(jsonEncode(['EOSE', subscription]));
+    });
+  }
+
+  @override
+  Future<void> close() async {
+    if (closed) return;
+    closed = true;
+    await _messages.close();
+  }
+}
+
+SafeNetworkClient _testNetwork(_ScriptedRelaySocket Function() socket) {
+  return SafeNetworkClient.forTesting(
+    Dio(),
+    addressValidator: (_) async {},
+    webSocketConnector: (_, _) async => socket(),
+  );
 }

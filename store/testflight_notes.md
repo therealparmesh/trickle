@@ -23,6 +23,7 @@ Please test the combined podcast and feed flow:
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, share it, and open it in the browser
 - Add a Nostr profile by `npub` and `nprofile`; verify only signed root posts appear, replies and reposts are absent, content warnings require a reveal, Markdown is readable, images keep their aspect ratio, native audio saves progress, and direct video can be minimized
+- Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
 - Open YouTube entries from both a YouTube feed and a post attachment; both should use the same initial player path and keep any official-source fallback inside that player
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed

@@ -291,6 +291,27 @@ void main() {
     client.close();
   });
 
+  test('test clients cannot open live WebSocket connections', () async {
+    var validated = false;
+    final client = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async => validated = true,
+    );
+
+    await expectLater(
+      client.connectWebSocket(Uri.parse('wss://relay.example')),
+      throwsA(
+        isA<NetworkException>().having(
+          (error) => error.message,
+          'message',
+          'Live WebSocket connections are disabled for test clients.',
+        ),
+      ),
+    );
+    expect(validated, isFalse);
+    client.close();
+  });
+
   test('address filtering blocks local targets without overblocking /16s', () {
     for (final raw in const [
       '10.0.0.1',

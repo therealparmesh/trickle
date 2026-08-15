@@ -101,7 +101,9 @@ final class NostrRepository {
               outroSkipMs: const Value(0),
               autoQueue: const Value(false),
               createdAt: existing?.createdAt ?? now,
-              updatedAt: now,
+              updatedAt: existing == null
+                  ? now
+                  : _nextRevision(now, existing.updatedAt),
             ),
           );
       await _database
@@ -202,14 +204,22 @@ final class NostrRepository {
     if (successful.isEmpty) {
       throw const NetworkException('Couldn’t reach this profile’s relays.');
     }
-    final byId = <String, Map<String, Object?>>{};
+    final byPayload = <String, Map<String, Object?>>{};
     for (final events in successful) {
       for (final event in events) {
-        final id = event['id'];
-        if (id is String) byId.putIfAbsent(id, () => event);
+        final fingerprint = jsonEncode([
+          event['id'],
+          event['pubkey'],
+          event['created_at'],
+          event['kind'],
+          event['tags'],
+          event['content'],
+          event['sig'],
+        ]);
+        byPayload.putIfAbsent(fingerprint, () => event);
       }
     }
-    return byId.values.toList(growable: false);
+    return byPayload.values.toList(growable: false);
   }
 
   Future<List<Map<String, Object?>>> _loadRelay(
@@ -230,17 +240,17 @@ final class NostrRepository {
     final subscription = 'trickle-${DateTime.now().microsecondsSinceEpoch}';
     final events = <Map<String, Object?>>[];
     var receivedBytes = 0;
-    final done = Completer<void>();
+    final done = Completer<_RelayCompletion>();
     late final StreamSubscription<Object?> stream;
     final timer = Timer(remaining, () {
-      if (!done.isCompleted) done.complete();
+      if (!done.isCompleted) done.complete(_RelayCompletion.timedOut);
     });
-    stream = connection.socket.listen(
+    stream = connection.messages.listen(
       (message) {
         if (done.isCompleted || message is! String) return;
-        receivedBytes += message.length;
+        receivedBytes += utf8.encode(message).length;
         if (receivedBytes > 2 * 1024 * 1024) {
-          done.complete();
+          done.complete(_RelayCompletion.limitReached);
           return;
         }
         try {
@@ -251,14 +261,14 @@ final class NostrRepository {
             return;
           }
           if (decoded.first == 'EOSE') {
-            done.complete();
+            done.complete(_RelayCompletion.endOfStoredEvents);
           } else if (decoded.first == 'EVENT' &&
               decoded.length >= 3 &&
               decoded[2] is Map &&
               events.length < 250) {
             events.add((decoded[2] as Map).cast<String, Object?>());
           } else if (decoded.first == 'CLOSED') {
-            done.complete();
+            done.complete(_RelayCompletion.closed);
           }
         } on Object {
           // Ignore malformed relay messages; verified events remain usable.
@@ -268,12 +278,12 @@ final class NostrRepository {
         if (!done.isCompleted) done.completeError(error, stackTrace);
       },
       onDone: () {
-        if (!done.isCompleted) done.complete();
+        if (!done.isCompleted) done.complete(_RelayCompletion.disconnected);
       },
       cancelOnError: false,
     );
     try {
-      connection.socket.add(
+      connection.add(
         jsonEncode([
           'REQ',
           subscription,
@@ -284,8 +294,20 @@ final class NostrRepository {
           },
         ]),
       );
-      await done.future;
-      connection.socket.add(jsonEncode(['CLOSE', subscription]));
+      final completion = await done.future;
+      if (completion != _RelayCompletion.endOfStoredEvents) {
+        throw NetworkException(switch (completion) {
+          _RelayCompletion.timedOut => 'The relay request timed out.',
+          _RelayCompletion.limitReached =>
+            'The relay response exceeded the safety limit.',
+          _ => 'The relay closed before completing its response.',
+        });
+      }
+      try {
+        connection.add(jsonEncode(['CLOSE', subscription]));
+      } on Object {
+        // Valid events remain usable when the relay has already closed.
+      }
       return events;
     } finally {
       timer.cancel();
@@ -310,7 +332,8 @@ final class NostrRepository {
       final current = await _database.feedById(feed.id);
       if (current == null ||
           !current.subscribed ||
-          current.protocol != FeedProtocol.nostr.index) {
+          current.protocol != FeedProtocol.nostr.index ||
+          current.updatedAt != feed.updatedAt) {
         return;
       }
       final title = profile?.name ?? current.title;
@@ -324,7 +347,7 @@ final class NostrRepository {
           author: Value(encodeNpub(publicKey)),
           lastRefresh: Value(now),
           refreshError: const Value(null),
-          updatedAt: Value(now),
+          updatedAt: Value(_nextRevision(now, current.updatedAt)),
         ),
       );
       await _replaceRelays(feed.id, relays);
@@ -494,4 +517,17 @@ final class NostrRepository {
     return cutoff != null &&
         (publishedAt == null || !publishedAt.isAfter(cutoff));
   }
+
+  DateTime _nextRevision(DateTime now, DateTime previous) {
+    final nextStoredSecond = previous.add(const Duration(seconds: 1));
+    return now.isAfter(nextStoredSecond) ? now : nextStoredSecond;
+  }
+}
+
+enum _RelayCompletion {
+  endOfStoredEvents,
+  closed,
+  disconnected,
+  limitReached,
+  timedOut,
 }
