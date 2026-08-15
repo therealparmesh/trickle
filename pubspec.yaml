@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Provides the route-transition fragment shader bundled below.
   animated_glitch: 2.0.0+2
   archive: 4.0.9
   audio_service: 0.18.19
@@ -60,6 +61,8 @@ flutter:
     # drift in Xcode.
     enable-swift-package-manager: false
   uses-material-design: true
+  shaders:
+    - packages/animated_glitch/shader/glitch.frag
   assets:
     - assets/fonts/OFL-ChakraPetch.txt
     - assets/fonts/OFL-SpaceGrotesk.txt

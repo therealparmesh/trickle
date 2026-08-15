@@ -2,11 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:animated_glitch/animated_glitch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-
-import '../../core/constants.dart';
 
 /// A brief, non-interactive signal effect for route navigation.
 ///
@@ -15,7 +12,7 @@ import '../../core/constants.dart';
 final class NavigationGlitch extends StatefulWidget {
   const NavigationGlitch({required this.child, this.routeObserver, super.key});
 
-  static const duration = Duration(milliseconds: 280);
+  static const duration = Duration(milliseconds: 190);
 
   final Widget child;
   final RouteObserver<ModalRoute<dynamic>>? routeObserver;
@@ -24,28 +21,20 @@ final class NavigationGlitch extends StatefulWidget {
   State<NavigationGlitch> createState() => _NavigationGlitchState();
 }
 
-class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
-  static const _maxCapturePixelRatio = 1.25;
+class _NavigationGlitchState extends State<NavigationGlitch>
+    with RouteAware, SingleTickerProviderStateMixin {
+  static const _maxCapturePixelRatio = 2.0;
+  static final _program = ui.FragmentProgram.fromAsset(
+    'packages/animated_glitch/shader/glitch.frag',
+  );
 
   final _captureBoundaryKey = GlobalKey();
-  late final _glitchController = AnimatedGlitchController(
-    autoStart: false,
-    frequency: const Duration(milliseconds: 120),
-    chance: 100,
-    level: 1.2,
-    colorChannelShift: const ColorChannelShift(
-      colors: [AppConstants.cyan, AppConstants.magenta, AppConstants.acid],
-      delay: Duration(milliseconds: 18),
-      spread: 8,
-    ),
-    distortionShift: const DistortionShift(
-      count: 3,
-      delay: Duration(milliseconds: 18),
-      hideDelay: Duration(milliseconds: 55),
-    ),
-  );
-  Timer? _timer;
+  late final _animation = AnimationController(
+    vsync: this,
+    duration: NavigationGlitch.duration,
+  )..addStatusListener(_handleAnimationStatus);
   ui.Image? _snapshot;
+  ui.FragmentShader? _shader;
   bool _started = false;
   int _captureGeneration = 0;
   ModalRoute<dynamic>? _route;
@@ -92,7 +81,7 @@ class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
   void _scheduleEffect() {
     if (!mounted || MediaQuery.disableAnimationsOf(context)) return;
     _cancelEffect(rebuild: true);
-    final generation = ++_captureGeneration;
+    final generation = _captureGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_captureRoute(generation));
     });
@@ -103,31 +92,40 @@ class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
     final renderObject = _captureBoundaryKey.currentContext?.findRenderObject();
     if (renderObject is! RenderRepaintBoundary) return;
 
-    ui.Image image;
+    ui.Image? capturedImage;
     try {
-      image = await renderObject.toImage(
+      capturedImage = await renderObject.toImage(
         pixelRatio: math.min(
           MediaQuery.devicePixelRatioOf(context),
           _maxCapturePixelRatio,
         ),
       );
+      final program = await _program;
+      if (!mounted || generation != _captureGeneration) {
+        capturedImage.dispose();
+        return;
+      }
+      _shader ??= program.fragmentShader();
     } on Object {
+      capturedImage?.dispose();
       return;
     }
 
     if (!mounted || generation != _captureGeneration) {
-      image.dispose();
+      capturedImage.dispose();
       return;
     }
-    setState(() => _snapshot = image);
-    _glitchController.start();
-    _timer = Timer(NavigationGlitch.duration, _finishEffect);
+    setState(() => _snapshot = capturedImage);
+    unawaited(_animation.forward(from: 0));
+  }
+
+  void _handleAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) _finishEffect();
   }
 
   void _finishEffect() {
     if (!mounted) return;
-    _timer = null;
-    _glitchController.reset();
+    _animation.reset();
     final image = _snapshot;
     setState(() => _snapshot = null);
     if (image != null) _disposeAfterFrame(image);
@@ -135,9 +133,9 @@ class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
 
   void _cancelEffect({bool rebuild = false}) {
     _captureGeneration++;
-    _timer?.cancel();
-    _timer = null;
-    _glitchController.reset();
+    _animation
+      ..stop()
+      ..reset();
     final image = _snapshot;
     if (image != null && rebuild && mounted) {
       setState(() => _snapshot = null);
@@ -155,8 +153,8 @@ class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
   void dispose() {
     _captureGeneration++;
     widget.routeObserver?.unsubscribe(this);
-    _timer?.cancel();
-    _glitchController.dispose();
+    _animation.dispose();
+    _shader?.dispose();
     _snapshot?.dispose();
     super.dispose();
   }
@@ -164,20 +162,21 @@ class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
+    final shader = _shader;
     return Stack(
       fit: StackFit.expand,
       children: [
         RepaintBoundary(key: _captureBoundaryKey, child: widget.child),
-        if (snapshot != null)
+        if (snapshot != null && shader != null)
           Positioned.fill(
             child: ExcludeSemantics(
               child: IgnorePointer(
-                child: AnimatedGlitch(
-                  controller: _glitchController,
-                  child: RawImage(
+                child: CustomPaint(
+                  key: const ValueKey('navigation-glitch-overlay'),
+                  painter: _GlitchPainter(
                     image: snapshot,
-                    fit: BoxFit.fill,
-                    filterQuality: FilterQuality.low,
+                    shader: shader,
+                    animation: _animation,
                   ),
                 ),
               ),
@@ -186,4 +185,49 @@ class _NavigationGlitchState extends State<NavigationGlitch> with RouteAware {
       ],
     );
   }
+}
+
+final class _GlitchPainter extends CustomPainter {
+  _GlitchPainter({
+    required this.image,
+    required this.shader,
+    required this.animation,
+  }) : super(repaint: animation);
+
+  static const _distortionLevel = 0.018;
+  static const _colorChannelLevel = 0.006;
+  static const _glitchChance = 72.0;
+  static const _glitchSlices = 4.0;
+
+  final ui.Image image;
+  final ui.FragmentShader shader;
+  final Animation<double> animation;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final elapsedSeconds =
+        animation.value *
+        NavigationGlitch.duration.inMicroseconds /
+        Duration.microsecondsPerSecond;
+    shader
+      ..setFloat(0, elapsedSeconds)
+      ..setFloat(1, size.width)
+      ..setFloat(2, size.height)
+      ..setFloat(3, _distortionLevel)
+      ..setFloat(4, _colorChannelLevel)
+      ..setFloat(5, 1)
+      ..setFloat(6, _glitchChance)
+      ..setFloat(7, 1)
+      ..setFloat(8, 1)
+      ..setFloat(9, 0)
+      ..setFloat(10, 1)
+      ..setFloat(11, _glitchSlices)
+      ..setImageSampler(0, image, filterQuality: FilterQuality.medium);
+
+    canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlitchPainter oldDelegate) =>
+      oldDelegate.image != image || oldDelegate.shader != shader;
 }

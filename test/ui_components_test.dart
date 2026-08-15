@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui' show SemanticsAction;
 
-import 'package:animated_glitch/animated_glitch.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -783,141 +782,95 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('navigation screens glitch on entry without remounting content', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    final glitch = find.byWidgetPredicate((widget) => widget is AnimatedGlitch);
-    final pageKey = GlobalKey<_NavigationTestPageState>();
+  testWidgets(
+    'navigation glitch preserves state, replays, and respects reduced motion',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final observer = RouteObserver<ModalRoute<dynamic>>();
+      final navigatorKey = GlobalKey<NavigatorState>();
+      final glitch = find.byKey(const ValueKey('navigation-glitch-overlay'));
+      final pageKey = GlobalKey<_NavigationTestPageState>();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: NavigationGlitch(
-          child: _NavigationTestPage(key: pageKey, title: 'Settings'),
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          navigatorObservers: [observer],
+          theme: TrickleTheme.dark,
+          home: NavigationGlitch(
+            routeObserver: observer,
+            child: _NavigationTestPage(key: pageKey, title: 'Settings'),
+          ),
         ),
-      ),
-    );
-    final initialState = pageKey.currentState;
+      );
+      final initialState = pageKey.currentState;
 
-    await tester.pump();
-    expect(glitch, findsOneWidget);
-    final glitchController = tester
-        .widget<AnimatedGlitchWithoutShader>(glitch)
-        .controller;
-    expect(glitchController.isActive, isTrue);
-    expect(find.bySemanticsLabel('Settings'), findsOneWidget);
-    expect(find.text('Route content'), findsOneWidget);
-    expect(
-      find.ancestor(
-        of: find.byType(_NavigationTestPage),
-        matching: find.byType(NavigationGlitch),
-      ),
-      findsOneWidget,
-    );
+      await _pumpUntilGlitch(tester, glitch);
+      expect(glitch, findsOneWidget);
+      expect(find.bySemanticsLabel('Settings'), findsOneWidget);
+      expect(find.text('Route content'), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.byType(_NavigationTestPage),
+          matching: find.byType(NavigationGlitch),
+        ),
+        findsOneWidget,
+      );
 
-    await tester.pump(const Duration(milliseconds: 120));
-    await tester.pump(const Duration(milliseconds: 19));
-    expect(glitchController.colorChannels, isNotEmpty);
-    expect(glitchController.distortions, isNotEmpty);
+      await tester.pump(const Duration(milliseconds: 70));
+      expect(glitch, findsOneWidget);
 
-    await tester.pump(
-      NavigationGlitch.duration - const Duration(milliseconds: 139),
-    );
-    expect(glitch, findsNothing);
-    expect(pageKey.currentState, same(initialState));
-    expect(find.bySemanticsLabel('Settings'), findsOneWidget);
-    pageKey.currentState!.increment();
-    await tester.pump();
-    expect(find.text('Updates: 1'), findsOneWidget);
+      await tester.pump(
+        NavigationGlitch.duration - const Duration(milliseconds: 69),
+      );
+      expect(glitch, findsNothing);
+      expect(pageKey.currentState, same(initialState));
+      expect(find.bySemanticsLabel('Settings'), findsOneWidget);
+      pageKey.currentState!.increment();
+      await tester.pump();
+      expect(find.text('Updates: 1'), findsOneWidget);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: MediaQuery(
-          data: const MediaQueryData(disableAnimations: true),
-          child: NavigationGlitch(
-            key: const ValueKey('reduced-motion'),
-            child: _NavigationTestPage(
-              key: GlobalKey<_NavigationTestPageState>(),
-              title: 'Search',
+      unawaited(
+        navigatorKey.currentState!.push(
+          PageRouteBuilder<void>(
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (_, _, _) =>
+                const Scaffold(body: Text('Second screen')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(glitch, findsNothing);
+
+      navigatorKey.currentState!.pop();
+      await tester.pump();
+      await _pumpUntilGlitch(tester, glitch);
+      expect(glitch, findsOneWidget);
+      expect(pageKey.currentState, same(initialState));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: TrickleTheme.dark,
+          home: MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: NavigationGlitch(
+              key: const ValueKey('reduced-motion'),
+              child: _NavigationTestPage(
+                key: GlobalKey<_NavigationTestPageState>(),
+                title: 'Search',
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    expect(glitch, findsNothing);
-    expect(find.bySemanticsLabel('Search'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    semantics.dispose();
-  });
-
-  testWidgets('return navigation replays the existing screen glitch', (
-    tester,
-  ) async {
-    final observer = RouteObserver<ModalRoute<dynamic>>();
-    final navigatorKey = GlobalKey<NavigatorState>();
-    final pageKey = GlobalKey<_NavigationTestPageState>();
-    final glitch = find.byWidgetPredicate((widget) => widget is AnimatedGlitch);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        navigatorKey: navigatorKey,
-        navigatorObservers: [observer],
-        home: NavigationGlitch(
-          routeObserver: observer,
-          child: _NavigationTestPage(key: pageKey, title: 'Library'),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(NavigationGlitch.duration);
-    final initialState = pageKey.currentState;
-
-    unawaited(
-      navigatorKey.currentState!.push(
-        PageRouteBuilder<void>(
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-          pageBuilder: (_, _, _) => const Scaffold(body: Text('Second screen')),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(glitch, findsNothing);
-
-    navigatorKey.currentState!.pop();
-    await tester.pump();
-    await tester.pump();
-
-    expect(glitch, findsOneWidget);
-    expect(pageKey.currentState, same(initialState));
-
-    await tester.pump(NavigationGlitch.duration);
-    await tester.pumpAndSettle();
-    expect(glitch, findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('navigation glitch disposes safely during an active effect', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: NavigationGlitch(child: Scaffold(body: Text('First screen'))),
-      ),
-    );
-    await tester.pump();
-    expect(find.byType(AnimatedGlitchWithoutShader), findsOneWidget);
-
-    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
-    await tester.pump(NavigationGlitch.duration);
-
-    expect(find.byType(NavigationGlitch), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(glitch, findsNothing);
+      expect(find.bySemanticsLabel('Search'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+  );
 
   testWidgets('adaptive tabs keep stable labels at large text', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
@@ -2309,6 +2262,13 @@ final class _NavigationTestPageState extends State<_NavigationTestPage> {
 }
 
 void _noop() {}
+
+Future<void> _pumpUntilGlitch(WidgetTester tester, Finder glitch) async {
+  for (var attempt = 0; attempt < 30 && glitch.evaluate().isEmpty; attempt++) {
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  if (glitch.evaluate().isNotEmpty) await tester.pump();
+}
 
 Feed _privateFeed() {
   final now = DateTime.utc(2026, 7, 17);
