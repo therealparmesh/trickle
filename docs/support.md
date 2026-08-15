@@ -33,23 +33,23 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 
 ### Feed categories
 
-Open a non-podcast source, open Feed settings, and choose a previously used category or enter a new one. This moves that source without affecting the others. From Reader > Feeds, choose Rename beside a category to rename it for every source in that group. Renaming to an existing category merges the groups. Suggestions and grouping match category names without regard to capitalization. Clearing a source's Category field returns it to Uncategorized. Podcasts do not use feed categories.
+Open a non-podcast source, then open Feed settings. Choose an existing category or enter a new one. To rename a category, open Reader > Feeds and choose Rename. Clear the Category field to move a source back to Uncategorized. Podcasts do not use categories.
 
 ### Playback
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
-Episode lists label untouched episodes New, partially listened episodes In Progress, and completed episodes Played. In-progress rows show saved progress and Resume. Playback resumes from a saved position after at least 10 seconds of listening.
+Episodes are marked New, In Progress, or Played. Progress is saved after 10 seconds of listening.
 
 If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
 
 ### Video feeds
 
-Use Add YouTube for focused channel and playlist guidance, or paste a public YouTube channel, playlist, or YouTube Atom feed into Add Feed. A video shared from inside a public playlist follows that playlist. Private, members-only, and account-specific lists are not supported by public feeds.
+Use Add YouTube to add a public channel, playlist, or YouTube Atom feed. Private and members-only feeds are not supported.
 
-Video entries require a network connection. If the initial video page cannot load, the same in-app player falls back to the official source URL from the feed. If neither attempt loads, use Try again or Open original. Minimize the player to keep the same live video in the Now Playing bar while navigating trickle.
+Video requires a network connection. Public YouTube videos play without ads when supported. If that player fails, trickle tries the official source. If neither works, choose Try again or Open original. Minimize the player to keep watching while using trickle.
 
-Use the player’s Picture in Picture button to start the system window on a supported iPhone or Android 8 or later device. While Picture in Picture is active, the in-app Now Playing bar shows the video thumbnail and its close button ends the video. Locking the screen without closing Picture in Picture keeps its audio and playback position moving. If trickle is visible, closing or restoring the system window returns the same video and timestamp to the live minimized player. Closing the system window while trickle is in the background or the screen is locked ends playback. Video audio can continue while the app is hidden or locked only during Picture in Picture. Otherwise, hiding trickle pauses the video. Podcast audio continues to use native background playback.
+Use the Picture in Picture button on a supported device to keep video and audio playing outside trickle or when the screen is locked. Closing or restoring Picture in Picture while trickle is visible returns the video to the minimized player. Closing it while trickle is in the background ends playback. Without Picture in Picture, hiding trickle pauses video. Podcast audio continues normally in the background.
 
 ### Nostr profile feeds
 
@@ -71,9 +71,9 @@ Remove completed downloads from the library or choose a shorter automatic cleanu
 
 ## Backup and migration
 
-Settings can import standard OPML files containing podcasts, RSS feeds, and YouTube feeds together. Each source is classified from its feed contents and appears in the matching section. Separate exports are available for podcast subscriptions, RSS and YouTube subscriptions, or all OPML-compatible subscriptions. Reader categories use standard OPML folders and survive import and export. Portable tokenized feed URLs are included; feeds that require separate authorization headers are skipped. Nostr profiles are not representable in standard OPML. Imported public podcasts are recognized as subscribed when the same feed appears in podcast search.
+Settings can import standard OPML files containing podcasts, RSS feeds, and YouTube feeds. You can export podcasts, feeds, or all compatible subscriptions. Feed categories are stored as OPML folders. Portable URLs with embedded tokens are included; feeds that require separate authorization headers are skipped. Nostr profiles are stored only in trickle backups because OPML does not support them.
 
-The local ZIP backup includes portable podcast and feed subscriptions, Nostr profiles and relay choices, articles and attachments, reading and playback state, queue entries, bookmarks, and settings. A private feed whose token is entirely in its URL is portable and included. Authorization headers, passwords entered separately from a URL, and downloaded media files are excluded.
+The local ZIP backup includes subscriptions, Nostr profiles, articles, playback and reading state, queues, bookmarks, and settings. It does not include separate authorization headers, passwords, or downloaded media.
 
 Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data. Canceling the picker makes no changes. If a restore is already running, tapping Restore local backup again rejoins that operation instead of opening another picker or applying the backup twice.
 

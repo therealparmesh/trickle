@@ -1,6 +1,6 @@
 # trickle
 
-trickle is a podcast player and RSS reader for iOS and Android. It combines compact information design with a restrained cyberpunk visual system.
+trickle is a podcast player and feed reader for iOS and Android, with a cyberpunk interface.
 
 ## Features
 
@@ -13,7 +13,7 @@ trickle is a podcast player and RSS reader for iOS and Android. It combines comp
 - Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
 - Reusable optional categories for non-podcast sources, with feed reassignment, whole-category renaming, case-insensitive suggestions and grouping, and standard OPML folder import and export
 - New, in-progress, and played episode states; New, In Progress, and All podcast filters; partial-progress bars and Resume actions; full show notes; no play-on-open side effect; and separate quick-play buttons throughout episode lists
-- YouTube video entries and recognized YouTube attachments use one persistent web-player path with an official-source fallback and a live minimized Now Playing preview that does not reload; foreground Picture in Picture dismissal returns to that preview, while closing it in the background ends playback
+- YouTube video entries and recognized YouTube attachments play without ads when supported, with an official-source fallback and a live minimized Now Playing preview that does not reload; Picture in Picture supports background and locked-screen audio
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
 - Local ZIP backup/restore for portable subscriptions and local state, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information

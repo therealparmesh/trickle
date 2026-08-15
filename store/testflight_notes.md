@@ -1,5 +1,11 @@
 # TestFlight Notes
 
+## What's new
+
+Requires iOS 17 or later. Public YouTube videos play without ads when supported, with official playback as a fallback. Picture in Picture keeps their audio playing in the background or when the screen is locked. This build also improves feed categories, refresh reliability, playback, search, imports, backups, and performance.
+
+## What to test
+
 Please test the combined podcast and feed flow:
 
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
@@ -37,7 +43,7 @@ Please test the combined podcast and feed flow:
 - Close the in-app Now Playing bar with its X; it must discard the player so reopening starts fresh
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews; images should crop without stretching
-- Fail the initial video page and verify the same player loads the official feed URL without opening a second player
+- Fail the initial video page and verify the same player loads the official source URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
 - Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Unsubscribe

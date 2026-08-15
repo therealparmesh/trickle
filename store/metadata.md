@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 41
+- Build: 44
 
 ## Name
 
@@ -15,25 +15,45 @@ trickle: podcasts & RSS
 
 ## Apple subtitle
 
-Podcasts and feeds, distilled
+Podcasts, RSS, and more
 
 ## Google short description
 
-A fast podcast and RSS app with a sharp cyberpunk interface.
+Play podcasts and read RSS, Atom, JSON, YouTube, and Nostr feeds.
 
 ## Promotional text
 
-Podcasts and feeds in one fast, focused cyberpunk interface.
+Play podcasts, read feeds, download episodes, and keep everything organized.
 
 ## Description
 
-trickle brings podcasts, news, blogs, and independent feeds into one focused cyberpunk interface.
+trickle is a podcast player and feed reader with a dark cyberpunk interface.
 
-Find podcasts and inspect their descriptions and episodes before subscribing. Add any compatible RSS, Atom, or JSON Feed, paste a public YouTube channel or playlist URL, or follow a Nostr profile's verified posts. Stream or download podcast episodes, build a persistent queue, read clean extracted articles and Markdown posts, play attached audio and video, and open video entries in a persistent player without creating an account. Podcast episodes distinguish New, In Progress, and Played, with saved progress and Resume available for partial listening. Minimize video to a live Now Playing preview, or explicitly start supported system Picture in Picture for background audio. Other video pauses when trickle is hidden. If a video page cannot load, the same player falls back to the entry's official source URL. Podcast and attached audio playback use the native system audio engine and include exact global speed choices from 1x to 2x, sleep timers, bookmarks, lock-screen controls, and saved progress. Podcasts also support intro and outro skipping, chapters, publisher transcripts, and automatic download cleanup. Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+Podcasts
 
-Organize non-podcast sources with reusable optional categories. Move one source from Feed settings, or rename a category for every source in its group. Categories use standard OPML folders when imported or exported.
+• Search the Apple Podcasts catalog and view shows before subscribing
+• Stream or download episodes
+• Build and reorder your Up Next queue
+• Resume from saved progress
+• Use global playback speeds from 1x to 2x
+• Set sleep timers, bookmarks, intro skip, and outro skip
+• Read chapters, transcripts, and show notes
+• Control playback from the Lock Screen
 
-trickle does not collect your information. Import and export standard OPML subscriptions, or create a local backup that also preserves Nostr profiles and portable local state.
+Feeds
+
+• Read RSS, Atom, and JSON Feed
+• Follow public YouTube channels and playlists
+• Follow verified posts from Nostr profiles
+• Read articles in a clean reader view
+• Save articles and search your library
+• Group non-podcast sources into categories
+
+Public YouTube videos play without ads when supported, with the official player as a fallback. Use Picture in Picture to keep listening while using other apps or when the screen is locked.
+
+Import and export OPML files, or make a local backup of your subscriptions and app data.
+
+trickle does not collect your information.
 
 ## Keywords
 
@@ -77,45 +97,17 @@ Five 1320×2868 iPhone screenshots were verified against the current visual syst
 
 ## Version 1.0.0 release notes
 
-Listen to podcasts and read RSS, Atom, and JSON feeds in one fast, focused app that does not collect your information. Search the Apple podcast catalog, follow public YouTube channels and playlists as feeds, stream or download episodes, build a queue, import standard OPML, export podcasts, RSS and YouTube feeds, or all subscriptions, and read articles in a clean reader view.
+trickle 1.0 includes:
 
-Follow Nostr profiles from an npub or nprofile address. trickle verifies events, shows the profile's own posts without replies or reposts, respects content warnings, renders Markdown, and supports attached images, native audio, and direct video.
+• Podcast search, streaming, downloads, saved progress, and Up Next
+• RSS, Atom, JSON Feed, YouTube feeds, and Nostr profiles
+• Reader mode, saved articles, categories, and library search
+• Global playback speed, sleep timers, chapters, transcripts, and bookmarks
+• Public YouTube playback without ads when supported, with an official-player fallback, Picture in Picture, and background audio
+• OPML import and export
+• Local backup and restore
 
-Nostr refresh is more resilient to unavailable or misbehaving relays and overlapping refreshes. Existing verified content remains stable when a relay closes early or an older response finishes late.
-
-Browse recent podcast episodes in a compact two-row shelf with direct Play and Resume controls, then filter the Podcasts screen by New, In Progress, or All. Move into Up Next, downloads, saved items, podcast subscriptions, and feed sources without confusing listening progress with queue order. Only the Home screen’s Sources shortcut carries a number badge, with an exact feed subscription count that hides at zero. Podcast details remain visible throughout subscribe and unsubscribe actions.
-
-The Feeds collection now includes a consistent See all action that opens the complete reader.
-
-Non-podcast sources can now be assigned reusable optional categories. Feed settings suggests previous categories without blocking new ones, one source can move between groups, a category can be renamed for every matching source, and standard OPML import and export preserve category folders.
-
-Four-button Home collections now use even spacing, and longer actions such as Add YouTube remain fully visible.
-
-Route changes now use a brief full-surface signal glitch after an instantaneous handoff, so the effect remains visible, settles immediately, preserves screen state, and respects Reduced Motion.
-
-Podcast episodes now show distinct New, In Progress, and Played states. Partial listening displays saved progress and Resume throughout episode lists. Explicit episodes use a compact leading marker that stays aligned when titles wrap or truncate.
-
-One-line and two-line collection shortcuts now keep identical icon, label, and touch-target alignment.
-
-Large libraries, feed refreshes, queue automation, search indexing, and long reader pages now avoid repeated work and stay responsive as content grows.
-
-Playback lists now ignore buffer-only engine updates and isolate current-item state, while unchanged feed settings avoid unnecessary database writes.
-
-Video entries play in a persistent player with a live minimized preview and user-started system Picture in Picture on supported devices.
-
-Closing Picture in Picture while trickle is visible returns the same video and timestamp to the minimized player. Closing it while trickle is backgrounded ends playback cleanly.
-
-Every recognized YouTube video now follows the same initial player path, including video URLs discovered in post attachments, before using the official source as a fallback.
-
-Picture in Picture requests now wait for confirmation, recover cleanly when unavailable, and never leave the player controls stuck in a loading state.
-
-Picture in Picture now activates the correct video audio session before the system request, so playback can continue reliably when the app is hidden or the screen is locked.
-
-Podcasts imported through OPML are recognized as subscribed in catalog search, including feeds whose query credentials stay in secure device storage.
-
-Local ZIP backup now preserves Nostr profiles, post attachments, reading and playback state, queues, bookmarks, settings, and portable tokenized feed URLs. Standard OPML remains available for compatible podcast, RSS, and YouTube subscriptions.
-
-Choose background refresh from 1 hour through 1 week and remove played downloads immediately, after 1 day, or after 1 week.
+This build also improves playback, feed refreshes, search, imports, and large-library performance.
 
 ## Privacy declarations
 
