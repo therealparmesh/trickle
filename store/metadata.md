@@ -48,7 +48,7 @@ podcast,rss,feed,reader,offline,opml,audio,news,nostr,queue
 ## Supported platforms
 
 - Android 7.0 (API 24) or later
-- iOS 14.0 or later on iPhone
+- iOS 17.0 or later on iPhone
 
 ## Contact URLs
 

@@ -83,7 +83,7 @@ Apple has required [Xcode 26 or later with the iOS 26 SDK or later since April 2
 
 The application includes its privacy manifest, background-audio configuration, background-refresh identifier, encryption declaration, and 1024-pixel icon. A final build phase removes the downloader SDK's generic Photo Library declaration because trickle stores audio only in app-private storage and does not use that optional SDK feature.
 
-Apple currently accepts the iOS 14 deployment target but warns that App Store Connect uploads and distribution submissions must target iOS 15 or later beginning in Spring 2027. Raise the deployment target before the first upload made under that requirement, then update the supported-platform copy and retest upgrades from the oldest supported release.
+The application targets iOS 17 or later, exceeding Apple's announced iOS 15 minimum for App Store Connect uploads and distribution submissions beginning in Spring 2027. Test fresh installs and upgrades on iOS 17 before every release.
 
 The iOS target is iPhone-only. Five 1320×2868 iPhone captures verified against the current visual system on July 29, 2026 are in `store/apple/screenshots/`. The capture flow does not seed content: prepare a simulator with the podcast and feed data asserted by `tool/maestro/capture_store_screenshots.yaml`, then regenerate the images from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml`.
 
