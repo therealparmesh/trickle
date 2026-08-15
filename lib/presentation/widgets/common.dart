@@ -461,6 +461,80 @@ final class AdaptiveDropdownField<T> extends StatelessWidget {
   }
 }
 
+final class AdaptiveSwitchTile extends StatelessWidget {
+  const AdaptiveSwitchTile({
+    required this.value,
+    required this.onChanged,
+    required this.title,
+    this.subtitle,
+    this.secondary,
+    super.key,
+  });
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final String title;
+  final String? subtitle;
+  final Widget? secondary;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(1) <= 1.8) {
+      return SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: value,
+        onChanged: onChanged,
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle!),
+        secondary: secondary,
+      );
+    }
+    final enabled = onChanged != null;
+    return Semantics(
+      container: true,
+      toggled: value,
+      enabled: enabled,
+      label: subtitle == null ? title : '$title. $subtitle',
+      onTap: enabled ? () => onChanged!(!value) : null,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: enabled ? () => onChanged!(!value) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (secondary != null) ...[
+                    SizedBox.square(dimension: 24, child: secondary),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(child: Text(title)),
+                ],
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                DefaultTextStyle.merge(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppConstants.secondaryText,
+                  ),
+                  child: Text(subtitle!),
+                ),
+              ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: Switch(value: value, onChanged: onChanged),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 final class AdaptiveFilterOption<T extends Object> {
   const AdaptiveFilterOption(this.value, this.label);
 
@@ -578,6 +652,7 @@ final class SectionHeader extends StatelessWidget {
     this.action,
     this.onAction,
     this.accent = AppConstants.cyan,
+    this.compact = false,
     super.key,
   }) : assert(
          (action == null) == (onAction == null),
@@ -588,6 +663,7 @@ final class SectionHeader extends StatelessWidget {
   final String? action;
   final VoidCallback? onAction;
   final Color accent;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -595,7 +671,9 @@ final class SectionHeader extends StatelessWidget {
         action != null && MediaQuery.textScalerOf(context).scale(1) > 1.8;
     final titleWidget = Text(
       title,
-      style: Theme.of(context).textTheme.titleLarge,
+      style: compact
+          ? Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 17)
+          : Theme.of(context).textTheme.titleLarge,
     );
     final actionWidget = action == null
         ? null
@@ -610,7 +688,9 @@ final class SectionHeader extends StatelessWidget {
     return Semantics(
       header: true,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 26, 10, 10),
+        padding: compact
+            ? const EdgeInsets.fromLTRB(18, 14, 10, 8)
+            : const EdgeInsets.fromLTRB(18, 26, 10, 10),
         child: stackAction
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

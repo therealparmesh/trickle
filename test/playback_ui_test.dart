@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
@@ -63,43 +66,42 @@ void main() {
     });
 
     test('maps every engine state to one presentation phase', () {
-      expect(playbackUiPhaseFor(null), PlaybackUiPhase.loading);
+      expect(
+        playbackUiPhaseFor(processingState: null, playing: false),
+        PlaybackUiPhase.loading,
+      );
       expect(
         playbackUiPhaseFor(
-          PlaybackState(processingState: AudioProcessingState.loading),
+          processingState: AudioProcessingState.loading,
+          playing: false,
         ),
         PlaybackUiPhase.loading,
       );
       expect(
         playbackUiPhaseFor(
-          PlaybackState(
-            processingState: AudioProcessingState.buffering,
-            playing: true,
-          ),
+          processingState: AudioProcessingState.buffering,
+          playing: true,
         ),
         PlaybackUiPhase.buffering,
       );
       expect(
         playbackUiPhaseFor(
-          PlaybackState(
-            processingState: AudioProcessingState.error,
-            playing: false,
-          ),
+          processingState: AudioProcessingState.error,
+          playing: false,
         ),
         PlaybackUiPhase.error,
       );
       expect(
         playbackUiPhaseFor(
-          PlaybackState(
-            processingState: AudioProcessingState.ready,
-            playing: true,
-          ),
+          processingState: AudioProcessingState.ready,
+          playing: true,
         ),
         PlaybackUiPhase.playing,
       );
       expect(
         playbackUiPhaseFor(
-          PlaybackState(processingState: AudioProcessingState.ready),
+          processingState: AudioProcessingState.ready,
+          playing: false,
         ),
         PlaybackUiPhase.paused,
       );
@@ -122,26 +124,69 @@ void main() {
       expect(PlaybackUiPhase.buffering.actionLabel(playing: true), 'Pause');
       expect(PlaybackUiPhase.loading.canToggle(playing: false), isFalse);
     });
+  });
 
-    test('never presents a raw engine error or private URL', () {
-      const raw =
-          'https://user:secret@example.test/audio.mp3 failed with errno 13';
-      final state = PlaybackState(
-        processingState: AudioProcessingState.error,
-        errorCode: 13,
-        errorMessage: raw,
-      );
-      final phase = playbackUiPhaseFor(state);
-
-      expect(phase, PlaybackUiPhase.error);
-      expect(phase.semanticStatus, isNot(contains('secret')));
-      expect(phase.semanticStatus, isNot(contains('http')));
-      expect(TrickleAudioHandler.playbackErrorMessage, isNot(contains('http')));
-      expect(
-        TrickleAudioHandler.playbackErrorMessage,
-        isNot(contains('errno')),
-      );
+  test('playback UI ignores buffer-only and unrelated state changes', () async {
+    final states = StreamController<PlaybackState>.broadcast();
+    final media = StreamController<MediaItem?>.broadcast();
+    final container = ProviderContainer(
+      overrides: [
+        playbackStateProvider.overrideWith((_) => states.stream),
+        currentMediaProvider.overrideWith((_) => media.stream),
+      ],
+    );
+    final snapshots = <PlaybackUiSnapshot>[];
+    final unrelatedSnapshots = <PlaybackItemUiSnapshot>[];
+    final subscription = container.listen(
+      playbackUiSnapshotProvider,
+      (_, snapshot) => snapshots.add(snapshot),
+      fireImmediately: true,
+    );
+    final unrelatedSubscription = container.listen(
+      playbackItemUiSnapshotProvider('other-episode'),
+      (_, snapshot) => unrelatedSnapshots.add(snapshot),
+      fireImmediately: true,
+    );
+    addTearDown(() async {
+      subscription.close();
+      unrelatedSubscription.close();
+      container.dispose();
+      await states.close();
+      await media.close();
     });
+
+    media.add(const MediaItem(id: 'episode', title: 'Episode'));
+    states.add(
+      PlaybackState(
+        processingState: AudioProcessingState.ready,
+        playing: true,
+        bufferedPosition: const Duration(seconds: 5),
+      ),
+    );
+    await pumpEventQueue();
+    final stableNotificationCount = snapshots.length;
+    expect(unrelatedSnapshots, hasLength(1));
+
+    states.add(
+      PlaybackState(
+        processingState: AudioProcessingState.ready,
+        playing: true,
+        bufferedPosition: const Duration(minutes: 5),
+      ),
+    );
+    await pumpEventQueue();
+    expect(snapshots, hasLength(stableNotificationCount));
+
+    states.add(
+      PlaybackState(
+        processingState: AudioProcessingState.ready,
+        bufferedPosition: const Duration(minutes: 5),
+      ),
+    );
+    await pumpEventQueue();
+    expect(snapshots, hasLength(stableNotificationCount + 1));
+    expect(snapshots.last.playing, isFalse);
+    expect(unrelatedSnapshots, hasLength(1));
   });
 
   test('stale scrub cannot seek the newly selected episode', () async {

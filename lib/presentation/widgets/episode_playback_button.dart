@@ -30,17 +30,21 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final current = ref.watch(currentMediaProvider).value;
-    final isCurrent = current?.id == widget.episode.id;
-    final state = ref.watch(playbackStateProvider).value;
+    final playback = ref.watch(
+      playbackItemUiSnapshotProvider(widget.episode.id),
+    );
+    final isCurrent = playback.isCurrent;
     final progress =
         widget.progress ??
         (widget.expanded
             ? ref.watch(episodeProgressProvider(widget.episode.id)).value
             : ref.watch(episodeProgressSnapshotProvider(widget.episode.id)));
-    final playing = isCurrent && state?.playing == true;
+    final playing = playback.playing;
     final phase = isCurrent
-        ? playbackUiPhaseFor(state)
+        ? playbackUiPhaseFor(
+            processingState: playback.processingState,
+            playing: playback.playing,
+          )
         : PlaybackUiPhase.paused;
     final engineBusy = isCurrent && phase.isBusy;
     final failed = isCurrent && phase.isError;

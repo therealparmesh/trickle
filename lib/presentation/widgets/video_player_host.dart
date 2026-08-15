@@ -127,13 +127,16 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(videoSessionProvider);
-    ref.listen(playbackStateProvider, (previous, next) {
-      if (next.value?.playing == true &&
-          previous?.value?.playing != true &&
-          ref.read(videoSessionProvider) != null) {
-        unawaited(_close());
-      }
-    });
+    ref.listen(
+      playbackUiSnapshotProvider.select((playback) => playback.playing),
+      (previous, playing) {
+        if (playing &&
+            previous != true &&
+            ref.read(videoSessionProvider) != null) {
+          unawaited(_close());
+        }
+      },
+    );
     if (session != null &&
         (session.articleId != _loadedArticleId ||
             session.playbackUri != _loadedUri)) {

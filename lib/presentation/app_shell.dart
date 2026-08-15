@@ -72,9 +72,12 @@ final class MiniPlayer extends ConsumerWidget {
     final item = ref.watch(currentMediaProvider).value;
     if (item == null) return const SizedBox.shrink();
     final explicit = item.extras?['explicit'] == true;
-    final state = ref.watch(playbackStateProvider).value;
-    final phase = playbackUiPhaseFor(state);
-    final playing = state?.playing == true;
+    final playback = ref.watch(playbackUiSnapshotProvider);
+    final phase = playbackUiPhaseFor(
+      processingState: playback.processingState,
+      playing: playback.playing,
+    );
+    final playing = playback.playing;
     final canToggle = phase.canToggle(playing: playing);
     final actionLabel = phase.actionLabel(playing: playing);
     final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;

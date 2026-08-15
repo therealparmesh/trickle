@@ -230,7 +230,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                 ),
               ),
               if (!widget.youtubeOnly)
-                SwitchListTile(
+                AdaptiveSwitchTile(
                   value: _private,
                   onChanged: _busy
                       ? null
@@ -238,11 +238,9 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                           _private = value;
                           _error = null;
                         }),
-                  title: const Text('Private feed'),
-                  subtitle: const Text(
-                    'trickle doesn’t collect your feed URL or credentials.',
-                  ),
-                  contentPadding: EdgeInsets.zero,
+                  title: 'Private feed',
+                  subtitle:
+                      'trickle doesn’t collect your feed URL or credentials.',
                 ),
               if (_private) ...[
                 TextField(

@@ -80,10 +80,11 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
   }
 
   Widget _audio(BuildContext context) {
-    final current = ref.watch(currentMediaProvider).value;
-    final state = ref.watch(playbackStateProvider).value;
-    final isCurrent = current?.id == widget.attachment.id;
-    final playing = isCurrent && state?.playing == true;
+    final playback = ref.watch(
+      playbackItemUiSnapshotProvider(widget.attachment.id),
+    );
+    final isCurrent = playback.isCurrent;
+    final playing = playback.playing;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: FilledButton.tonalIcon(

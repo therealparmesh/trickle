@@ -47,8 +47,10 @@ extension EpisodeListeningStatePresentation on EpisodeListeningState {
 
 enum PlaybackUiPhase { loading, buffering, error, playing, paused }
 
-PlaybackUiPhase playbackUiPhaseFor(PlaybackState? state) {
-  final processingState = state?.processingState;
+PlaybackUiPhase playbackUiPhaseFor({
+  required AudioProcessingState? processingState,
+  required bool playing,
+}) {
   if (processingState == null ||
       processingState == AudioProcessingState.loading) {
     return PlaybackUiPhase.loading;
@@ -59,9 +61,7 @@ PlaybackUiPhase playbackUiPhaseFor(PlaybackState? state) {
   if (processingState == AudioProcessingState.error) {
     return PlaybackUiPhase.error;
   }
-  return state?.playing == true
-      ? PlaybackUiPhase.playing
-      : PlaybackUiPhase.paused;
+  return playing ? PlaybackUiPhase.playing : PlaybackUiPhase.paused;
 }
 
 extension PlaybackUiPhasePresentation on PlaybackUiPhase {

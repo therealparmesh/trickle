@@ -298,14 +298,13 @@ final class _RecentEpisodeCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(currentMediaProvider).value;
-    final playing = ref.watch(playbackStateProvider).value?.playing == true;
+    final playback = ref.watch(playbackItemUiSnapshotProvider(episode.id));
     final progress = ref.watch(episodeProgressSnapshotProvider(episode.id));
     final listeningState = episodeListeningState(episode, progress);
     final feed = ref.watch(feedSnapshotProvider(episode.feedId));
-    final isCurrent = current?.id == episode.id;
+    final isCurrent = playback.isCurrent;
     final status = isCurrent
-        ? (playing ? 'playing' : 'paused')
+        ? (playback.playing ? 'playing' : 'paused')
         : listeningState.label;
     final metadata = [
       if (feed?.title.isNotEmpty == true) feed!.title,

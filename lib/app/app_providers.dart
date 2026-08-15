@@ -278,6 +278,47 @@ final playbackStateProvider = StreamProvider<PlaybackState>(
 final currentMediaProvider = StreamProvider<MediaItem?>(
   (ref) => ref.watch(audioHandlerProvider).mediaItem,
 );
+typedef PlaybackUiSnapshot = ({
+  String? mediaId,
+  bool playing,
+  AudioProcessingState? processingState,
+});
+
+final playbackUiSnapshotProvider = Provider<PlaybackUiSnapshot>((ref) {
+  final mediaId = ref.watch(
+    currentMediaProvider.select((media) => media.value?.id),
+  );
+  final state = ref.watch(
+    playbackStateProvider.select(
+      (state) => (
+        playing: state.value?.playing == true,
+        processingState: state.value?.processingState,
+      ),
+    ),
+  );
+  return (
+    mediaId: mediaId,
+    playing: state.playing,
+    processingState: state.processingState,
+  );
+});
+
+typedef PlaybackItemUiSnapshot = ({
+  bool isCurrent,
+  bool playing,
+  AudioProcessingState? processingState,
+});
+
+final playbackItemUiSnapshotProvider = Provider.autoDispose
+    .family<PlaybackItemUiSnapshot, String>((ref, mediaId) {
+      final playback = ref.watch(playbackUiSnapshotProvider);
+      final isCurrent = playback.mediaId == mediaId;
+      return (
+        isCurrent: isCurrent,
+        playing: isCurrent && playback.playing,
+        processingState: isCurrent ? playback.processingState : null,
+      );
+    });
 final queueProvider = StreamProvider<List<MediaItem>>(
   (ref) => ref.watch(audioHandlerProvider).queue,
 );

@@ -22,9 +22,6 @@ final class QueuePage extends ConsumerWidget {
     final queue = queueState.value ?? const <MediaItem>[];
     final queuedEpisodes =
         ref.watch(queuedEpisodesProvider).value ?? const <String, Episode>{};
-    final current = ref.watch(currentMediaProvider).value;
-    final playback = ref.watch(playbackStateProvider).value;
-    final phase = playbackUiPhaseFor(playback);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
       appBar: AppBar(
@@ -81,7 +78,6 @@ final class QueuePage extends ConsumerWidget {
                   itemBuilder: (context, index) {
                     final item = queue[index];
                     final episode = queuedEpisodes[item.id];
-                    final active = current?.id == item.id;
                     return Dismissible(
                       key: ValueKey(item.id),
                       direction: DismissDirection.endToStart,
@@ -103,60 +99,77 @@ final class QueuePage extends ConsumerWidget {
                             .read(audioHandlerProvider)
                             .removeQueueItem(item),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        child: SignalPanel(
-                          accent: active ? AppConstants.acid : null,
-                          color: Colors.transparent,
-                          padding: EdgeInsets.zero,
-                          child: ListTile(
-                            key: ValueKey('tile-${item.id}'),
-                            selected: active,
-                            selectedTileColor: AppConstants.acid.withValues(
-                              alpha: 0.04,
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          final playback = ref.watch(
+                            playbackItemUiSnapshotProvider(item.id),
+                          );
+                          final phase = playbackUiPhaseFor(
+                            processingState: playback.processingState,
+                            playing: playback.playing,
+                          );
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
                             ),
-                            onTap: active
-                                ? () => context.push('/player')
-                                : () => _run(
-                                    context,
-                                    () => ref
-                                        .read(audioHandlerProvider)
-                                        .skipToQueueItem(index),
+                            child: SignalPanel(
+                              accent: playback.isCurrent
+                                  ? AppConstants.acid
+                                  : null,
+                              color: Colors.transparent,
+                              padding: EdgeInsets.zero,
+                              child: ListTile(
+                                key: ValueKey('tile-${item.id}'),
+                                selected: playback.isCurrent,
+                                selectedTileColor: AppConstants.acid.withValues(
+                                  alpha: 0.04,
+                                ),
+                                onTap: playback.isCurrent
+                                    ? () => context.push('/player')
+                                    : () => _run(
+                                        context,
+                                        () => ref
+                                            .read(audioHandlerProvider)
+                                            .skipToQueueItem(index),
+                                      ),
+                                leading: episode == null
+                                    ? Artwork(
+                                        url: item.artUri?.toString(),
+                                        size: 50,
+                                      )
+                                    : EpisodeArtwork(
+                                        episode: episode,
+                                        size: 50,
+                                      ),
+                                title: EpisodeTitle(
+                                  title: item.title,
+                                  explicit: item.extras?['explicit'] == true,
+                                  maxLines: 2,
+                                ),
+                                subtitle: Text(
+                                  [
+                                    if (item.album?.isNotEmpty == true)
+                                      item.album!,
+                                    if (playback.isCurrent) phase.label,
+                                  ].join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: ReorderableDragStartListener(
+                                  index: index,
+                                  child: const SizedBox.square(
+                                    dimension: 48,
+                                    child: Tooltip(
+                                      message: 'Reorder episode',
+                                      child: Icon(Icons.drag_indicator_rounded),
+                                    ),
                                   ),
-                            leading: episode == null
-                                ? Artwork(
-                                    url: item.artUri?.toString(),
-                                    size: 50,
-                                  )
-                                : EpisodeArtwork(episode: episode, size: 50),
-                            title: EpisodeTitle(
-                              title: item.title,
-                              explicit: item.extras?['explicit'] == true,
-                              maxLines: 2,
-                            ),
-                            subtitle: Text(
-                              [
-                                if (item.album?.isNotEmpty == true) item.album!,
-                                if (active) phase.label,
-                              ].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: ReorderableDragStartListener(
-                              index: index,
-                              child: const SizedBox.square(
-                                dimension: 48,
-                                child: Tooltip(
-                                  message: 'Reorder episode',
-                                  child: Icon(Icons.drag_indicator_rounded),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     );
                   },

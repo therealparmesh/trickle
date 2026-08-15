@@ -49,20 +49,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   @override
   Widget build(BuildContext context) {
     final item = ref.watch(currentMediaProvider).value;
-    final playback = ref.watch(
-      playbackStateProvider.select(
-        (state) => (
-          playing: state.value?.playing == true,
-          processingState: state.value?.processingState,
-        ),
-      ),
-    );
+    final playback = ref.watch(playbackUiSnapshotProvider);
     final phase = playbackUiPhaseFor(
-      PlaybackState(
-        playing: playback.playing,
-        processingState:
-            playback.processingState ?? AudioProcessingState.loading,
-      ),
+      processingState: playback.processingState,
+      playing: playback.playing,
     );
     if (item == null) {
       return Scaffold(
