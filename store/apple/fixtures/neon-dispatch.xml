@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Neon Dispatch</title>
+    <link>https://example.com/neon-dispatch</link>
+    <description>Small, practical conversations about calmer technology, thoughtful design, and listening on your own terms.</description>
+    <author>trickle studio</author>
+    <itunes:author>trickle studio</itunes:author>
+    <itunes:category text="Technology"/>
+    <itunes:image href="https://raw.githubusercontent.com/therealparmesh/trickle/main/store/apple/fixtures/neon-dispatch.png"/>
+  </channel>
+</rss>

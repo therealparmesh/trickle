@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Field Notes</title>
+    <link>https://example.com/field-notes</link>
+    <description>Short notes on reading, systems, and keeping a personal library useful.</description>
+    <author>trickle studio</author>
+    <image>
+      <url>https://raw.githubusercontent.com/therealparmesh/trickle/main/store/apple/fixtures/field-notes.png</url>
+      <title>Field Notes</title>
+      <link>https://example.com/field-notes</link>
+    </image>
+  </channel>
+</rss>
