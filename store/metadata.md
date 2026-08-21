@@ -19,7 +19,7 @@ Podcasts, RSS, and more
 
 ## Google short description
 
-Play podcasts and read RSS, Atom, JSON, YouTube, and Nostr feeds.
+Play podcasts and read RSS, Atom, JSON, YouTube, and Nostr feeds
 
 ## Promotional text
 

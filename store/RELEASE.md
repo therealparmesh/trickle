@@ -1,5 +1,7 @@
 # Release Process
 
+For the first Google Play and Zapstore launch, follow the staged [Android release plan](ANDROID_RELEASE.md) in addition to this shared checklist.
+
 ## Publisher prerequisites
 
 1. The Apple Developer bundle identifier `com.parmscript.trickle` is registered, and App Store Connect record `6792352845` exists. Create the initial Google Play app record before uploading there; public store APIs manage existing apps but do not create initial records. If the identifier must change, update it before the first release in `android/app/build.gradle.kts`, the iOS Runner target, `lib/services/background_refresh_service.dart`, `ios/Runner/AppDelegate.swift`, and `ios/Runner/Info.plist`.
@@ -37,27 +39,11 @@ Flutter 3.44.4 reports forward-compatibility warnings because `disk_space_plus` 
 
 ## Android signing and upload
 
-Create an upload key once and keep it outside the repository:
+Use [ANDROID_RELEASE.md](ANDROID_RELEASE.md) for the authoritative first-release and recurring-release workflow. It defines the shared Google Play/Zapstore app-signing identity, separate Play upload key, external credential paths, reproducible AAB and APK builds, Fastlane lanes, Zapstore publication, and recovery checks.
 
-```sh
-keytool -genkeypair -v -keystore "$HOME/trickle-upload-keystore.jks" \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-cp android/key.properties.example android/key.properties
-```
+If signing properties are absent, release bundles are deliberately unsigned. This allows local and CI compilation checks without ever using the public Android debug key for a release artifact. Never upload an artifact produced by the unsigned verification command.
 
-Edit `android/key.properties`, then build:
-
-```sh
-flutter pub get
-flutter test
-flutter build appbundle --release
-```
-
-Upload `build/app/outputs/bundle/release/app-release.aab`. Enable Play App Signing and retain the upload key securely. After the one-time app record, declarations, and service-account access are configured in Play Console, automate bundle, listing, and track updates through the Google Play Publishing API. The project has a minimum API of 24 and targets API 36, including Google's [API 36 requirement beginning August 31, 2026](https://developer.android.com/google/play/requirements/target-sdk).
-
-If `android/key.properties` is absent, release bundles are deliberately unsigned. This allows local and CI compilation checks without ever using the public Android debug key for a release artifact.
-
-Current Android release status: the application identifier and API levels are ready, but no upload keystore, `android/key.properties`, Play app record, or Publishing API service account has been created. Do not upload the existing unsigned bundle.
+Current Android release status: the application identifier and API levels are ready, but no Play or Zapstore signing material, publisher credential, app record, or release is locally verifiable. The project has a minimum API of 24 and targets API 36, including Google's [API 36 requirement beginning August 31, 2026](https://developer.android.com/google/play/requirements/target-sdk).
 
 Complete Play Console Data safety from `store/metadata.md`, select News & Magazines, provide the hosted privacy URL, complete the required declarations and content rating, and test the exact signed bundle in internal testing before production.
 
