@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#080a11"/>
+  <path d="M110 182H914M110 354H914M110 526H914M110 698H914" stroke="#19313a" stroke-width="3"/>
+  <path d="M154 238H718L775 296H154Z" fill="#28e7ef"/>
+  <path d="M154 410H574L631 468H154Z" fill="#eefcff"/>
+  <path d="M154 582H792L849 640H154Z" fill="#ff2b91"/>
+  <circle cx="848" cy="296" r="25" fill="#ff2b91"/>
+  <circle cx="704" cy="468" r="25" fill="#28e7ef"/>
+  <circle cx="910" cy="640" r="25" fill="#eefcff"/>
+  <text x="110" y="829" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="82" font-weight="800" letter-spacing="2">QUEUE CRAFT</text>
+  <text x="110" y="909" fill="#ff2b91" font-family="Helvetica Neue,Arial,sans-serif" font-size="42" font-weight="700" letter-spacing="12">EPISODE 03</text>
+</svg>

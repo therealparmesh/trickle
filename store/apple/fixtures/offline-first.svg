@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#080a11"/>
+  <g fill="none" stroke="#143039" stroke-width="3">
+    <path d="M96 96H928V714H96Z"/>
+    <path d="M96 250H928M96 404H928M96 558H928M304 96V714M512 96V714M720 96V714"/>
+  </g>
+  <path d="M183 226H423V334H183ZM513 226H838V334H513ZM183 439H624V547H183ZM714 439H838V547H714Z" fill="#28e7ef" fill-opacity=".88"/>
+  <path d="M183 334H423V347H183ZM513 334H838V347H513ZM183 547H624V560H183ZM714 547H838V560H714Z" fill="#ff2b91"/>
+  <text x="96" y="827" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="77" font-weight="800" letter-spacing="3">OFFLINE FIRST</text>
+  <text x="96" y="906" fill="#28e7ef" font-family="Helvetica Neue,Arial,sans-serif" font-size="42" font-weight="700" letter-spacing="12">EPISODE 02</text>
+</svg>

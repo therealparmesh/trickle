@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#070a10"/>
+  <circle cx="512" cy="466" r="300" fill="none" stroke="#123139" stroke-width="86"/>
+  <circle cx="512" cy="466" r="236" fill="none" stroke="#28e7ef" stroke-width="7"/>
+  <circle cx="512" cy="466" r="168" fill="none" stroke="#ff2b91" stroke-width="7"/>
+  <path d="M118 468H258L320 315L388 650L470 380L545 570L614 430L692 500L758 375L812 468H906" fill="none" stroke="#eefcff" stroke-linecap="square" stroke-linejoin="bevel" stroke-width="24"/>
+  <rect x="116" y="788" width="792" height="8" fill="#28e7ef"/>
+  <text x="116" y="866" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="72" font-weight="800" letter-spacing="4">SIGNAL CHECK</text>
+  <text x="116" y="936" fill="#ff2b91" font-family="Helvetica Neue,Arial,sans-serif" font-size="42" font-weight="700" letter-spacing="12">EPISODE 01</text>
+</svg>

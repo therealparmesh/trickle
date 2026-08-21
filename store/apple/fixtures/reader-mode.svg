@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#070a10"/>
+  <path d="M190 156H834V842H190Z" fill="#0c161e" stroke="#28e7ef" stroke-width="5"/>
+  <path d="M270 252H610M270 323H754M270 394H710M270 508H754M270 579H678M270 650H738" stroke="#eefcff" stroke-width="25"/>
+  <path d="M270 734H520" stroke="#ff2b91" stroke-width="25"/>
+  <path d="M747 184H806V287L776 265L747 287Z" fill="#ff2b91"/>
+  <text x="190" y="930" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="69" font-weight="800" letter-spacing="5">READER MODE</text>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07151d"/>
+      <stop offset="0.55" stop-color="#090b14"/>
+      <stop offset="1" stop-color="#1c0719"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#28e7ef"/>
+      <stop offset="1" stop-color="#ff2b91"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <path d="M0 172H1024M0 852H1024M168 0V1024M856 0V1024" stroke="#17303a" stroke-width="2"/>
+  <path d="M0 238H270L320 188H650L694 232H1024" fill="none" stroke="#28e7ef" stroke-opacity=".24" stroke-width="5"/>
+  <path d="M0 785H214L266 837H640L699 778H1024" fill="none" stroke="#ff2b91" stroke-opacity=".24" stroke-width="5"/>
+  <path d="M240 452H315L352 358L418 626L476 408L530 557L580 470H650L695 386L736 452H784" fill="none" stroke="url(#signal)" stroke-linecap="square" stroke-linejoin="bevel" stroke-width="24"/>
+  <path d="M238 674H786" stroke="#28e7ef" stroke-width="8"/>
+  <path d="M238 702H615" stroke="#ff2b91" stroke-width="8"/>
+  <text x="238" y="298" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="43" font-weight="700" letter-spacing="13">TRICKLE ORIGINAL</text>
+  <text x="238" y="808" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="116" font-weight="800" letter-spacing="-3">NEON</text>
+  <text x="238" y="915" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="91" font-weight="700" letter-spacing="7">DISPATCH</text>
+</svg>

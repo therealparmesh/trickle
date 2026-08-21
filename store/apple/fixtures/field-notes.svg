@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#090910"/>
+  <path d="M80 160H944M80 864H944" stroke="#ff2b91" stroke-width="8"/>
+  <path d="M160 80V944M864 80V944" stroke="#28e7ef" stroke-width="8"/>
+  <path d="M225 511C225 352 354 223 513 223S801 352 801 511 672 799 513 799 225 670 225 511Z" fill="#0d242c" stroke="#28e7ef" stroke-width="5"/>
+  <path d="M337 596L455 478L532 555L700 387" fill="none" stroke="#ff2b91" stroke-width="28"/>
+  <circle cx="337" cy="596" r="22" fill="#eefcff"/><circle cx="455" cy="478" r="22" fill="#eefcff"/><circle cx="532" cy="555" r="22" fill="#eefcff"/><circle cx="700" cy="387" r="22" fill="#eefcff"/>
+  <text x="98" y="865" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="101" font-weight="800" letter-spacing="1">FIELD NOTES</text>
+  <text x="104" y="929" fill="#28e7ef" font-family="Helvetica Neue,Arial,sans-serif" font-size="34" font-weight="700" letter-spacing="13">SYSTEMS · DESIGN · SIGNAL</text>
+</svg>

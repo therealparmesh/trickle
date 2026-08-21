@@ -8,30 +8,19 @@ appId: com.parmscript.trickle
 - tapOn:
     text: "Back"
     optional: true
-- assertVisible: ".*The Joe Rogan Experience.*"
+- assertVisible: ".*Neon Dispatch.*"
 - takeScreenshot: "store/apple/screenshots/01-home"
-- tapOn: "Podcast The Joe Rogan Experience. Joe Rogan"
-- assertVisible: ".*The Joe Rogan Experience.*"
+- tapOn: "Podcast Neon Dispatch. trickle studio"
+- assertVisible: ".*Neon Dispatch.*"
 - takeScreenshot: "store/apple/screenshots/02-podcast"
-- tapOn: ".*episode #2527 - MrBeast.*"
-- assertVisible: ".*#2527 - MrBeast.*"
+- tapOn: ".*Signal Check: Listening without friction.*"
+- assertVisible: ".*Signal Check: Listening without friction.*"
 - takeScreenshot: "store/apple/screenshots/03-episode"
 - tapOn: "Back"
 - tapOn: "Back"
 - tapOn: "See all Unread"
 - assertVisible: "Unread"
 - takeScreenshot: "store/apple/screenshots/04-unread"
-- tapOn: "Feeds\nTab 2 of 2"
-- tapOn: "(?s)Hacker News: Front Page.*"
-- tapOn: "(?s)(Unread|Read|Saved) article .*"
-- assertVisible: ".*Hacker News: Front Page.*"
-- swipe:
-    start: "50%,20%"
-    end: "50%,90%"
-    duration: 500
-- swipe:
-    start: "50%,20%"
-    end: "50%,90%"
-    duration: 500
-- assertVisible: ".*Hacker News: Front Page.*"
+- tapOn: ".*A calmer way to follow the web.*"
+- assertVisible: ".*A calmer way to follow the web.*"
 - takeScreenshot: "store/apple/screenshots/05-reader"

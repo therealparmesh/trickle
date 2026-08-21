@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#090910"/>
+  <path d="M160 174H864V808H160Z" fill="#0e161e" stroke="#ff2b91" stroke-width="5"/>
+  <path d="M258 264H766V352H258ZM258 409H690V497H258ZM258 554H804V642H258Z" fill="#28e7ef" fill-opacity=".87"/>
+  <path d="M258 352H766V366H258ZM258 497H690V511H258ZM258 642H804V656H258Z" fill="#ff2b91"/>
+  <path d="M201 726H823" stroke="#eefcff" stroke-width="8"/>
+  <text x="128" y="884" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="69" font-weight="800" letter-spacing="2">LOCAL LIBRARY</text>
+  <text x="128" y="941" fill="#ff2b91" font-family="Helvetica Neue,Arial,sans-serif" font-size="31" font-weight="700" letter-spacing="9">FAST · PRIVATE · OFFLINE</text>
+</svg>

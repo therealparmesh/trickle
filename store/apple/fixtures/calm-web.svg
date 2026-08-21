@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#071016"/>
+  <path d="M123 240H901V754H123Z" fill="#0c1c24" stroke="#28e7ef" stroke-width="5"/>
+  <path d="M123 326H901" stroke="#ff2b91" stroke-width="5"/>
+  <circle cx="173" cy="283" r="12" fill="#ff2b91"/><circle cx="213" cy="283" r="12" fill="#28e7ef"/><circle cx="253" cy="283" r="12" fill="#eefcff"/>
+  <path d="M192 409H488M192 461H741M192 513H652M192 616H364M192 668H792" stroke="#eefcff" stroke-width="24"/>
+  <path d="M754 405H829V557H754Z" fill="#28e7ef"/><path d="M720 438H795V590H720Z" fill="#ff2b91" fill-opacity=".8"/>
+  <text x="123" y="854" fill="#eefcff" font-family="Helvetica Neue,Arial,sans-serif" font-size="73" font-weight="800" letter-spacing="2">A CALMER WEB</text>
+  <text x="123" y="916" fill="#28e7ef" font-family="Helvetica Neue,Arial,sans-serif" font-size="33" font-weight="700" letter-spacing="10">READ ON YOUR TERMS</text>
+</svg>
