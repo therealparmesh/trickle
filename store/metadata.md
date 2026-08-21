@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.0.0
-- Build: 44
+- Build: 47
 
 ## Name
 
@@ -80,7 +80,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-Five 1320×2868 iPhone screenshots were verified against the current visual system on July 29, 2026. Use `tool/maestro/capture_store_screenshots.yaml` after preparing its asserted podcast and feed data whenever the interface changes, then upload the images in this order:
+Five 1320×2868 iPhone screenshots were verified against the current visual system on August 20, 2026. The fictional podcast, feed, copy, and artwork in them are original project fixtures; no third-party content appears. After building and launching trickle once on a simulator, run `tool/maestro/seed_store_screenshot_data.sh [simulator-udid]`, then `maestro test tool/maestro/capture_store_screenshots.yaml`. Upload the images in this order:
 
 1. Home
 2. Podcast

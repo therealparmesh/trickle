@@ -85,7 +85,14 @@ The application includes its privacy manifest, background-audio configuration, b
 
 The application targets iOS 17 or later, exceeding Apple's announced iOS 15 minimum for App Store Connect uploads and distribution submissions beginning in Spring 2027. Test fresh installs and upgrades on iOS 17 before every release.
 
-The iOS target is iPhone-only. Five 1320×2868 iPhone captures verified against the current visual system on July 29, 2026 are in `store/apple/screenshots/`. The capture flow does not seed content: prepare a simulator with the podcast and feed data asserted by `tool/maestro/capture_store_screenshots.yaml`, then regenerate the images from the repository root with `maestro test tool/maestro/capture_store_screenshots.yaml`.
+The iOS target is iPhone-only. Five 1320×2868 iPhone captures verified against the current visual system on August 20, 2026 are in `store/apple/screenshots/`. Their fictional podcast, feed, copy, and artwork are original project fixtures under `store/apple/fixtures/`; no third-party content appears in the set. After building and launching trickle once on a simulator, seed it and regenerate the images from the repository root:
+
+```sh
+tool/maestro/seed_store_screenshot_data.sh [simulator-udid]
+maestro test tool/maestro/capture_store_screenshots.yaml
+```
+
+The seed command changes only the selected simulator's app data. Fixture logic and artwork are not bundled into the released app.
 
 In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, answer App Privacy as no data collected by the developer, and publish that response before submitting a version. Provide the verified hosted privacy and support URLs, complete age-rating and content-rights answers, attach the current screenshots, provide review contact details, and test the uploaded build using `store/testflight_notes.md`.
 
