@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Public YouTube videos play without ads when supported, with official playback as a fallback. Picture in Picture keeps their audio playing in the background or when the screen is locked. This build also improves feed categories, refresh reliability, playback, search, imports, backups, and performance.
+Requires iOS 17 or later. Search, filter, and sort inside subscriptions; browse feed items by category; search timed transcripts; manage download storage; save readable article text offline; and share feed addresses to trickle from other apps. Public YouTube videos play without ads when supported, with official playback as a fallback. Picture in Picture keeps their audio playing in the background or when the screen is locked.
 
 ## What to test
 
@@ -13,7 +13,7 @@ Please test the combined podcast and feed flow:
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - On Home, play and resume episodes directly from the two-row shelf; verify its cards reflow at large text, four-button collections are evenly spaced, Add YouTube is fully visible, and Feeds See all opens the reader
 - Verify the Podcasts episode filters: New contains untouched episodes, In Progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
-- Verify badge rules: only the Home screen’s Sources shortcut shows a number badge; it displays the exact feed subscription count and hides at zero
+- Verify badge rules: only the Home screen’s Sources shortcut shows a number badge; it displays the exact unread feed-item count and hides at zero
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
 - While audio buffers or changes between playing and paused, scroll a long episode list; unrelated rows should remain stable and responsive
@@ -25,9 +25,11 @@ Please test the combined podcast and feed flow:
 - Verify a failed audio source shows a clear message and Retry action; retry after restoring the network
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
+- Open Downloads and verify its item count and storage total, Remove played downloads keeps items marked Keep, and Remove all downloads cancels active work before clearing the list
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
-- Open an article in reader mode, share it, and open it in the browser
+- Open an article in reader mode, change text size, close and reopen it, share it, and open it in the browser. Save the article, go offline, and verify its readable text remains available while remote media is clearly network-dependent
+- Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add Feed appears with an editable address and canceling makes no subscription change
 - Add a Nostr profile by `npub` and `nprofile`; verify only signed root posts appear, replies and reposts are absent, content warnings require a reveal, Markdown is readable, images keep their aspect ratio, native audio saves progress, and direct video can be minimized
 - Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
@@ -46,12 +48,14 @@ Please test the combined podcast and feed flow:
 - Fail the initial video page and verify the same player loads the official source URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
-- Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Unsubscribe
+- Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Subscribed and remain actionable
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
-- Assign categories to RSS, YouTube, and Nostr sources from Feed settings; verify the field suggests previous categories case-insensitively, accepts a new category, and moves only that source. In Reader > Feeds, rename a category and verify every matching source moves together, including a case-only rename or a merge into an existing category. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
+- Assign categories to RSS, YouTube, and Nostr sources from Feed settings; verify the field suggests previous categories case-insensitively, accepts a new category, and moves only that source. In Feeds > Sources, rename a category and verify every matching source moves together, including a case-only rename or a merge into an existing category. In Feed items, choose a category, search and sort it, then mark that category read. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
 - During refresh, OPML import, or local backup restore, confirm the active row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker
-- Import one mixed OPML file containing a podcast and a reading feed; verify each appears exactly once in its matching section, then export podcasts, feeds, and all subscriptions separately and confirm each file's scope and reader-category folders
+- Import one mixed OPML file containing a podcast and a feed; verify each appears exactly once in its matching section. Choose each scope from Export OPML and confirm the files contain podcasts, feeds, or all compatible subscriptions with the expected category folders
+- In a podcast and a feed, search with different capitalization, switch filters, change newest/oldest sorting, load another page, and verify the list and count stay consistent without a full-screen loading flash
+- Open a timed VTT, SRT, or JSON transcript, search it, tap a result, and verify playback seeks to that segment. A plain transcript should remain searchable and selectable without a seek affordance
 - Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and tokenized private feed URLs survive, while sign-in headers and downloaded files are absent. While a restore is active, leave and reopen Settings, tap Restore local backup again, and confirm it rejoins the same restore without another picker or duplicate data
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately

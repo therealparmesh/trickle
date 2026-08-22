@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: August 15, 2026_
+_Last updated: August 22, 2026_
 
 ## Contact
 
@@ -33,13 +33,15 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 
 ### Feed categories
 
-Open a non-podcast source, then open Feed settings. Choose an existing category or enter a new one. To rename a category, open Reader > Feeds and choose Rename. Clear the Category field to move a source back to Uncategorized. Podcasts do not use categories.
+Open a non-podcast source, then open Feed settings. Choose an existing category or enter a new one. To rename a category, open Feeds > Sources and choose Rename. Clear the Category field to move a source back to Uncategorized. Podcasts do not use categories.
+
+The Feed items tab can show one category at a time. Search, filter, sort, or mark the selected category read from the same screen.
 
 ### Playback
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
-Episodes are marked New, In Progress, or Played. Progress is saved after 10 seconds of listening.
+Episodes are marked New, In Progress, or Played. An episode becomes In Progress after 10 seconds. Position is checkpointed every 15 seconds and when playback is paused, changed, or closed.
 
 If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
 
@@ -65,13 +67,21 @@ Allow background activity for trickle in system settings. The selected interval 
 
 Enable notifications for trickle in system settings, then enable notifications for the individual feed inside trickle.
 
+### Transcripts
+
+Open Transcript in Now Playing. Search works for every supplied transcript. Timed VTT, SRT, and Podcasting 2.0 JSON segments can be tapped to seek; plain-text transcripts remain selectable but cannot seek without publisher timing.
+
 ### Storage
 
-Remove completed downloads from the library or choose a shorter automatic cleanup policy in Settings.
+Open Downloads to see the number of downloads and their stored size. Its menu can remove played downloads or all downloads. Played downloads marked Keep are excluded from the played-only cleanup. Automatic cleanup timing remains in Settings.
 
 ## Backup and migration
 
-Settings can import standard OPML files containing podcasts, RSS feeds, and YouTube feeds. You can export podcasts, feeds, or all compatible subscriptions. Feed categories are stored as OPML folders. Portable URLs with embedded tokens are included; feeds that require separate authorization headers are skipped. Nostr profiles are stored only in trickle backups because OPML does not support them.
+Settings can import standard OPML files containing podcasts, RSS feeds, and YouTube feeds. Export OPML opens a scope chooser for podcasts, feeds, or all compatible subscriptions. Feed categories are stored as OPML folders. Portable URLs with embedded tokens are included; feeds that require separate authorization headers are skipped. Nostr profiles are stored only in trickle backups because OPML does not support them.
+
+You can also share a feed, website, podcast RSS, YouTube, `npub`, or `nprofile` address to trickle from another app. Review or edit the address in Add Feed before subscribing.
+
+Saving a normal article stores its readable text for offline use. Publisher-hosted images and video still require a connection unless the operating system already cached them.
 
 The local ZIP backup includes subscriptions, Nostr profiles, articles, playback and reading state, queues, bookmarks, and settings. It does not include separate authorization headers, passwords, or downloaded media.
 

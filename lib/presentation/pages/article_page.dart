@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -30,7 +31,6 @@ final class ArticlePage extends ConsumerStatefulWidget {
 }
 
 class _ArticlePageState extends ConsumerState<ArticlePage> {
-  double _scale = 1;
   String? _contentSignature;
   Future<ExtractedArticle>? _content;
   String? _presentedVideoArticleId;
@@ -44,6 +44,8 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     final sourceUri = Uri.tryParse(value?.canonicalUrl ?? '');
     final playbackUri = privacyYouTubePlaybackUri(sourceUri);
     final isNostr = sourceUri?.scheme == 'nostr';
+    final scalePercent = ref.watch(readerTextScaleProvider).value ?? 100;
+    final scale = scalePercent / 100;
     return Scaffold(
       appBar: AppBar(
         title: PageTitle(playbackUri == null ? 'Reader' : 'Video'),
@@ -55,24 +57,24 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                 if (action == 'refresh' && value != null) {
                   _refreshContent(value);
                 } else {
-                  _changeTextSize(action);
+                  _changeTextSize(action, scalePercent);
                 }
               },
               icon: const Icon(Icons.text_fields_rounded),
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'smaller',
-                  enabled: _scale > 0.8,
+                  enabled: scalePercent > 80,
                   child: const Text('Smaller text'),
                 ),
                 PopupMenuItem(
                   value: 'reset',
-                  enabled: _scale != 1,
+                  enabled: scalePercent != 100,
                   child: const Text('Default text size'),
                 ),
                 PopupMenuItem(
                   value: 'larger',
-                  enabled: _scale < 1.5,
+                  enabled: scalePercent < 150,
                   child: const Text('Larger text'),
                 ),
                 const PopupMenuDivider(),
@@ -164,7 +166,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                   style: Theme.of(context)
                                       .textTheme
                                       .displaySmall
-                                      ?.copyWith(fontSize: 38 * _scale),
+                                      ?.copyWith(fontSize: 38 * scale),
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -190,7 +192,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                 ArticleAttachmentsView(article: value),
                                 ArticleContent(
                                   html: html,
-                                  scale: _scale,
+                                  scale: scale,
                                   privateSecret: secret,
                                   allowRemoteImages: allowRemoteImages,
                                   leadingTitleToOmit: value.title,
@@ -202,14 +204,8 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                 runSpacing: 10,
                                 children: [
                                   FilledButton.tonalIcon(
-                                    onPressed: () => _runAction(
-                                      () => ref
-                                          .read(feedRepositoryProvider)
-                                          .starArticle(
-                                            value.id,
-                                            starred: !value.starred,
-                                          ),
-                                    ),
+                                    onPressed: () =>
+                                        _runAction(() => _setSaved(value)),
                                     icon: Icon(
                                       value.starred
                                           ? Icons.bookmark_rounded
@@ -315,20 +311,34 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                           : 'Play video',
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.picture_in_picture_alt_rounded,
+                        size: 18,
+                        color: AppConstants.secondaryText,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Use Picture in Picture for background or lock-screen audio.',
+                          style: TextStyle(
+                            color: AppConstants.secondaryText,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
                     children: [
                       FilledButton.tonalIcon(
-                        onPressed: () => _runAction(
-                          () => ref
-                              .read(feedRepositoryProvider)
-                              .starArticle(
-                                article.id,
-                                starred: !article.starred,
-                              ),
-                        ),
+                        onPressed: () => _runAction(() => _setSaved(article)),
                         icon: Icon(
                           article.starred
                               ? Icons.bookmark_rounded
@@ -440,15 +450,28 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     });
   }
 
-  void _changeTextSize(String action) {
-    final tenths = (_scale * 10).round();
-    setState(() {
-      _scale = switch (action) {
-        'smaller' => (tenths - 1).clamp(8, 15) / 10,
-        'larger' => (tenths + 1).clamp(8, 15) / 10,
-        _ => 1,
-      };
-    });
+  void _changeTextSize(String action, int current) {
+    final next = switch (action) {
+      'smaller' => (current - 10).clamp(80, 150),
+      'larger' => (current + 10).clamp(80, 150),
+      _ => 100,
+    };
+    unawaited(
+      _runAction(
+        () => ref.read(settingsRepositoryProvider).setReaderTextScale(next),
+      ),
+    );
+  }
+
+  Future<void> _setSaved(Article article) async {
+    if (!article.starred &&
+        privacyYouTubePlaybackUri(Uri.tryParse(article.canonicalUrl ?? '')) ==
+            null) {
+      await _contentFor(article);
+    }
+    await ref
+        .read(feedRepositoryProvider)
+        .starArticle(article.id, starred: !article.starred);
   }
 
   Future<void> _share(Article article) async {

@@ -599,7 +599,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           if (error.isForMainFrame == false || failedUri == null) {
             return;
           }
-          if (!_isActiveLoadUri(failedUri)) return;
+          if (!_isActivePlaybackUri(failedUri)) return;
           _fallbackOrShowError();
         },
         onHttpError: (error) {
@@ -608,7 +608,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             return;
           }
           final failedUri = error.request?.uri ?? error.response?.uri;
-          if (_isActiveLoadUri(failedUri)) _fallbackOrShowError();
+          if (_isActivePlaybackUri(failedUri)) _fallbackOrShowError();
         },
         onNavigationRequest: (request) {
           if (!_isCurrentController(controller, controllerToken)) {
@@ -776,14 +776,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   bool _isActivePlaybackUri(Uri? uri) =>
-      (_usingDirectMedia ? _isCurrentDirectMedia(uri) : _isCurrentVideo(uri)) &&
-      (_usingOfficialFallback
-          ? _isOfficialYouTubeHost(uri?.host)
-          : _usingDirectMedia
-          ? true
-          : _isWrapperHost(uri?.host) || _isPlaybackHost(uri?.host));
-
-  bool _isActiveLoadUri(Uri? uri) =>
       (_usingDirectMedia ? _isCurrentDirectMedia(uri) : _isCurrentVideo(uri)) &&
       (_usingOfficialFallback
           ? _isOfficialYouTubeHost(uri?.host)

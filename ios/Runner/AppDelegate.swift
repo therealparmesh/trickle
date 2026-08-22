@@ -4,6 +4,10 @@ import workmanager_apple
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private let appGroup = "group.com.parmscript.trickle"
+  private let incomingShareKey = "incomingShareText"
+  private var incomingShareChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -33,5 +37,19 @@ import workmanager_apple
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    incomingShareChannel = FlutterMethodChannel(
+      name: "com.parmscript.trickle/incoming-share",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    incomingShareChannel?.setMethodCallHandler { [appGroup, incomingShareKey] call, result in
+      guard call.method == "takePendingText" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let defaults = UserDefaults(suiteName: appGroup)
+      let text = defaults?.string(forKey: incomingShareKey)
+      defaults?.removeObject(forKey: incomingShareKey)
+      result(text)
+    }
   }
 }

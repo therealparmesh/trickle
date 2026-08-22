@@ -360,6 +360,75 @@ void main() {
     );
   });
 
+  test('queue reload cannot replace a newer in-memory edit', () async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    final handler = TrickleAudioHandler(
+      database: database,
+      settings: SettingsRepository(database),
+      sourceResolver: PlaybackSourceResolver(
+        database,
+        PrivateFeedStore(),
+        network,
+      ),
+    );
+    addTearDown(() async {
+      await handler.disposeHandler();
+      network.close();
+      await database.close();
+    });
+    final now = DateTime.utc(2026, 8, 23);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'feed',
+            title: 'Feed',
+            feedUrl: 'https://example.test/feed',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    for (final id in const ['stored', 'newer']) {
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: id,
+              feedId: 'feed',
+              title: id,
+              enclosureUrl: 'https://example.test/$id.mp3',
+              discoveredAt: now,
+            ),
+          );
+    }
+    await database
+        .into(database.queueEntries)
+        .insert(
+          QueueEntriesCompanion.insert(
+            id: 'stored-queue-entry',
+            episodeId: 'stored',
+            sortKey: 0,
+            addedAt: now,
+          ),
+        );
+
+    final reload = handler.reloadQueueFromDatabase();
+    final update = handler.updateQueue(const [
+      MediaItem(id: 'newer', title: 'newer'),
+    ]);
+    await Future.wait([reload, update]);
+
+    expect(handler.queue.value.map((item) => item.id), ['newer']);
+    expect(
+      (await database.select(database.queueEntries).get()).single.episodeId,
+      'newer',
+    );
+  });
+
   test('only a usable completed audio file bypasses streaming', () async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
     final adapter = _MediaAdapter();

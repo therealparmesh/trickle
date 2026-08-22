@@ -44,7 +44,7 @@ final class LibraryPage extends ConsumerWidget {
                   ),
                   LibraryShortcut(
                     icon: Icons.dynamic_feed_outlined,
-                    label: 'Feeds',
+                    label: 'Sources',
                     color: AppConstants.magenta,
                     onTap: () => context.push('/reader?tab=feeds'),
                   ),

@@ -23,7 +23,7 @@ final class HomePage extends ConsumerWidget {
     final episodes = ref.watch(recentEpisodesProvider);
     final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
-    final readerFeedCount = ref.watch(readerFeedsProvider).value?.length;
+    final unreadFeedItemCount = ref.watch(unreadArticleCountProvider).value;
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
@@ -76,7 +76,7 @@ final class HomePage extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: _HomeShortcuts(
                   title: 'Library',
-                  action: 'See all',
+                  action: 'Open',
                   onAction: () => context.push('/library'),
                   shortcuts: [
                     LibraryShortcut(
@@ -145,7 +145,7 @@ final class HomePage extends ConsumerWidget {
                     LibraryShortcut(
                       icon: Icons.dynamic_feed_outlined,
                       label: 'Sources',
-                      badge: readerFeedCount,
+                      badge: unreadFeedItemCount,
                       color: AppConstants.magenta,
                       onTap: () => context.push('/reader?tab=feeds'),
                     ),

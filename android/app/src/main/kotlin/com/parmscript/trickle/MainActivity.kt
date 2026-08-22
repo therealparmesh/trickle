@@ -2,6 +2,7 @@ package com.parmscript.trickle
 
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.Build
@@ -14,12 +15,28 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
     private var videoChannel: MethodChannel? = null
+    private var incomingShareChannel: MethodChannel? = null
+    private var pendingSharedText: String? = null
     private var pictureInPictureRequest: Int? = null
     private var pictureInPictureWasActive = false
     private var pictureInPictureExitDeferredForScreenOff = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        captureSharedText(intent)
+        incomingShareChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.parmscript.trickle/incoming-share",
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method != "takePendingText") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                result.success(pendingSharedText)
+                pendingSharedText = null
+            }
+        }
         videoChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.parmscript.trickle/video",
@@ -58,7 +75,16 @@ class MainActivity : AudioServiceActivity() {
         clearPictureInPictureState()
         videoChannel?.setMethodCallHandler(null)
         videoChannel = null
+        incomingShareChannel?.setMethodCallHandler(null)
+        incomingShareChannel = null
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val shared = captureSharedText(intent)
+        if (shared != null) incomingShareChannel?.invokeMethod("sharedText", shared)
     }
 
     override fun onPictureInPictureModeChanged(
@@ -149,6 +175,19 @@ class MainActivity : AudioServiceActivity() {
         } catch (_: RuntimeException) {
             // Engine teardown already stops and discards the platform view.
         }
+    }
+
+    private fun captureSharedText(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_SEND || intent.type != "text/plain") {
+            return null
+        }
+        val shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        if (shared != null) {
+            pendingSharedText = shared
+            intent.removeExtra(Intent.EXTRA_TEXT)
+        }
+        return shared
     }
 
     @RequiresApi(Build.VERSION_CODES.O)

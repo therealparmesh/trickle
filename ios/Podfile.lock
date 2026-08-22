@@ -95,7 +95,7 @@ SPEC CHECKSUMS:
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   disk_space_plus: a36391fb5f732dbdd29628b0bac5a1acbd43aaef
   file_selector_ios: ec57ec07954363dd730b642e765e58f199bb621a
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed

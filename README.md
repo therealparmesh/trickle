@@ -4,17 +4,18 @@ trickle is a podcast player and feed reader for iOS and Android, with a cyberpun
 
 ## Features
 
-- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, Nostr profile feeds, standard OPML import, and separate OPML exports for podcasts, feeds (RSS and YouTube), or all compatible subscriptions
-- RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing with exclusive podcast or article-feed classification
+- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, Nostr profile feeds, standard OPML import, and an OPML export scope chooser for podcasts, feeds, or all compatible subscriptions
+- RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing that keeps podcasts separate from other feeds
 - Verified Nostr profile posts from secure relays, with replies and reposts excluded; Markdown, content warnings, images, native audio, and direct video are supported when supplied by a post
-- Streaming, resumable app-private downloads, persistent Up Next, automatic download cleanup, and per-feed automation
-- Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, publisher transcripts, and per-feed intro/outro skip
+- Streaming, resumable app-private downloads, storage totals and bulk cleanup, persistent Up Next, automatic download cleanup, and per-feed automation
+- Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, searchable timed transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
-- Unread, all, and saved article views; reader-mode extraction; link previews; local full-text search; and external share/browser actions
+- Unread, all, and saved article views; category timelines; per-source search, filters, and sorting; persistent reader text size; offline saved article text; link previews; local full-text search; and external share/browser actions
 - Reusable optional categories for non-podcast sources, with feed reassignment, whole-category renaming, case-insensitive suggestions and grouping, and standard OPML folder import and export
 - New, in-progress, and played episode states; New, In Progress, and All podcast filters; partial-progress bars and Resume actions; full show notes; no play-on-open side effect; and separate quick-play buttons throughout episode lists
 - YouTube video entries and recognized YouTube attachments play without ads when supported, with an official-source fallback and a live minimized Now Playing preview that does not reload; Picture in Picture supports background and locked-screen audio
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
+- Add feeds from the iOS or Android system share sheet, with an editable confirmation before subscription
 - Local ZIP backup/restore for portable subscriptions and local state, local notifications, and best-effort operating-system background refresh
 - trickle does not collect your information
 
@@ -27,14 +28,14 @@ Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally ou
 
 ## Interface
 
-The home flow starts with a horizontally scrolling two-row shelf of recent episodes with direct Play and Resume controls, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Four-button collections divide the available width evenly, with longer labels wrapping inside their cell. Section-level See all actions open the complete library or reader destination. The Podcasts screen separates New, In Progress, and All episodes without duplicating queue state. Episodes distinguish New, In Progress, and Played at a glance. The only number badge is on the Home screen’s Sources shortcut; it shows the exact feed subscription count and hides at zero. The Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
+The home flow starts with a horizontally scrolling two-row shelf of recent episodes with direct Play and Resume controls, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Four-button collections divide the available width evenly, with longer labels wrapping inside their cell. Section-level See all actions open the complete library or Feeds destination. The Podcasts screen separates New, In Progress, and All episodes without duplicating queue state. Episodes distinguish New, In Progress, and Played at a glance. The only number badge is on the Home screen’s Sources shortcut; it shows the exact unread feed-item count and hides at zero. Feeds separates the item timeline from Sources, and the Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
 
 The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Route changes use a brief full-surface signal glitch after an instantaneous handoff and skip the effect when reduced motion is enabled. Persistent audio and video hosts stay outside the effect so navigation cannot reset playback. Playback, Picture in Picture, article reading, and in-place controls remain stable through navigation. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 
 ## Prerequisites
 
-- Flutter 3.44.4 stable with Dart 3.12.2
-- oxfmt 0.57.0 for Markdown formatting
+- Flutter 3.44.4 or later with Dart 3.12.2 or later; the follow-up build is verified with Flutter 3.47.1
+- oxfmt 0.57.0 or later for Markdown formatting
 - Android SDK 36 for Android builds
 - JDK 17 or 21 for Android builds; JDK 26 is not supported by the current Android toolchain
 - Xcode 26 or later and CocoaPods for iOS builds
@@ -75,7 +76,7 @@ The unsigned build commands verify compilation without requiring publisher crede
 - `lib/core`: product rules, constants, formatting, URL identity, and user-safe errors
 - `lib/data`: Drift/SQLite persistence, hardened HTTPS and secure WebSocket networking, feed and verified Nostr parsing, private-feed storage, and repositories
 - `lib/features`: background downloads, long-lived audio handling, and the active video session
-- `lib/services`: refresh scheduling, feed automation, notifications, OPML, and local backup
+- `lib/services`: refresh scheduling, incoming shares, feed automation, notifications, OPML, and local backup
 - `lib/presentation`: Riverpod-driven screens, the shared visual system, reusable content components, and the persistent player shell
 
 The SQLite database uses schema version 4, WAL mode, indexed timeline queries, foreign keys, and FTS5. Feed refreshes and restores preload identity maps, update search data in bounded batches, and preserve mutable item state with one transactional snapshot instead of per-item queries. Shared library snapshots prevent each visible row from opening its own database stream. Playback surfaces observe only the current item and engine status they display, so buffer updates and unrelated items do not rebuild list rows. Unchanged feed settings skip database writes. Potentially expensive feed, article, and Nostr signature parsing runs away from the UI isolate, and reader extraction and fragmentation use linear passes over the document. Nostr refreshes use a finite set of secure relay connections that close after an end-of-stored-events response or the shared deadline. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
@@ -100,4 +101,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in screenshot set was verified against the current visual system on August 20, 2026, using the repository's original fictional content and artwork.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in copyright-safe images were regenerated and visually verified against 1.1 on August 22, 2026.

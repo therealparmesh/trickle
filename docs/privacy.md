@@ -12,7 +12,7 @@ trickle does not collect your information.
 
 ## Data stored on the device
 
-Subscriptions, reading state, playback progress, queue entries, settings, bookmarks, article cache, and downloaded media are stored locally. Android backup and device transfer exclude trickle application data. On Apple platforms, trickle excludes its Application Support directory from iCloud backup.
+Subscriptions, reading state, playback progress, queue entries, settings, bookmarks, article cache, and downloaded media are stored locally. Text shared to trickle is held briefly in app-private system storage until trickle opens the editable Add Feed confirmation. Android backup and device transfer exclude trickle application data. On Apple platforms, trickle excludes its Application Support directory from iCloud backup.
 
 Private-feed URLs and authorization headers are stored using the operating system's Keychain or Keystore. Apple Keychain entries are restricted to the current device. An active authenticated media download may require the operating system's app-private download scheduler to retain its URL and request headers until that task ends.
 
@@ -26,7 +26,7 @@ trickle makes direct requests to third parties only to perform actions requested
 - Feed publishers and their hosting providers receive feed, article, artwork, transcript, chapter, and media requests, plus standard network metadata such as the device IP address.
 - Nostr relays receive the public profile key being requested and standard network metadata. Media hosts linked from a post receive media requests only when that media is displayed or played.
 - When the user adds a YouTube channel or playlist, YouTube receives the page or feed request. Opening one of its video entries loads a third-party video page in the in-app player. If that page cannot load, the same player falls back to the official source URL from the feed. Those services receive the request and standard network metadata under their own policies.
-- The operating system and the destination selected by the user handle data when the user imports, exports, shares, or opens a link.
+- The operating system and the destination selected by the user handle data when the user imports, exports, shares, or opens a link. Sharing a URL to trickle keeps that text on the device and does not send it to the developer.
 
 ## Private feeds
 

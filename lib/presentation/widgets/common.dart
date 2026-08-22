@@ -558,7 +558,7 @@ final class AdaptiveFilterControl<T extends Object> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.textScalerOf(context).scale(1) > 1.8) {
+    if (options.length > 3 || MediaQuery.textScalerOf(context).scale(1) > 1.8) {
       return AdaptiveDropdownField<T>(
         label: label,
         initialValue: value,

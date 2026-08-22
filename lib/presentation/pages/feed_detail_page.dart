@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
+import '../../core/content_filters.dart';
 import '../../core/errors.dart';
 import '../../core/feed_category.dart';
 import '../../core/youtube_support.dart';
@@ -13,7 +16,10 @@ import '../../domain/feed_models.dart';
 import '../subscription_actions.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/content_list_controls.dart';
 import '../widgets/design_system.dart';
+
+enum _FeedMenuAction { settings, markAllRead }
 
 /// Detail surface shared by podcast and non-podcast feeds.
 final class FeedDetailPage extends ConsumerStatefulWidget {
@@ -41,11 +47,24 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   bool _unsubscribing = false;
   bool _refreshing = false;
   bool _forcePrivateResubscribe = false;
+  final TextEditingController _search = TextEditingController();
+  Timer? _searchDebounce;
+  String _query = '';
+  ContentSort _sort = ContentSort.newest;
+  EpisodeFeedFilter _episodeFilter = EpisodeFeedFilter.all;
+  ArticleFeedFilter _articleFilter = ArticleFeedFilter.all;
 
   @override
   void initState() {
     super.initState();
     _catalogPreview = _loadCatalogPreview();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _search.dispose();
+    super.dispose();
   }
 
   Future<ParsedFeed>? _loadCatalogPreview() {
@@ -70,7 +89,6 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     if (feed.isLoading && _transitionFeed != null && _catalogPreview != null) {
       return _catalogPodcast(context, subscribedFeed: _transitionFeed);
     }
-    final page = (feedId: feedId, limit: _limit);
     final kind = feed.value == null
         ? null
         : FeedKind.values[feed.value!.kind.clamp(
@@ -82,28 +100,52 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     );
     final canShowEpisodes = kind == FeedKind.podcast;
     final canShowArticles = kind == FeedKind.reader;
+    final episodeQuery = (
+      feedId: feedId,
+      limit: _limit,
+      sort: _sort,
+      filter: _episodeFilter,
+      query: _query,
+    );
+    final articleQuery = (
+      feedId: feedId,
+      category: null,
+      limit: _limit,
+      sort: _sort,
+      filter: _articleFilter,
+      query: _query,
+    );
     final AsyncValue<List<Episode>> episodes = canShowEpisodes
-        ? ref.watch(episodesForFeedProvider(page))
+        ? ref.watch(filteredEpisodesForFeedProvider(episodeQuery))
         : const AsyncData([]);
     final AsyncValue<List<Article>> articles = canShowArticles
-        ? ref.watch(articlesForFeedProvider(page))
+        ? ref.watch(filteredArticlesProvider(articleQuery))
         : const AsyncData([]);
     final episodeTotal = canShowEpisodes
-        ? ref.watch(episodeCountForFeedProvider(feedId)).value ?? 0
+        ? ref
+                  .watch(
+                    filteredEpisodeCountForFeedProvider((
+                      feedId: feedId,
+                      filter: _episodeFilter,
+                      query: _query,
+                    )),
+                  )
+                  .value ??
+              0
         : 0;
     final articleTotal = canShowArticles
-        ? ref.watch(articleCountForFeedProvider(feedId)).value ?? 0
+        ? ref
+                  .watch(
+                    filteredArticleCountProvider((
+                      feedId: feedId,
+                      category: null,
+                      filter: _articleFilter,
+                      query: _query,
+                    )),
+                  )
+                  .value ??
+              0
         : 0;
-    final showEpisodes =
-        canShowEpisodes &&
-        (episodes.isLoading ||
-            episodes.hasError ||
-            episodes.value?.isNotEmpty == true);
-    final showArticles =
-        canShowArticles &&
-        (articles.isLoading ||
-            articles.hasError ||
-            articles.value?.isNotEmpty == true);
     return Scaffold(
       appBar: AppBar(
         title: PageTitle(
@@ -116,28 +158,27 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
               : feed.value?.title ?? 'Subscription',
         ),
         actions: [
-          IconButton(
-            tooltip: switch (kind) {
-              FeedKind.podcast => 'Podcast settings',
-              _ => 'Feed settings',
-            },
-            onPressed: feed.value?.subscribed != true
-                ? null
-                : () async {
-                    final deleted = await showModalBottomSheet<bool>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => FeedSettingsSheet(feed: feed.value!),
-                    );
-                    if (deleted != true || !context.mounted) return;
-                    if (context.canPop()) {
-                      context.pop();
-                    } else {
-                      context.go('/');
-                    }
-                  },
-            icon: const Icon(Icons.tune_rounded),
-          ),
+          if (feed.value?.subscribed == true)
+            PopupMenuButton<_FeedMenuAction>(
+              tooltip: 'Subscription actions',
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: (action) => _runFeedMenuAction(feed.value!, action),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: _FeedMenuAction.settings,
+                  child: Text(
+                    kind == FeedKind.podcast
+                        ? 'Podcast settings'
+                        : 'Feed settings',
+                  ),
+                ),
+                if (kind == FeedKind.reader)
+                  const PopupMenuItem(
+                    value: _FeedMenuAction.markAllRead,
+                    child: Text('Mark this feed read'),
+                  ),
+              ],
+            ),
         ],
       ),
       body: AppBackdrop(
@@ -176,27 +217,37 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                       ),
                     ),
                   ),
-                  if (showEpisodes) ...[
+                  if (canShowEpisodes) ...[
                     const SliverToBoxAdapter(child: SectionHeader('Episodes')),
+                    SliverToBoxAdapter(child: _episodeControls()),
                     episodes.when(
-                      data: (items) => SliverList.builder(
-                        itemCount: items.length,
-                        itemBuilder: (_, index) =>
-                            EpisodeTile(items[index], showSource: false),
-                      ),
+                      data: (items) => items.isEmpty
+                          ? SliverToBoxAdapter(
+                              child: _filteredEmptyState(
+                                noun: 'episodes',
+                                allEmptyMessage:
+                                    'Refresh this podcast to check for episodes.',
+                              ),
+                            )
+                          : SliverList.builder(
+                              itemCount: items.length,
+                              itemBuilder: (_, index) =>
+                                  EpisodeTile(items[index], showSource: false),
+                            ),
                       loading: () => const SliverToBoxAdapter(
                         child: SizedBox(height: 180, child: LoadingView()),
                       ),
                       error: (error, _) => SliverToBoxAdapter(
                         child: ErrorView(
                           friendlyError(error),
-                          onRetry: () =>
-                              ref.invalidate(episodesForFeedProvider(page)),
+                          onRetry: () => ref.invalidate(
+                            filteredEpisodesForFeedProvider(episodeQuery),
+                          ),
                         ),
                       ),
                     ),
                   ],
-                  if (showArticles) ...[
+                  if (canShowArticles) ...[
                     SliverToBoxAdapter(
                       child: SectionHeader(
                         value.protocol == FeedProtocol.nostr.index
@@ -206,32 +257,36 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                             : 'Videos',
                       ),
                     ),
+                    SliverToBoxAdapter(child: _articleControls()),
                     articles.when(
-                      data: (items) => SliverList.builder(
-                        itemCount: items.length,
-                        itemBuilder: (_, index) =>
-                            ArticleTile(items[index], showSource: false),
-                      ),
+                      data: (items) => items.isEmpty
+                          ? SliverToBoxAdapter(
+                              child: _filteredEmptyState(
+                                noun: youtubeKind == null
+                                    ? 'feed items'
+                                    : 'videos',
+                                allEmptyMessage:
+                                    'Pull down to refresh this feed.',
+                              ),
+                            )
+                          : SliverList.builder(
+                              itemCount: items.length,
+                              itemBuilder: (_, index) =>
+                                  ArticleTile(items[index], showSource: false),
+                            ),
                       loading: () => const SliverToBoxAdapter(
                         child: SizedBox(height: 120, child: LoadingView()),
                       ),
                       error: (error, _) => SliverToBoxAdapter(
                         child: ErrorView(
                           friendlyError(error),
-                          onRetry: () =>
-                              ref.invalidate(articlesForFeedProvider(page)),
+                          onRetry: () => ref.invalidate(
+                            filteredArticlesProvider(articleQuery),
+                          ),
                         ),
                       ),
                     ),
                   ],
-                  if (!showEpisodes && !showArticles)
-                    const SliverFillRemaining(
-                      child: EmptyState(
-                        icon: Icons.hourglass_empty_rounded,
-                        title: 'No entries yet',
-                        message: 'Pull down to refresh this feed.',
-                      ),
-                    ),
                   if ((canShowEpisodes &&
                           (episodes.value?.length ?? 0) < episodeTotal) ||
                       (canShowArticles &&
@@ -242,7 +297,11 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                         child: OutlinedButton.icon(
                           onPressed: () => setState(() => _limit += _pageSize),
                           icon: const Icon(Icons.expand_more_rounded),
-                          label: const Text('Load older items'),
+                          label: Text(
+                            canShowEpisodes
+                                ? 'Load more episodes'
+                                : 'Load more feed items',
+                          ),
                         ),
                       ),
                     ),
@@ -259,6 +318,132 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
         ),
       ),
     );
+  }
+
+  Widget _episodeControls() {
+    return ContentListControls<EpisodeFeedFilter>(
+      searchController: _search,
+      searchHint: 'Search episodes…',
+      onSearchChanged: _scheduleSearch,
+      filter: _episodeFilter,
+      filterOptions: const [
+        AdaptiveFilterOption(EpisodeFeedFilter.all, 'All'),
+        AdaptiveFilterOption(EpisodeFeedFilter.unplayed, 'Unplayed'),
+        AdaptiveFilterOption(EpisodeFeedFilter.inProgress, 'In Progress'),
+        AdaptiveFilterOption(EpisodeFeedFilter.saved, 'Saved'),
+        AdaptiveFilterOption(EpisodeFeedFilter.downloaded, 'Downloaded'),
+      ],
+      onFilterChanged: (value) => setState(() {
+        _episodeFilter = value;
+        _limit = _pageSize;
+      }),
+      sort: _sort,
+      onSortChanged: _setSort,
+    );
+  }
+
+  Widget _articleControls() {
+    return ContentListControls<ArticleFeedFilter>(
+      searchController: _search,
+      searchHint: 'Search this feed…',
+      onSearchChanged: _scheduleSearch,
+      filter: _articleFilter,
+      filterOptions: const [
+        AdaptiveFilterOption(ArticleFeedFilter.all, 'All'),
+        AdaptiveFilterOption(ArticleFeedFilter.unread, 'Unread'),
+        AdaptiveFilterOption(ArticleFeedFilter.saved, 'Saved'),
+      ],
+      onFilterChanged: (value) => setState(() {
+        _articleFilter = value;
+        _limit = _pageSize;
+      }),
+      sort: _sort,
+      onSortChanged: _setSort,
+      accent: AppConstants.magenta,
+    );
+  }
+
+  Widget _filteredEmptyState({
+    required String noun,
+    required String allEmptyMessage,
+  }) {
+    final filtered =
+        _query.isNotEmpty ||
+        _episodeFilter != EpisodeFeedFilter.all ||
+        _articleFilter != ArticleFeedFilter.all;
+    return EmptyState(
+      icon: Icons.filter_alt_off_outlined,
+      title: filtered ? 'No matching $noun' : 'No $noun yet',
+      message: filtered ? 'Try another search or filter.' : allEmptyMessage,
+      compact: true,
+    );
+  }
+
+  void _scheduleSearch(String value) {
+    _searchDebounce?.cancel();
+    setState(() {});
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (normalized == _query) return;
+      setState(() {
+        _query = normalized;
+        _limit = _pageSize;
+      });
+    });
+  }
+
+  void _setSort(ContentSort value) {
+    if (value == _sort) return;
+    setState(() {
+      _sort = value;
+      _limit = _pageSize;
+    });
+  }
+
+  Future<void> _runFeedMenuAction(Feed feed, _FeedMenuAction action) async {
+    if (action == _FeedMenuAction.markAllRead) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Mark this feed read?'),
+          content: Text(
+            'Every unread item from ${feed.title} will leave the Unread view.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Mark read'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      try {
+        await ref
+            .read(feedRepositoryProvider)
+            .markAllArticlesRead(feedId: feed.id);
+        if (mounted) showMessageSnackBar(context, '${feed.title} marked read');
+      } on Object catch (error) {
+        if (mounted) showErrorSnackBar(context, error);
+      }
+      return;
+    }
+    final deleted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => FeedSettingsSheet(feed: feed),
+    );
+    if (deleted != true || !mounted) return;
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/');
+    }
   }
 
   Future<void> _unsubscribe(Feed feed) async {
@@ -500,6 +685,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
           .subscribe(
             podcast.feedUrl.toString(),
             forcePrivate: _forcePrivateResubscribe,
+            expectedKind: FeedKind.podcast,
           );
       if (!mounted) return;
       setState(() {
@@ -1001,7 +1187,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                   FeedKind.reader
                       when widget.feed.protocol == FeedProtocol.nostr.index =>
                     'New post notifications',
-                  FeedKind.reader => 'New article notifications',
+                  FeedKind.reader => 'New feed item notifications',
                   FeedKind.podcast => 'New episode notifications',
                 },
                 subtitle:

@@ -17,11 +17,13 @@ final class PodcastSearchRepository {
   final AppDatabase _database;
   final SafeNetworkClient _network;
   final List<DateTime> _requestTimes = [];
+  int _latestRequest = 0;
 
   Future<List<PodcastSearchResult>> search(
     String rawQuery,
     String region,
   ) async {
+    final request = ++_latestRequest;
     final query = rawQuery.trim();
     if (query.length < 2) return const [];
     final normalizedQuery = query.toLowerCase();
@@ -47,7 +49,7 @@ final class PodcastSearchRepository {
       )..where((row) => row.key.equals(key))).go();
     }
 
-    await _waitForRateSlot();
+    if (!await _waitForRateSlot(request)) return const [];
     final uri = Uri.https('itunes.apple.com', '/search', {
       'term': normalizedQuery,
       'media': 'podcast',
@@ -77,8 +79,9 @@ final class PodcastSearchRepository {
     return results;
   }
 
-  Future<void> _waitForRateSlot() async {
+  Future<bool> _waitForRateSlot(int request) async {
     while (true) {
+      if (request != _latestRequest) return false;
       final now = DateTime.now().toUtc();
       _requestTimes.removeWhere(
         (time) => now.difference(time) >= _catalogRateWindow,
@@ -96,7 +99,7 @@ final class PodcastSearchRepository {
       final wait = oneSecondWait > rollingWait ? oneSecondWait : rollingWait;
       if (wait <= Duration.zero) {
         _requestTimes.add(now);
-        return;
+        return true;
       }
       await Future<void>.delayed(wait);
     }

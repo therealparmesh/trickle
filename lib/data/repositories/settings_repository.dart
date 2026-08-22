@@ -10,6 +10,7 @@ final class SettingsRepository {
   static const _autoDeleteKey = 'auto_delete';
   static const _refreshKey = 'refresh_interval';
   static const _remoteImagesKey = 'remote_images';
+  static const _readerTextScaleKey = 'reader_text_scale';
 
   Stream<int> watchSpeed() => _watch(_speedKey).map(_parseSpeed);
 
@@ -55,6 +56,23 @@ final class SettingsRepository {
   Stream<bool> watchRemoteImages() => _watchBool(_remoteImagesKey, true);
   Future<void> setRemoteImages(bool value) =>
       _write(_remoteImagesKey, '$value');
+
+  Stream<int> watchReaderTextScale() =>
+      _watch(_readerTextScaleKey).map(_parseReaderTextScale);
+
+  Future<void> setReaderTextScale(int value) async {
+    if (value < 80 || value > 150 || value % 10 != 0) {
+      throw ArgumentError.value(value, 'value', 'Unsupported reader text size');
+    }
+    await _write(_readerTextScaleKey, '$value');
+  }
+
+  int _parseReaderTextScale(String? value) {
+    final parsed = int.tryParse(value ?? '');
+    return parsed != null && parsed >= 80 && parsed <= 150 && parsed % 10 == 0
+        ? parsed
+        : 100;
+  }
 
   RefreshInterval _parseRefreshInterval(String? value) {
     return RefreshInterval.values.firstWhere(

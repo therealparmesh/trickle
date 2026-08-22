@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants.dart';
+import '../../core/content_filters.dart';
 
 part 'app_database.g.dart';
 
@@ -530,23 +531,6 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Stream<List<Article>> watchAllArticles({int limit = 200}) {
-    final query =
-        select(
-            articles,
-          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
-          ..where(feeds.subscribed.equals(true))
-          ..orderBy([
-            OrderingTerm.desc(articles.publishedAt),
-            OrderingTerm.desc(articles.discoveredAt),
-            OrderingTerm.asc(articles.id),
-          ])
-          ..limit(limit);
-    return query.watch().map(
-      (rows) => rows.map((row) => row.readTable(articles)).toList(),
-    );
-  }
-
   Stream<List<Article>> watchStarredArticles({required int limit}) {
     final query = select(articles)
       ..where((row) => row.starred.equals(true))
@@ -570,15 +554,23 @@ class AppDatabase extends _$AppDatabase {
     return query.watchSingle().map((row) => row.read(count) ?? 0);
   }
 
-  Stream<int> watchArticleCount() {
+  Stream<Map<String, int>> watchUnreadArticleCountsByFeed() {
     final count = articles.id.count();
     final query =
         selectOnly(
             articles,
           ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
-          ..addColumns([count])
-          ..where(feeds.subscribed.equals(true));
-    return query.watchSingle().map((row) => row.read(count) ?? 0);
+          ..addColumns([articles.feedId, count])
+          ..where(feeds.subscribed.equals(true) & articles.readAt.isNull())
+          ..groupBy([articles.feedId]);
+    return query.watch().map((rows) {
+      final counts = <String, int>{};
+      for (final row in rows) {
+        final feedId = row.read(articles.feedId);
+        if (feedId != null) counts[feedId] = row.read(count) ?? 0;
+      }
+      return counts;
+    });
   }
 
   Stream<int> watchStarredArticleCount() {
@@ -732,44 +724,185 @@ class AppDatabase extends _$AppDatabase {
     return _episodesForFeedQuery(feedId, limit: limit).get();
   }
 
-  Stream<List<Episode>> watchEpisodesForFeed(
-    String feedId, {
+  Stream<List<Episode>> watchFilteredEpisodesForFeed({
+    required String feedId,
     required int limit,
+    required ContentSort sort,
+    required EpisodeFeedFilter filter,
+    String query = '',
   }) {
-    return _episodesForFeedQuery(feedId, limit: limit).watch();
-  }
-
-  Stream<List<Article>> watchArticlesForFeed(
-    String feedId, {
-    required int limit,
-  }) {
-    final query = select(articles)
-      ..where((row) => row.feedId.equals(feedId))
+    final statement = select(episodes).join([
+      if (filter == EpisodeFeedFilter.inProgress)
+        leftOuterJoin(
+          playbackProgresses,
+          playbackProgresses.episodeId.equalsExp(episodes.id),
+        ),
+      if (filter == EpisodeFeedFilter.downloaded)
+        leftOuterJoin(
+          mediaDownloads,
+          mediaDownloads.episodeId.equalsExp(episodes.id),
+        ),
+    ])..where(episodes.feedId.equals(feedId));
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isNotEmpty) {
+      statement.where(
+        episodes.title.lower().contains(normalizedQuery) |
+            episodes.description.lower().contains(normalizedQuery),
+      );
+    }
+    statement.where(switch (filter) {
+      EpisodeFeedFilter.all => const Constant(true),
+      EpisodeFeedFilter.unplayed => episodes.played.equals(false),
+      EpisodeFeedFilter.inProgress =>
+        episodes.played.equals(false) &
+            playbackProgresses.completed.equals(false) &
+            playbackProgresses.positionMs.isBiggerThanValue(0),
+      EpisodeFeedFilter.saved => episodes.starred.equals(true),
+      EpisodeFeedFilter.downloaded => mediaDownloads.status.equals(
+        DownloadState.complete.index,
+      ),
+    });
+    statement
       ..orderBy([
-        (row) => OrderingTerm.desc(row.publishedAt),
-        (row) => OrderingTerm.desc(row.discoveredAt),
-        (row) => OrderingTerm.asc(row.id),
-      ]);
-    query.limit(limit);
-    return query.watch();
+        sort == ContentSort.newest
+            ? OrderingTerm.desc(episodes.publishedAt)
+            : OrderingTerm.asc(episodes.publishedAt),
+        sort == ContentSort.newest
+            ? OrderingTerm.desc(episodes.discoveredAt)
+            : OrderingTerm.asc(episodes.discoveredAt),
+        OrderingTerm.asc(episodes.id),
+      ])
+      ..limit(limit);
+    return statement.watch().map(
+      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
+    );
   }
 
-  Stream<int> watchEpisodeCountForFeed(String feedId) {
+  Stream<int> watchFilteredEpisodeCountForFeed({
+    required String feedId,
+    required EpisodeFeedFilter filter,
+    String query = '',
+  }) {
     final count = episodes.id.count();
-    return (selectOnly(episodes)
+    final statement =
+        selectOnly(episodes).join([
+            if (filter == EpisodeFeedFilter.inProgress)
+              leftOuterJoin(
+                playbackProgresses,
+                playbackProgresses.episodeId.equalsExp(episodes.id),
+              ),
+            if (filter == EpisodeFeedFilter.downloaded)
+              leftOuterJoin(
+                mediaDownloads,
+                mediaDownloads.episodeId.equalsExp(episodes.id),
+              ),
+          ])
           ..addColumns([count])
-          ..where(episodes.feedId.equals(feedId)))
-        .watchSingle()
-        .map((row) => row.read(count) ?? 0);
+          ..where(episodes.feedId.equals(feedId));
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isNotEmpty) {
+      statement.where(
+        episodes.title.lower().contains(normalizedQuery) |
+            episodes.description.lower().contains(normalizedQuery),
+      );
+    }
+    statement.where(switch (filter) {
+      EpisodeFeedFilter.all => const Constant(true),
+      EpisodeFeedFilter.unplayed => episodes.played.equals(false),
+      EpisodeFeedFilter.inProgress =>
+        episodes.played.equals(false) &
+            playbackProgresses.completed.equals(false) &
+            playbackProgresses.positionMs.isBiggerThanValue(0),
+      EpisodeFeedFilter.saved => episodes.starred.equals(true),
+      EpisodeFeedFilter.downloaded => mediaDownloads.status.equals(
+        DownloadState.complete.index,
+      ),
+    });
+    return statement.watchSingle().map((row) => row.read(count) ?? 0);
   }
 
-  Stream<int> watchArticleCountForFeed(String feedId) {
+  Stream<List<Article>> watchFilteredArticles({
+    String? feedId,
+    String? category,
+    required int limit,
+    required ContentSort sort,
+    required ArticleFeedFilter filter,
+    String query = '',
+  }) {
+    final statement = select(
+      articles,
+    ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))]);
+    if (feedId == null) {
+      statement.where(feeds.subscribed.equals(true));
+    } else {
+      statement.where(articles.feedId.equals(feedId));
+    }
+    final categoryIdentity = category?.trim().toLowerCase();
+    if (categoryIdentity?.isNotEmpty == true) {
+      statement.where(feeds.category.lower().equals(categoryIdentity!));
+    }
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isNotEmpty) {
+      statement.where(
+        articles.title.lower().contains(normalizedQuery) |
+            articles.summary.lower().contains(normalizedQuery) |
+            articles.author.lower().contains(normalizedQuery),
+      );
+    }
+    statement.where(switch (filter) {
+      ArticleFeedFilter.all => const Constant(true),
+      ArticleFeedFilter.unread => articles.readAt.isNull(),
+      ArticleFeedFilter.saved => articles.starred.equals(true),
+    });
+    statement
+      ..orderBy([
+        sort == ContentSort.newest
+            ? OrderingTerm.desc(articles.publishedAt)
+            : OrderingTerm.asc(articles.publishedAt),
+        sort == ContentSort.newest
+            ? OrderingTerm.desc(articles.discoveredAt)
+            : OrderingTerm.asc(articles.discoveredAt),
+        OrderingTerm.asc(articles.id),
+      ])
+      ..limit(limit);
+    return statement.watch().map(
+      (rows) => rows.map((row) => row.readTable(articles)).toList(),
+    );
+  }
+
+  Stream<int> watchFilteredArticleCount({
+    String? feedId,
+    String? category,
+    required ArticleFeedFilter filter,
+    String query = '',
+  }) {
     final count = articles.id.count();
-    return (selectOnly(articles)
-          ..addColumns([count])
-          ..where(articles.feedId.equals(feedId)))
-        .watchSingle()
-        .map((row) => row.read(count) ?? 0);
+    final statement = selectOnly(articles).join([
+      innerJoin(feeds, feeds.id.equalsExp(articles.feedId)),
+    ])..addColumns([count]);
+    if (feedId == null) {
+      statement.where(feeds.subscribed.equals(true));
+    } else {
+      statement.where(articles.feedId.equals(feedId));
+    }
+    final categoryIdentity = category?.trim().toLowerCase();
+    if (categoryIdentity?.isNotEmpty == true) {
+      statement.where(feeds.category.lower().equals(categoryIdentity!));
+    }
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isNotEmpty) {
+      statement.where(
+        articles.title.lower().contains(normalizedQuery) |
+            articles.summary.lower().contains(normalizedQuery) |
+            articles.author.lower().contains(normalizedQuery),
+      );
+    }
+    statement.where(switch (filter) {
+      ArticleFeedFilter.all => const Constant(true),
+      ArticleFeedFilter.unread => articles.readAt.isNull(),
+      ArticleFeedFilter.saved => articles.starred.equals(true),
+    });
+    return statement.watchSingle().map((row) => row.read(count) ?? 0);
   }
 
   Future<void> indexSearchItem({

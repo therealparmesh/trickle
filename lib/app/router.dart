@@ -18,7 +18,7 @@ import '../presentation/pages/search_page.dart';
 import '../presentation/pages/settings_page.dart';
 import '../presentation/widgets/navigation_glitch.dart';
 
-GoRouter createRouter() {
+GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
   final rootNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
   final shellNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
   Page<void> navigationPage(
@@ -36,6 +36,7 @@ GoRouter createRouter() {
       navigationPage(state, child, observer: shellNavigationObserver);
 
   return GoRouter(
+    navigatorKey: navigatorKey,
     observers: [rootNavigationObserver],
     routes: [
       ShellRoute(

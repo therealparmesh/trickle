@@ -11,6 +11,49 @@ import '../database/app_database.dart';
 import '../network/safe_network_client.dart';
 import '../security/private_feed_store.dart';
 
+const _transcriptCachePrefix = 'trickle-transcript-v1:';
+
+final class TranscriptSegment {
+  const TranscriptSegment({
+    required this.text,
+    this.startMs,
+    this.endMs,
+    this.speaker,
+  });
+
+  final String text;
+  final int? startMs;
+  final int? endMs;
+  final String? speaker;
+}
+
+final class TranscriptDocument {
+  const TranscriptDocument(this.segments);
+
+  final List<TranscriptSegment> segments;
+
+  String get plainText => segments.map((segment) => segment.text).join('\n\n');
+  bool get hasTiming => segments.any((segment) => segment.startMs != null);
+
+  static TranscriptDocument fromPayload(Map<String, Object?> payload) {
+    final rawSegments = payload['segments'];
+    if (rawSegments is! List) return const TranscriptDocument([]);
+    return TranscriptDocument([
+      for (final raw in rawSegments.whereType<Map>())
+        if ((raw['text']?.toString().trim() ?? '').isNotEmpty)
+          TranscriptSegment(
+            text: raw['text']!.toString().trim(),
+            startMs: _intOrNull(raw['startMs']),
+            endMs: _intOrNull(raw['endMs']),
+            speaker: switch (raw['speaker']?.toString().trim()) {
+              final value? when value.isNotEmpty => value,
+              _ => null,
+            },
+          ),
+    ]);
+  }
+}
+
 final class EpisodeExtrasRepository {
   EpisodeExtrasRepository(this._database, this._network, this._privateFeeds);
 
@@ -74,7 +117,7 @@ final class EpisodeExtrasRepository {
     }
   }
 
-  Future<String?> transcript(String episodeId) async {
+  Future<TranscriptDocument?> transcript(String episodeId) async {
     final rows = await (_database.select(
       _database.transcripts,
     )..where((row) => row.episodeId.equals(episodeId))).get();
@@ -90,29 +133,33 @@ final class EpisodeExtrasRepository {
       orElse: () => rows.first,
     );
     final freshAfter = DateTime.now().toUtc().subtract(const Duration(days: 7));
-    if (selected.content?.isNotEmpty == true &&
+    final cached = _decodeCachedTranscript(selected.content);
+    if (cached != null &&
+        selected.content?.startsWith(_transcriptCachePrefix) == true &&
         selected.fetchedAt?.isAfter(freshAfter) == true) {
-      return selected.content;
+      return cached;
     }
     final episode = await _database.episodeById(episodeId);
     if (episode == null) return null;
     final transcriptUri = Uri.parse(selected.url);
-    late final String content;
+    late final Map<String, Object?> payload;
     try {
       final document = await _network.get(
         transcriptUri,
         headers: await _headersFor(episode, transcriptUri),
         maxBytes: AppConstants.transcriptLimitBytes,
       );
-      content = await compute(_parseTranscript, (
+      payload = await compute(_parseTranscriptPayload, (
         document.text,
         selected.mimeType,
         selected.url,
       ));
     } on Object {
-      if (selected.content?.isNotEmpty == true) return selected.content;
+      if (cached != null) return cached;
       rethrow;
     }
+    final transcript = TranscriptDocument.fromPayload(payload);
+    final content = '$_transcriptCachePrefix${jsonEncode(payload)}';
     final updated =
         await (_database.update(
           _database.transcripts,
@@ -129,11 +176,11 @@ final class EpisodeExtrasRepository {
         kind: 'episode',
         title: episode.title,
         body:
-            '${html_parser.parseFragment(episode.description ?? '').text ?? ''} $content',
+            '${html_parser.parseFragment(episode.description ?? '').text ?? ''} ${transcript.plainText}',
         feedTitle: feed?.title ?? '',
       );
     }
-    return content;
+    return transcript;
   }
 
   Future<Map<String, String>> _headersFor(Episode episode, Uri uri) async {
@@ -175,50 +222,127 @@ final class EpisodeExtrasRepository {
   }
 }
 
-String _parseTranscript((String, String?, String) input) {
+TranscriptDocument? _decodeCachedTranscript(String? content) {
+  final value = content?.trim();
+  if (value == null || value.isEmpty) return null;
+  if (!value.startsWith(_transcriptCachePrefix)) {
+    return TranscriptDocument([TranscriptSegment(text: value)]);
+  }
+  try {
+    final decoded = jsonDecode(value.substring(_transcriptCachePrefix.length));
+    return decoded is Map
+        ? TranscriptDocument.fromPayload(decoded.cast<String, Object?>())
+        : null;
+  } on Object {
+    return null;
+  }
+}
+
+Map<String, Object?> _parseTranscriptPayload((String, String?, String) input) {
   final (source, mimeType, url) = input;
   final type = mimeType?.toLowerCase() ?? '';
   if (type.contains('json') || url.toLowerCase().endsWith('.json')) {
     try {
       final decoded = jsonDecode(source);
-      final segments = decoded is Map
+      final rawSegments = decoded is Map
           ? decoded['segments'] ?? decoded['transcript'] ?? decoded['items']
           : decoded;
-      if (segments is List) {
-        return segments
-            .map((segment) {
-              if (segment is Map) {
-                return segment['body'] ??
-                    segment['text'] ??
-                    segment['content'] ??
-                    '';
-              }
-              return segment;
-            })
-            .join('\n\n')
-            .replaceAll(RegExp(r'\s+\n'), '\n')
-            .trim();
+      if (rawSegments is List) {
+        final segments = rawSegments
+            .map(_jsonTranscriptSegment)
+            .whereType<Map<String, Object?>>()
+            .toList();
+        return {'segments': segments};
       }
     } on Object {
-      return source.trim();
+      // Malformed JSON is still useful as a plain-text transcript.
     }
   }
   if (type.contains('vtt') ||
       type.contains('srt') ||
       url.toLowerCase().endsWith('.vtt') ||
       url.toLowerCase().endsWith('.srt')) {
-    return source
-        .split('\n')
-        .where(
-          (line) =>
-              line.trim().isNotEmpty &&
-              !line.contains('-->') &&
-              !RegExp(r'^\d+$').hasMatch(line.trim()) &&
-              line.trim() != 'WEBVTT',
-        )
-        .join('\n')
-        .replaceAll(RegExp(r'<[^>]+>'), '')
-        .trim();
+    final segments = <Map<String, Object?>>[];
+    for (final block
+        in source.replaceAll('\r\n', '\n').split(RegExp(r'\n\s*\n'))) {
+      final lines = block
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .toList();
+      final timingIndex = lines.indexWhere((line) => line.contains('-->'));
+      if (timingIndex < 0 || timingIndex + 1 >= lines.length) continue;
+      final timing = lines[timingIndex].split('-->');
+      if (timing.length != 2) continue;
+      final sourceText = lines.skip(timingIndex + 1).join('\n').trim();
+      final text =
+          html_parser.parseFragment(sourceText).text?.trim() ?? sourceText;
+      final startMs = _timestampMs(timing.first);
+      if (text.isEmpty || startMs == null) continue;
+      final segment = <String, Object?>{'text': text, 'startMs': startMs};
+      final endMs = _timestampMs(timing.last.split(RegExp(r'\s+')).first);
+      if (endMs != null) segment['endMs'] = endMs;
+      segments.add(segment);
+    }
+    if (segments.isNotEmpty) return {'segments': segments};
   }
-  return html_parser.parseFragment(source).text?.trim() ?? source.trim();
+  final text = html_parser.parseFragment(source).text?.trim() ?? source.trim();
+  return {
+    'segments': [
+      if (text.isNotEmpty) {'text': text},
+    ],
+  };
+}
+
+Map<String, Object?>? _jsonTranscriptSegment(Object? raw) {
+  if (raw is! Map) {
+    final text = raw?.toString().trim();
+    return text?.isNotEmpty == true ? {'text': text} : null;
+  }
+  final text =
+      (raw['body'] ?? raw['text'] ?? raw['content'])?.toString().trim() ?? '';
+  if (text.isEmpty) return null;
+  final startMs = _jsonTimeMs(
+    raw['startTime'] ?? raw['start_time'] ?? raw['start'] ?? raw['startMs'],
+    milliseconds: raw.containsKey('startMs'),
+  );
+  final endMs = _jsonTimeMs(
+    raw['endTime'] ?? raw['end_time'] ?? raw['end'] ?? raw['endMs'],
+    milliseconds: raw.containsKey('endMs'),
+  );
+  final speaker = (raw['speaker'] ?? raw['voice'])?.toString().trim();
+  final segment = <String, Object?>{'text': text};
+  if (startMs != null) segment['startMs'] = startMs;
+  if (endMs != null) segment['endMs'] = endMs;
+  if (speaker?.isNotEmpty == true) segment['speaker'] = speaker;
+  return segment;
+}
+
+int? _jsonTimeMs(Object? value, {required bool milliseconds}) {
+  final number = value is num ? value.toDouble() : double.tryParse('$value');
+  if (number == null || !number.isFinite || number < 0) return null;
+  return milliseconds ? number.round() : (number * 1000).round();
+}
+
+int? _timestampMs(String value) {
+  final normalized = value.trim().replaceAll(',', '.');
+  final parts = normalized.split(':');
+  if (parts.length < 2 || parts.length > 3) return null;
+  final seconds = double.tryParse(parts.last);
+  final minutes = int.tryParse(parts[parts.length - 2]);
+  final hours = parts.length == 3 ? int.tryParse(parts.first) : 0;
+  if (seconds == null || minutes == null || hours == null) return null;
+  if (hours < 0 ||
+      minutes < 0 ||
+      minutes >= 60 ||
+      seconds < 0 ||
+      seconds >= 60) {
+    return null;
+  }
+  return ((hours * 3600 + minutes * 60 + seconds) * 1000).round();
+}
+
+int? _intOrNull(Object? value) {
+  if (value is int) return value;
+  return int.tryParse('$value');
 }

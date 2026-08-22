@@ -1,15 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
+import '../../core/content_filters.dart';
 import '../../core/errors.dart';
 import '../../core/feed_category.dart';
 import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/content_list_controls.dart';
 import 'podcasts_page.dart';
 
 enum _ReaderFilter { unread, all, starred }
@@ -37,6 +41,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   late _ReaderFilter _filter;
   int _limit = _pageSize;
   bool _markingAllRead = false;
+  final TextEditingController _search = TextEditingController();
+  Timer? _searchDebounce;
+  String _query = '';
+  String _category = '';
+  ContentSort _sort = ContentSort.newest;
 
   @override
   void initState() {
@@ -55,6 +64,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _search.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -63,12 +74,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const PageTitle('Reader'),
+        title: const PageTitle('Feeds'),
         bottom: AdaptiveTabBar(
           controller: _tabs,
           tabs: const [
-            Tab(text: 'Articles'),
-            Tab(text: 'Feeds'),
+            Tab(text: 'Feed items'),
+            Tab(text: 'Sources'),
           ],
         ),
         actions: [
@@ -86,34 +97,107 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   Widget _articles() {
-    final articles = switch (_filter) {
-      _ReaderFilter.unread => ref.watch(readerUnreadArticlesProvider(_limit)),
-      _ReaderFilter.all => ref.watch(readerAllArticlesProvider(_limit)),
-      _ReaderFilter.starred => ref.watch(starredArticlesPageProvider(_limit)),
+    final categories = feedCategoryOptions(
+      (ref.watch(readerFeedsProvider).value ?? const <Feed>[]).map(
+        (feed) => feed.category,
+      ),
+    );
+    final selectedCategory =
+        categories.any(
+          (category) => feedCategoryIdentity(category) == _category,
+        )
+        ? categories.firstWhere(
+            (category) => feedCategoryIdentity(category) == _category,
+          )
+        : null;
+    final filter = switch (_filter) {
+      _ReaderFilter.unread => ArticleFeedFilter.unread,
+      _ReaderFilter.all => ArticleFeedFilter.all,
+      _ReaderFilter.starred => ArticleFeedFilter.saved,
     };
-    final total = switch (_filter) {
-      _ReaderFilter.unread => ref.watch(unreadArticleCountProvider).value ?? 0,
-      _ReaderFilter.all => ref.watch(articleCountProvider).value ?? 0,
-      _ReaderFilter.starred =>
-        ref.watch(starredArticleCountProvider).value ?? 0,
-    };
+    final page = (
+      feedId: null,
+      category: selectedCategory,
+      limit: _limit,
+      sort: _sort,
+      filter: filter,
+      query: _query,
+    );
+    final articles = ref.watch(filteredArticlesProvider(page));
+    final total =
+        ref
+            .watch(
+              filteredArticleCountProvider((
+                feedId: null,
+                category: selectedCategory,
+                filter: filter,
+                query: _query,
+              )),
+            )
+            .value ??
+        0;
     return RefreshIndicator(
       onRefresh: () => refreshAllFeeds(context, ref),
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _filterControl(),
-                  if (_filter == _ReaderFilter.unread && total > 0)
-                    Align(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (categories.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                    child: AdaptiveDropdownField<String>(
+                      label: 'Category',
+                      initialValue: selectedCategory ?? '',
+                      items: [
+                        const DropdownMenuItem(
+                          value: '',
+                          child: Text('All feeds'),
+                        ),
+                        for (final category in categories)
+                          DropdownMenuItem(
+                            value: category,
+                            child: Text(category),
+                          ),
+                      ],
+                      onChanged: (value) => setState(() {
+                        _category = feedCategoryIdentity(value) ?? '';
+                        _limit = _pageSize;
+                      }),
+                    ),
+                  ),
+                ContentListControls<_ReaderFilter>(
+                  searchController: _search,
+                  searchHint: 'Search feed items…',
+                  onSearchChanged: _scheduleSearch,
+                  filter: _filter,
+                  filterOptions: const [
+                    AdaptiveFilterOption(_ReaderFilter.unread, 'Unread'),
+                    AdaptiveFilterOption(_ReaderFilter.all, 'All'),
+                    AdaptiveFilterOption(_ReaderFilter.starred, 'Saved'),
+                  ],
+                  onFilterChanged: (value) => setState(() {
+                    _filter = value;
+                    _limit = _pageSize;
+                  }),
+                  sort: _sort,
+                  onSortChanged: (value) => setState(() {
+                    _sort = value;
+                    _limit = _pageSize;
+                  }),
+                  accent: AppConstants.magenta,
+                ),
+                if (_filter == _ReaderFilter.unread && total > 0)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: _markingAllRead ? null : _markAllRead,
+                        onPressed: _markingAllRead
+                            ? null
+                            : () => _markAllRead(selectedCategory),
                         icon: _markingAllRead
                             ? const SizedBox.square(
                                 dimension: 18,
@@ -123,12 +207,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                               )
                             : const Icon(Icons.done_all_rounded),
                         label: Text(
-                          _markingAllRead ? 'Marking read…' : 'Mark all read',
+                          _markingAllRead
+                              ? 'Marking read…'
+                              : selectedCategory == null
+                              ? 'Mark all read'
+                              : 'Mark category read',
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
           articles.when(
@@ -136,19 +224,25 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 ? SliverToBoxAdapter(
                     child: EmptyState(
                       icon: Icons.auto_stories_outlined,
-                      title: switch (_filter) {
-                        _ReaderFilter.unread => 'All caught up',
-                        _ReaderFilter.all => 'No feed items yet',
-                        _ReaderFilter.starred => 'No saved feed items',
-                      },
-                      message: switch (_filter) {
-                        _ReaderFilter.unread =>
-                          'There are no unread feed items.',
-                        _ReaderFilter.all =>
-                          'Add a feed to see new items here.',
-                        _ReaderFilter.starred =>
-                          'Save a feed item to keep it here.',
-                      },
+                      title: _query.isNotEmpty
+                          ? 'No matching feed items'
+                          : switch (_filter) {
+                              _ReaderFilter.unread => 'All caught up',
+                              _ReaderFilter.all => 'No feed items yet',
+                              _ReaderFilter.starred => 'No saved feed items',
+                            },
+                      message: _query.isNotEmpty
+                          ? 'Try another search or filter.'
+                          : selectedCategory == null
+                          ? switch (_filter) {
+                              _ReaderFilter.unread =>
+                                'There are no unread feed items.',
+                              _ReaderFilter.all =>
+                                'Add a feed to see new items here.',
+                              _ReaderFilter.starred =>
+                                'Save a feed item to keep it here.',
+                            }
+                          : 'There are no matching items in $selectedCategory.',
                     ),
                   )
                 : SliverList.builder(
@@ -161,7 +255,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             error: (error, _) => SliverToBoxAdapter(
               child: ErrorView(
                 friendlyError(error),
-                onRetry: _invalidateArticles,
+                onRetry: () => ref.invalidate(filteredArticlesProvider(page)),
               ),
             ),
           ),
@@ -182,25 +276,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
-  Widget _filterControl() {
-    void select(_ReaderFilter value) => setState(() {
-      _filter = value;
-      _limit = _pageSize;
-    });
-
-    return AdaptiveFilterControl<_ReaderFilter>(
-      value: _filter,
-      options: const [
-        AdaptiveFilterOption(_ReaderFilter.unread, 'Unread'),
-        AdaptiveFilterOption(_ReaderFilter.all, 'All'),
-        AdaptiveFilterOption(_ReaderFilter.starred, 'Saved'),
-      ],
-      onChanged: select,
-    );
-  }
-
   Widget _feeds() {
     final feeds = ref.watch(readerFeedsProvider);
+    final unreadCounts =
+        ref.watch(unreadArticleCountsByFeedProvider).value ?? const {};
     return RefreshIndicator(
       onRefresh: () => refreshAllFeeds(context, ref),
       child: feeds.when(
@@ -221,7 +300,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   ),
                 ],
               )
-            : _FeedList(items),
+            : _FeedList(items, unreadCounts: unreadCounts),
         loading: () => const LoadingView(),
         error: (error, _) => ErrorView(
           friendlyError(error),
@@ -231,26 +310,33 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
-  void _invalidateArticles() {
-    switch (_filter) {
-      case _ReaderFilter.unread:
-        ref.invalidate(readerUnreadArticlesProvider(_limit));
-      case _ReaderFilter.all:
-        ref.invalidate(readerAllArticlesProvider(_limit));
-      case _ReaderFilter.starred:
-        ref.invalidate(starredArticlesPageProvider(_limit));
-    }
+  void _scheduleSearch(String value) {
+    _searchDebounce?.cancel();
+    setState(() {});
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (normalized == _query) return;
+      setState(() {
+        _query = normalized;
+        _limit = _pageSize;
+      });
+    });
   }
 
-  Future<void> _markAllRead() async {
+  Future<void> _markAllRead(String? category) async {
     if (_markingAllRead) return;
     setState(() => _markingAllRead = true);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Mark everything read?'),
-        content: const Text(
-          'Every unread feed item will leave the Unread view.',
+        title: Text(
+          category == null ? 'Mark everything read?' : 'Mark category read?',
+        ),
+        content: Text(
+          category == null
+              ? 'Every unread feed item will leave the Unread view.'
+              : 'Every unread item in $category will leave the Unread view.',
         ),
         actions: [
           TextButton(
@@ -259,7 +345,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Mark all read'),
+            child: Text(
+              category == null ? 'Mark all read' : 'Mark category read',
+            ),
           ),
         ],
       ),
@@ -270,7 +358,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       return;
     }
     try {
-      await ref.read(feedRepositoryProvider).markAllArticlesRead();
+      await ref
+          .read(feedRepositoryProvider)
+          .markAllArticlesRead(category: category);
     } on Object catch (error) {
       if (!mounted) return;
       showErrorSnackBar(context, error);
@@ -318,9 +408,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 }
 
 final class _FeedList extends ConsumerStatefulWidget {
-  const _FeedList(this.feeds);
+  const _FeedList(this.feeds, {required this.unreadCounts});
 
   final List<Feed> feeds;
+  final Map<String, int> unreadCounts;
 
   @override
   ConsumerState<_FeedList> createState() => _FeedListState();
@@ -341,22 +432,14 @@ final class _FeedListState extends ConsumerState<_FeedList> {
           if (showHeaders)
             SliverToBoxAdapter(
               child: SectionHeader(
-                group.category ?? 'Uncategorized',
+                _categoryHeader(group),
                 accent: AppConstants.magenta,
                 compact: true,
-                action: group.category == null
-                    ? null
-                    : _renamingCategory == null
+                action: group.category != null && _renamingCategory == null
                     ? 'Rename'
-                    : _renamingCategory == feedCategoryIdentity(group.category)
-                    ? 'Renaming…'
                     : null,
-                onAction: group.category == null
-                    ? null
-                    : _renamingCategory == null
+                onAction: group.category != null && _renamingCategory == null
                     ? () => _rename(group.category!)
-                    : _renamingCategory == feedCategoryIdentity(group.category)
-                    ? () {}
                     : null,
               ),
             ),
@@ -366,7 +449,10 @@ final class _FeedListState extends ConsumerState<_FeedList> {
               itemCount: group.feeds.length,
               itemBuilder: (context, index) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _FeedRow(group.feeds[index]),
+                child: _FeedRow(
+                  group.feeds[index],
+                  unreadCount: widget.unreadCounts[group.feeds[index].id] ?? 0,
+                ),
               ),
             ),
           ),
@@ -374,6 +460,15 @@ final class _FeedListState extends ConsumerState<_FeedList> {
         const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
       ],
     );
+  }
+
+  String _categoryHeader(_FeedGroup group) {
+    final unread = group.feeds.fold<int>(
+      0,
+      (total, feed) => total + (widget.unreadCounts[feed.id] ?? 0),
+    );
+    final title = group.category ?? 'Uncategorized';
+    return unread == 0 ? title : '$title · $unread unread';
   }
 
   Future<void> _rename(String currentName) async {
@@ -495,16 +590,17 @@ List<_FeedGroup> _feedGroups(List<Feed> feeds) {
 }
 
 final class _FeedRow extends StatelessWidget {
-  const _FeedRow(this.feed);
+  const _FeedRow(this.feed, {required this.unreadCount});
 
   final Feed feed;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
     final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
     final isNostr = feed.protocol == FeedProtocol.nostr.index;
     final author = feed.author?.trim();
-    final subtitle =
+    final kindLabel =
         feed.refreshError ??
         (isNostr
             ? 'Nostr profile'
@@ -517,6 +613,9 @@ final class _FeedRow extends StatelessWidget {
                   author!.toLowerCase() != feed.title.trim().toLowerCase()
             ? author
             : 'RSS feed');
+    final subtitle = feed.refreshError != null || unreadCount == 0
+        ? kindLabel
+        : '$unreadCount unread · $kindLabel';
     return AppCard(
       padding: EdgeInsets.zero,
       child: ListTile(

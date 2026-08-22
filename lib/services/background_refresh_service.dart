@@ -14,7 +14,6 @@ import '../data/repositories/settings_repository.dart';
 import '../data/security/private_feed_store.dart';
 import '../features/downloads/download_coordinator.dart';
 import 'notification_service.dart';
-import 'refresh_lock.dart';
 import 'sync_coordinator.dart';
 
 const backgroundRefreshTask = 'com.parmscript.trickle.feed-refresh';
@@ -39,15 +38,13 @@ void backgroundCallbackDispatcher() {
       final now = DateTime.now().toUtc();
       final startedAt = now;
       final interval = await settings.refreshInterval();
-      // Keep all network work inside the OS task lifetime so the database is
-      // never closed under an in-flight refresh.
-      await RefreshLock.run(
-        () => repository.refreshAll(
-          budget: AppConstants.backgroundRefreshBudget,
-          dueAt: now,
-          minimumAge: interval.duration,
-          maxConcurrent: 2,
-        ),
+      // Feed revisions make a foreground refresh that overlaps this task a
+      // safe no-op instead of making either isolate wait on a process lock.
+      await repository.refreshAll(
+        budget: AppConstants.backgroundRefreshBudget,
+        dueAt: now,
+        minimumAge: interval.duration,
+        maxConcurrent: 2,
       );
       final sources = PlaybackSourceResolver(database, privateFeeds, network);
       downloads = DownloadCoordinator(

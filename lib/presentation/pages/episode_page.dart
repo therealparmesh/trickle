@@ -213,13 +213,6 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                 onPressed: () => _action(context, ref, EpisodeAction.playNext),
               ),
               _ActionButton(
-                icon: Icons.queue_music_rounded,
-                label: 'Add to Up Next',
-                busy: _busyActions.contains(EpisodeAction.addToUpNext),
-                onPressed: () =>
-                    _action(context, ref, EpisodeAction.addToUpNext),
-              ),
-              _ActionButton(
                 icon: downloadAction.icon,
                 label: downloadAction.label,
                 busy: _busyActions.contains(downloadAction.action),
@@ -235,14 +228,43 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                 onPressed: () =>
                     _action(context, ref, EpisodeAction.toggleSaved),
               ),
-              _ActionButton(
-                icon: episode.played
-                    ? Icons.replay_rounded
-                    : Icons.done_rounded,
-                label: episode.played ? 'Mark unplayed' : 'Mark played',
-                busy: _busyActions.contains(EpisodeAction.togglePlayed),
-                onPressed: () =>
-                    _action(context, ref, EpisodeAction.togglePlayed),
+              PopupMenuButton<EpisodeAction>(
+                tooltip: 'More episode actions',
+                enabled:
+                    !_busyActions.contains(EpisodeAction.addToUpNext) &&
+                    !_busyActions.contains(EpisodeAction.togglePlayed),
+                onSelected: (action) => _action(context, ref, action),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: EpisodeAction.addToUpNext,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.queue_music_rounded),
+                      title: Text('Add to Up Next'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: EpisodeAction.togglePlayed,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        episode.played
+                            ? Icons.replay_rounded
+                            : Icons.done_rounded,
+                      ),
+                      title: Text(
+                        episode.played ? 'Mark unplayed' : 'Mark played',
+                      ),
+                    ),
+                  ),
+                ],
+                child: _ActionButtonFace(
+                  icon: Icons.more_horiz_rounded,
+                  label: 'More',
+                  busy:
+                      _busyActions.contains(EpisodeAction.addToUpNext) ||
+                      _busyActions.contains(EpisodeAction.togglePlayed),
+                ),
               ),
             ],
           ),
@@ -277,6 +299,36 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
     } finally {
       if (mounted) setState(() => _busyActions.remove(action));
     }
+  }
+}
+
+final class _ActionButtonFace extends StatelessWidget {
+  const _ActionButtonFace({
+    required this.icon,
+    required this.label,
+    required this.busy,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: OutlinedButton.icon(
+          onPressed: () {},
+          icon: busy
+              ? const SizedBox.square(
+                  dimension: 17,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(icon, size: 19),
+          label: Text(label),
+        ),
+      ),
+    );
   }
 }
 

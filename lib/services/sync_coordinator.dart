@@ -9,7 +9,6 @@ import '../data/repositories/feed_repository.dart';
 import '../features/downloads/download_coordinator.dart';
 import '../features/player/trickle_audio_handler.dart';
 import 'notification_service.dart';
-import 'refresh_lock.dart';
 
 final class SyncResult {
   const SyncResult({this.failedFeeds = 0});
@@ -86,7 +85,7 @@ final class SyncCoordinator {
   }
 
   Future<SyncResult> _runFeedRefresh(Feed feed) async {
-    final refreshed = await RefreshLock.run(() => _feeds.refreshFeed(feed));
+    final refreshed = await _feeds.refreshFeed(feed);
     if (!refreshed) {
       return const SyncResult(failedFeeds: 1);
     }
@@ -101,8 +100,8 @@ final class SyncCoordinator {
   }
 
   Future<SyncResult> _runRefresh(_FullRefreshRun run) async {
-    final refreshResult = await RefreshLock.run(
-      () => _feeds.refreshAll(onProgress: run.reportProgress),
+    final refreshResult = await _feeds.refreshAll(
+      onProgress: run.reportProgress,
     );
     await applyPodcastAutomation(
       database: _database,

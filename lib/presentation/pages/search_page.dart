@@ -119,7 +119,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
           controller: _tabs,
           tabs: const [
             Tab(text: 'Library'),
-            Tab(text: 'Podcasts'),
+            Tab(text: 'Podcast catalog'),
           ],
         ),
       ),
@@ -173,7 +173,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
                       icon: Icons.manage_search_rounded,
                       title: 'Enter at least two characters',
                       message:
-                          'Search your library or discover podcasts from Apple.',
+                          'Search your library or find podcasts in Apple’s catalog.',
                     )
                   : _error != null && results == 0 && !_loading
                   ? ErrorView(_error!, onRetry: _runSearch)
@@ -459,7 +459,10 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
       if (feed == null) {
         final subscribed = await ref
             .read(feedRepositoryProvider)
-            .subscribe(widget.result.feedUrl.toString());
+            .subscribe(
+              widget.result.feedUrl.toString(),
+              expectedKind: FeedKind.podcast,
+            );
         if (!mounted) return;
         final provider = _catalogSubscriptionProvider(
           feedUrlIdentity(widget.result.feedUrl.toString()),
@@ -507,7 +510,8 @@ final class _CatalogSubscriptionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = subscribed ? 'Unsubscribe' : 'Subscribe';
+    final label = subscribed ? 'Subscribed' : 'Subscribe';
+    final actionLabel = subscribed ? 'Unsubscribe' : 'Subscribe';
     final button = SizedBox(
       width: largeText ? 224 : 108,
       height: largeText ? 64 : 48,
@@ -527,7 +531,7 @@ final class _CatalogSubscriptionButton extends StatelessWidget {
       liveRegion: true,
       label: busy
           ? '${subscribed ? 'Unsubscribing from' : 'Subscribing to'} $podcastName'
-          : '$label $podcastName',
+          : '$actionLabel $podcastName',
       excludeSemantics: true,
       onTap: busy ? null : onPressed,
       child: largeText

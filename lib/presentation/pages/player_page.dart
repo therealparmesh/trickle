@@ -14,6 +14,7 @@ import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
 import '../../data/repositories/article_repository.dart';
+import '../../data/repositories/episode_extras_repository.dart';
 import '../../data/security/private_feed_store.dart';
 import '../../features/player/trickle_audio_handler.dart';
 import '../episode_actions.dart';
@@ -760,11 +761,19 @@ final class _Extras extends ConsumerStatefulWidget {
 }
 
 class _ExtrasState extends ConsumerState<_Extras> {
-  static const _transcriptPageSize = 20000;
+  static const _transcriptPageSize = 100;
   bool _loadChapters = false;
   bool _loadShowNotes = false;
   bool _loadTranscript = false;
   int _transcriptLimit = _transcriptPageSize;
+  final _transcriptSearch = TextEditingController();
+  String _transcriptQuery = '';
+
+  @override
+  void dispose() {
+    _transcriptSearch.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant _Extras oldWidget) {
@@ -774,6 +783,8 @@ class _ExtrasState extends ConsumerState<_Extras> {
       _loadShowNotes = false;
       _loadTranscript = false;
       _transcriptLimit = _transcriptPageSize;
+      _transcriptSearch.clear();
+      _transcriptQuery = '';
     }
   }
 
@@ -938,7 +949,7 @@ class _ExtrasState extends ConsumerState<_Extras> {
     );
   }
 
-  Widget _transcriptBody(AsyncValue<String?>? transcript) {
+  Widget _transcriptBody(AsyncValue<TranscriptDocument?>? transcript) {
     if (transcript == null || transcript.isLoading) {
       return const InlineLoadingView(label: 'Loading transcript');
     }
@@ -949,35 +960,95 @@ class _ExtrasState extends ConsumerState<_Extras> {
         onRetry: () => ref.invalidate(transcriptProvider(widget.episodeId)),
       );
     }
-    final text = transcript.value;
-    if (text == null || text.isEmpty) {
+    final document = transcript.value;
+    if (document == null || document.segments.isEmpty) {
       return const ListTile(title: Text('No transcript available'));
     }
-    final visibleText = text.length > _transcriptLimit
-        ? text.substring(0, _transcriptLimit)
-        : text;
+    final query = _transcriptQuery.trim().toLowerCase();
+    final matches = query.isEmpty
+        ? document.segments
+        : document.segments
+              .where(
+                (segment) =>
+                    segment.text.toLowerCase().contains(query) ||
+                    (segment.speaker?.toLowerCase().contains(query) ?? false),
+              )
+              .toList();
+    final visible = matches.take(_transcriptLimit).toList();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SelectableText(
-            visibleText,
-            style: const TextStyle(
-              height: 1.55,
-              color: AppConstants.secondaryText,
-            ),
+          SearchBar(
+            controller: _transcriptSearch,
+            hintText: 'Search transcript',
+            leading: const Icon(Icons.search_rounded),
+            trailing: [
+              if (_transcriptQuery.isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear transcript search',
+                  onPressed: () {
+                    _transcriptSearch.clear();
+                    setState(() => _transcriptQuery = '');
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+            ],
+            onChanged: (value) => setState(() {
+              _transcriptQuery = value;
+              _transcriptLimit = _transcriptPageSize;
+            }),
           ),
-          if (visibleText.length < text.length)
+          const SizedBox(height: 10),
+          if (matches.isEmpty)
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('No transcript matches'),
+            )
+          else if (!document.hasTiming)
+            SelectableText(
+              visible.map((segment) => segment.text).join('\n\n'),
+              style: const TextStyle(
+                height: 1.55,
+                color: AppConstants.secondaryText,
+              ),
+            )
+          else
+            for (final segment in visible)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: segment.startMs == null
+                    ? null
+                    : Text(
+                        formatDuration(
+                          Duration(milliseconds: segment.startMs!),
+                        ),
+                      ),
+                title: Text(segment.text),
+                subtitle: segment.speaker == null
+                    ? null
+                    : Text(segment.speaker!),
+                onTap: segment.startMs == null
+                    ? null
+                    : () => _run(
+                        () => ref
+                            .read(audioHandlerProvider)
+                            .seek(Duration(milliseconds: segment.startMs!)),
+                      ),
+              ),
+          if (visible.length < matches.length)
             TextButton.icon(
               onPressed: () => setState(
                 () => _transcriptLimit = math.min(
-                  text.length,
-                  _transcriptLimit * 2,
+                  matches.length,
+                  _transcriptLimit + _transcriptPageSize,
                 ),
               ),
               icon: const Icon(Icons.expand_more_rounded),
-              label: const Text('Show more transcript'),
+              label: Text(
+                'Show ${math.min(_transcriptPageSize, matches.length - visible.length)} more',
+              ),
             ),
         ],
       ),

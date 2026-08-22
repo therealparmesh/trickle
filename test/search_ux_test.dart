@@ -112,7 +112,7 @@ void main() {
       matching: find.byType(ListTile),
     );
     expect(
-      find.descendant(of: importedRow, matching: find.text('Unsubscribe')),
+      find.descendant(of: importedRow, matching: find.text('Subscribed')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -210,7 +210,7 @@ void main() {
         matching: find.byType(ListTile),
       );
       expect(
-        find.descendant(of: existingRow, matching: find.text('Unsubscribe')),
+        find.descendant(of: existingRow, matching: find.text('Subscribed')),
         findsOneWidget,
       );
       await tester.tap(find.text('Second Signal'));
@@ -259,7 +259,7 @@ void main() {
         var attempt = 0;
         attempt < 30 &&
             find
-                .descendant(of: firstRow, matching: find.text('Unsubscribe'))
+                .descendant(of: firstRow, matching: find.text('Subscribed'))
                 .evaluate()
                 .isEmpty;
         attempt++
@@ -271,7 +271,7 @@ void main() {
       }
 
       expect(
-        find.descendant(of: firstRow, matching: find.text('Unsubscribe')),
+        find.descendant(of: firstRow, matching: find.text('Subscribed')),
         findsOneWidget,
       );
       expect(find.text('Search'), findsOneWidget);

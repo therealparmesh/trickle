@@ -302,6 +302,42 @@ final class DownloadCoordinator {
     _lastProgressWrite.remove(episodeId);
   }
 
+  Future<int> removePlayedDownloads() async {
+    await _ensureInitialized();
+    final rows =
+        await (_database.select(_database.mediaDownloads).join([
+              innerJoin(
+                _database.playbackProgresses,
+                _database.playbackProgresses.episodeId.equalsExp(
+                  _database.mediaDownloads.episodeId,
+                ),
+              ),
+            ])..where(
+              _database.mediaDownloads.status.equals(
+                    DownloadState.complete.index,
+                  ) &
+                  _database.mediaDownloads.keep.equals(false) &
+                  _database.playbackProgresses.completed.equals(true),
+            ))
+            .get();
+    var removed = 0;
+    for (final row in rows) {
+      final download = row.readTable(_database.mediaDownloads);
+      await delete(download.episodeId);
+      removed++;
+    }
+    return removed;
+  }
+
+  Future<int> removeAllDownloads() async {
+    await _ensureInitialized();
+    final downloads = await _database.select(_database.mediaDownloads).get();
+    for (final download in downloads) {
+      await delete(download.episodeId);
+    }
+    return downloads.length;
+  }
+
   /// Cancels native tasks whose database rows were removed by a committed
   /// subscription deletion.
   Future<void> discardTasksForDeletedEpisodes(
@@ -397,22 +433,25 @@ final class DownloadCoordinator {
     final policy = await _settings.watchAutoDelete().first;
     final now = DateTime.now().toUtc();
     final completed =
-        await (_database.select(_database.mediaDownloads)..where(
-              (row) =>
-                  row.status.equals(DownloadState.complete.index) &
-                  row.keep.equals(false),
+        await (_database.select(_database.mediaDownloads).join([
+              innerJoin(
+                _database.playbackProgresses,
+                _database.playbackProgresses.episodeId.equalsExp(
+                  _database.mediaDownloads.episodeId,
+                ),
+              ),
+            ])..where(
+              _database.mediaDownloads.status.equals(
+                    DownloadState.complete.index,
+                  ) &
+                  _database.mediaDownloads.keep.equals(false) &
+                  _database.playbackProgresses.completed.equals(true),
             ))
             .get();
-    final progressRows = await (_database.select(
-      _database.playbackProgresses,
-    )..where((row) => row.completed.equals(true))).get();
-    final progressByEpisode = {
-      for (final progress in progressRows) progress.episodeId: progress,
-    };
     DateTime? nextDue;
-    for (final download in completed) {
-      final progress = progressByEpisode[download.episodeId];
-      if (progress == null) continue;
+    for (final row in completed) {
+      final download = row.readTable(_database.mediaDownloads);
+      final progress = row.readTable(_database.playbackProgresses);
       final completedAt = progress.completedAt ?? progress.updatedAt;
       final due = switch (policy) {
         AutoDeletePolicy.immediately => completedAt,

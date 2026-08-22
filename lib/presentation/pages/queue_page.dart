@@ -42,7 +42,7 @@ final class QueuePage extends ConsumerWidget {
               onPressed: queue.isEmpty
                   ? null
                   : () => _confirmClear(context, ref),
-              child: const Text('Clear'),
+              child: const Text('Clear all'),
             ),
         ],
       ),

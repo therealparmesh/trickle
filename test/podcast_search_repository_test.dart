@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -68,11 +69,36 @@ void main() {
       expect(adapter.terms, ['signal']);
     },
   );
+
+  test('a stale queued query never reaches the catalog', () async {
+    network.close();
+    adapter = _SearchAdapter(blockFirst: true);
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    repository = PodcastSearchRepository(database, network);
+
+    final first = repository.search('first', 'US');
+    await adapter.started.future;
+    final stale = repository.search('second', 'US');
+    await repository.search('x', 'US');
+
+    expect(await stale, isEmpty);
+    adapter.release.complete();
+    await first;
+    expect(adapter.terms, ['first']);
+  });
 }
 
 final class _SearchAdapter implements HttpClientAdapter {
+  _SearchAdapter({this.blockFirst = false});
+
+  final bool blockFirst;
   int requests = 0;
   final terms = <String>[];
+  final started = Completer<void>();
+  final release = Completer<void>();
 
   @override
   Future<ResponseBody> fetch(
@@ -82,6 +108,8 @@ final class _SearchAdapter implements HttpClientAdapter {
   ) async {
     requests++;
     terms.add(options.uri.queryParameters['term']!);
+    if (!started.isCompleted) started.complete();
+    if (blockFirst && requests == 1) await release.future;
     return ResponseBody.fromString(
       '''
       {

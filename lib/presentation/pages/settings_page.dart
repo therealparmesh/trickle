@@ -10,9 +10,7 @@ import '../widgets/common.dart';
 enum _SettingsAction {
   refresh,
   notifications,
-  podcastExport,
-  readerExport,
-  feedExport,
+  opmlExport,
   opmlImport,
   backupExport,
   backupImport,
@@ -37,15 +35,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final autoDeleteState = ref.watch(autoDeleteProvider);
     final refreshState = ref.watch(refreshIntervalProvider);
     final imagesState = ref.watch(remoteImagesProvider);
+    final readerScaleState = ref.watch(readerTextScaleProvider);
+    final audio = ref.read(audioHandlerProvider);
+    final downloads = ref.read(downloadCoordinatorProvider);
+    final settings = ref.read(settingsRepositoryProvider);
     final speed = speedState.value ?? AppConstants.defaultSpeed;
     final autoDelete = autoDeleteState.value ?? AutoDeletePolicy.after1Day;
     final refresh = refreshState.value ?? RefreshInterval.every4Hours;
     final images = imagesState.value ?? true;
+    final readerScale = readerScaleState.value ?? 100;
     final settingsError =
         speedState.error ??
         autoDeleteState.error ??
         refreshState.error ??
-        imagesState.error;
+        imagesState.error ??
+        readerScaleState.error;
     final package = ref.watch(packageInfoProvider).value;
     return Scaffold(
       appBar: AppBar(title: const PageTitle('Settings')),
@@ -72,11 +76,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       const SizedBox(height: 10),
                       PlaybackSpeedSelector(
                         selected: speed,
-                        onSelected: (value) => _runSilent(
-                          () => ref
-                              .read(audioHandlerProvider)
-                              .setSpeed(value / 100),
-                        ),
+                        onSelected: (value) =>
+                            _runSilent(() => audio.setSpeed(value / 100)),
                       ),
                       const SizedBox(height: 20),
                       AdaptiveDropdownField<AutoDeletePolicy>(
@@ -97,12 +98,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         onChanged: (value) async {
                           if (value == null) return;
                           await _runSilent(() async {
-                            await ref
-                                .read(settingsRepositoryProvider)
-                                .setAutoDelete(value);
-                            await ref
-                                .read(downloadCoordinatorProvider)
-                                .cleanupPlayed();
+                            await settings.setAutoDelete(value);
+                            await downloads.cleanupPlayed();
                           });
                         },
                       ),
@@ -130,23 +127,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         onChanged: (value) async {
                           if (value == null) return;
                           await _runSilent(
-                            () => ref
-                                .read(settingsRepositoryProvider)
-                                .setRefreshInterval(value),
+                            () => settings.setRefreshInterval(value),
                           );
                         },
                       ),
                       const SizedBox(height: 8),
                       AdaptiveSwitchTile(
                         value: images,
-                        onChanged: (value) => _runSilent(
-                          () => ref
-                              .read(settingsRepositoryProvider)
-                              .setRemoteImages(value),
-                        ),
+                        onChanged: (value) =>
+                            _runSilent(() => settings.setRemoteImages(value)),
                         title: 'Remote images',
                         subtitle:
                             'Loads artwork, reader images, show-note images, and link previews from publishers.',
+                      ),
+                      const SizedBox(height: 8),
+                      AdaptiveDropdownField<int>(
+                        initialValue: readerScale,
+                        label: 'Reader text size',
+                        helperText: 'Used for article titles and body text.',
+                        items: [
+                          for (var value = 80; value <= 150; value += 10)
+                            DropdownMenuItem(
+                              value: value,
+                              child: Text(value == 100 ? 'Default' : '$value%'),
+                            ),
+                        ],
+                        onChanged: (value) async {
+                          if (value == null) return;
+                          await _runSilent(
+                            () => settings.setReaderTextScale(value),
+                          );
+                        },
                       ),
                       _ActionTile(
                         icon: Icons.sync_rounded,
@@ -183,8 +194,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                       _ActionTile(
                         icon: Icons.notifications_outlined,
-                        title: 'Allow notifications',
-                        subtitle: 'Choose alerts in each feed’s settings.',
+                        title: 'Notification permission',
+                        subtitle:
+                            'Required before alerts chosen in feed settings can appear.',
                         busy: _busyActions.contains(
                           _SettingsAction.notifications,
                         ),
@@ -214,41 +226,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   child: Column(
                     children: [
                       _ActionTile(
-                        icon: Icons.upload_file_rounded,
-                        title: 'Export podcasts as OPML',
-                        subtitle:
-                            'Podcast subscriptions. Header-authenticated feeds are skipped.',
-                        busy: _busyActions.contains(
-                          _SettingsAction.podcastExport,
-                        ),
-                        onTap: () => _runTracked(
-                          _SettingsAction.podcastExport,
-                          () => _exportOpml(OpmlExportScope.podcasts),
-                        ),
-                      ),
-                      _ActionTile(
-                        icon: Icons.rss_feed_rounded,
-                        title: 'Export feeds as OPML',
-                        subtitle:
-                            'RSS and YouTube subscriptions. Use a backup for Nostr profiles or header-authenticated feeds.',
-                        busy: _busyActions.contains(
-                          _SettingsAction.readerExport,
-                        ),
-                        onTap: () => _runTracked(
-                          _SettingsAction.readerExport,
-                          () => _exportOpml(OpmlExportScope.reading),
-                        ),
-                      ),
-                      _ActionTile(
                         icon: Icons.dynamic_feed_rounded,
-                        title: 'Export all subscriptions as OPML',
+                        title: 'Export OPML',
                         subtitle:
-                            'Podcast, RSS, and YouTube subscriptions. Use a backup for Nostr profiles or header-authenticated feeds.',
-                        busy: _busyActions.contains(_SettingsAction.feedExport),
-                        onTap: () => _runTracked(
-                          _SettingsAction.feedExport,
-                          () => _exportOpml(OpmlExportScope.allSubscriptions),
-                        ),
+                            'Choose podcasts, feeds, or all compatible subscriptions.',
+                        busy: _busyActions.contains(_SettingsAction.opmlExport),
+                        onTap: () =>
+                            _runTracked(_SettingsAction.opmlExport, () async {
+                              final scope = await _chooseOpmlScope();
+                              if (scope != null) await _exportOpml(scope);
+                            }),
                       ),
                       _ActionTile(
                         icon: Icons.file_download_outlined,
@@ -289,7 +276,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                       _ActionTile(
                         icon: Icons.archive_outlined,
-                        title: 'Export local backup',
+                        title: 'Export full local backup',
                         subtitle:
                             'Subscriptions, settings, and progress. Sign-in headers and downloaded files are excluded.',
                         busy: _busyActions.contains(
@@ -441,7 +428,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ..invalidate(speedProvider)
       ..invalidate(autoDeleteProvider)
       ..invalidate(refreshIntervalProvider)
-      ..invalidate(remoteImagesProvider);
+      ..invalidate(remoteImagesProvider)
+      ..invalidate(readerTextScaleProvider);
+  }
+
+  Future<OpmlExportScope?> _chooseOpmlScope() {
+    return showModalBottomSheet<OpmlExportScope>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(title: Text('What should the OPML include?')),
+            ListTile(
+              leading: const Icon(Icons.podcasts_rounded),
+              title: const Text('Podcasts'),
+              onTap: () => Navigator.pop(context, OpmlExportScope.podcasts),
+            ),
+            ListTile(
+              leading: const Icon(Icons.rss_feed_rounded),
+              title: const Text('Feeds'),
+              onTap: () => Navigator.pop(context, OpmlExportScope.reading),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dynamic_feed_rounded),
+              title: const Text('All subscriptions'),
+              subtitle: const Text('Podcasts, RSS, and YouTube feeds'),
+              onTap: () =>
+                  Navigator.pop(context, OpmlExportScope.allSubscriptions),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 }
 

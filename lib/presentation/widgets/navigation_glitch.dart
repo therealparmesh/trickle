@@ -23,7 +23,9 @@ final class NavigationGlitch extends StatefulWidget {
 
 class _NavigationGlitchState extends State<NavigationGlitch>
     with RouteAware, SingleTickerProviderStateMixin {
-  static const _maxCapturePixelRatio = 2.0;
+  // The shader intentionally distorts the snapshot, so more resolution only
+  // increases transient texture memory without improving the visible effect.
+  static const _maxCapturePixelRatio = 1.5;
   static final _program = ui.FragmentProgram.fromAsset(
     'packages/animated_glitch/shader/glitch.frag',
   );

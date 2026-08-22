@@ -37,10 +37,10 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage> {
         title: const PageTitle('Podcasts'),
         actions: [
           IconButton(
-            tooltip: 'Add feed',
+            tooltip: 'Add podcast by URL',
             onPressed: () => showDialog<void>(
               context: context,
-              builder: (_) => const AddFeedDialog(),
+              builder: (_) => const AddFeedDialog.podcast(),
             ),
             icon: const Icon(Icons.add_rounded),
           ),
@@ -169,24 +169,45 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage> {
 }
 
 final class AddFeedDialog extends ConsumerStatefulWidget {
-  const AddFeedDialog({this.youtubeOnly = false, super.key});
+  const AddFeedDialog({
+    this.youtubeOnly = false,
+    this.podcastOnly = false,
+    this.initialInput,
+    super.key,
+  });
 
-  const AddFeedDialog.youtube({super.key}) : youtubeOnly = true;
+  const AddFeedDialog.youtube({super.key})
+    : youtubeOnly = true,
+      podcastOnly = false,
+      initialInput = null;
+
+  const AddFeedDialog.podcast({super.key})
+    : youtubeOnly = false,
+      podcastOnly = true,
+      initialInput = null;
 
   final bool youtubeOnly;
+  final bool podcastOnly;
+  final String? initialInput;
 
   @override
   ConsumerState<AddFeedDialog> createState() => _AddFeedDialogState();
 }
 
 class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
-  final _url = TextEditingController();
+  late final TextEditingController _url;
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _bearer = TextEditingController();
   bool _private = false;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _url = TextEditingController(text: widget.initialInput);
+  }
 
   @override
   void dispose() {
@@ -200,7 +221,13 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.youtubeOnly ? 'Add YouTube feed' : 'Add feed'),
+      title: Text(
+        widget.youtubeOnly
+            ? 'Add YouTube feed'
+            : widget.podcastOnly
+            ? 'Add podcast by URL'
+            : 'Add feed',
+      ),
       content: SingleChildScrollView(
         child: SizedBox(
           width: 440,
@@ -223,9 +250,13 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                 decoration: InputDecoration(
                   labelText: widget.youtubeOnly
                       ? 'YouTube channel or playlist URL'
+                      : widget.podcastOnly
+                      ? 'Podcast RSS URL'
                       : 'Feed, website, or Nostr profile',
                   hintText: widget.youtubeOnly
                       ? 'youtube.com/@channel or playlist URL'
+                      : widget.podcastOnly
+                      ? 'https://publisher.com/podcast.xml'
                       : 'RSS, Atom, JSON Feed, website, npub, or nprofile',
                 ),
               ),
@@ -313,8 +344,14 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
       setState(
         () => _error = widget.youtubeOnly
             ? 'Enter a public YouTube channel or playlist URL.'
+            : widget.podcastOnly
+            ? 'Enter a podcast RSS URL.'
             : 'Enter a feed, website, or Nostr profile.',
       );
+      return;
+    }
+    if (widget.podcastOnly && looksLikeNostrProfile(url)) {
+      setState(() => _error = 'Enter a podcast RSS URL.');
       return;
     }
     if (!widget.youtubeOnly && looksLikeNostrProfile(url) && _private) {
@@ -349,7 +386,11 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
       Uri.tryParse(url)?.hasScheme == true ? url : 'https://$url',
     );
     if (candidate == null || candidate.host.isEmpty) {
-      setState(() => _error = 'Enter a valid feed or website address.');
+      setState(
+        () => _error = widget.podcastOnly
+            ? 'Enter a valid podcast RSS address.'
+            : 'Enter a valid feed or website address.',
+      );
       return;
     }
     if (!const {'http', 'https'}.contains(candidate.scheme.toLowerCase())) {
@@ -396,6 +437,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
             password: _private ? password : null,
             bearerToken: _private ? bearer : null,
             forcePrivate: _private,
+            expectedKind: widget.podcastOnly ? FeedKind.podcast : null,
           );
       if (!mounted) return;
       final kind =

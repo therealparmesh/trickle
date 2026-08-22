@@ -63,7 +63,7 @@ final class NotificationService {
     if (episodes + articles == 0) return;
     final parts = <String>[
       if (episodes > 0) '$episodes new episode${episodes == 1 ? '' : 's'}',
-      if (articles > 0) '$articles new article${articles == 1 ? '' : 's'}',
+      if (articles > 0) '$articles new feed item${articles == 1 ? '' : 's'}',
     ];
     await _plugin.show(
       id: 1001,
@@ -73,7 +73,8 @@ final class NotificationService {
         android: AndroidNotificationDetails(
           'feed_updates',
           'Feed updates',
-          channelDescription: 'New episodes and articles found during refresh.',
+          channelDescription:
+              'New episodes and feed items found during refresh.',
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
         ),

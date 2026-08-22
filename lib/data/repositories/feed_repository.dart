@@ -75,6 +75,7 @@ final class FeedRepository {
     String? password,
     String? bearerToken,
     bool forcePrivate = false,
+    FeedKind? expectedKind,
     Duration totalTimeout = AppConstants.feedRefreshTimeout,
   }) async {
     final initial = _network.normalizeHttps(Uri.parse(rawAddress.trim()));
@@ -90,6 +91,13 @@ final class FeedRepository {
         headers.isNotEmpty ||
         (initial.hasQuery && !isYouTubeAddress(initial));
     final resolved = await _resolveFeedDocument(initial, headers, totalTimeout);
+    if (expectedKind != null && resolved.prepared.feed.kind != expectedKind) {
+      throw FeedParseException(
+        expectedKind == FeedKind.podcast
+            ? 'That address is not a podcast feed.'
+            : 'That address is a podcast feed.',
+      );
+    }
     final document = resolved.document;
     // A public-looking discovery URL can redirect to a signed refresh URL.
     // Keep that query-bearing URL in secure storage too.
@@ -678,8 +686,15 @@ final class FeedRepository {
     );
   }
 
-  Future<void> markAllArticlesRead({String? feedId}) async {
-    if (feedId == null) {
+  Future<void> markAllArticlesRead({String? feedId, String? category}) async {
+    if (feedId != null && category != null) {
+      throw ArgumentError('Choose a feed or category, not both.');
+    }
+    final categoryIdentity = feedCategoryIdentity(category);
+    if (category != null && categoryIdentity == null) {
+      throw ArgumentError.value(category, 'category', 'Category is empty');
+    }
+    if (feedId == null && categoryIdentity == null) {
       await _database.customUpdate(
         'UPDATE articles SET read_at = ? WHERE read_at IS NULL '
         'AND EXISTS (SELECT 1 FROM feeds WHERE feeds.id = articles.feed_id '
@@ -689,10 +704,23 @@ final class FeedRepository {
       );
       return;
     }
+    if (categoryIdentity != null) {
+      await _database.customUpdate(
+        'UPDATE articles SET read_at = ? WHERE read_at IS NULL '
+        'AND EXISTS (SELECT 1 FROM feeds WHERE feeds.id = articles.feed_id '
+        'AND feeds.subscribed = 1 AND LOWER(TRIM(feeds.category)) = ?)',
+        variables: [
+          Variable(DateTime.now().toUtc()),
+          Variable(categoryIdentity),
+        ],
+        updates: {_database.articles},
+      );
+      return;
+    }
     final query = _database.update(_database.articles)
       ..where((row) {
         final unread = row.readAt.isNull();
-        return unread & row.feedId.equals(feedId);
+        return unread & row.feedId.equals(feedId!);
       });
     await query.write(ArticlesCompanion(readAt: Value(DateTime.now().toUtc())));
   }

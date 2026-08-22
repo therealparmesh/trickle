@@ -41,6 +41,14 @@ void main() {
     expect(await settings.refreshInterval(), RefreshInterval.every4Hours);
   });
 
+  test('reader text size persists and rejects unsupported steps', () async {
+    expect(await settings.watchReaderTextScale().first, 100);
+    await settings.setReaderTextScale(130);
+    expect(await settings.watchReaderTextScale().first, 130);
+    expect(() => settings.setReaderTextScale(125), throwsArgumentError);
+    expect(() => settings.setReaderTextScale(160), throwsArgumentError);
+  });
+
   test(
     'corrupt stored speed never escapes the supported global values',
     () async {

@@ -306,13 +306,22 @@ final class _PodcastPreviewEpisodeTileState
   }
 }
 
-final class ArticleTile extends ConsumerWidget {
-  const ArticleTile(this.article, {this.showSource = true, super.key});
+final class ArticleTile extends ConsumerStatefulWidget {
+  ArticleTile(this.article, {this.showSource = true, Key? key})
+    : super(key: key ?? ValueKey(article.id));
   final Article article;
   final bool showSource;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ArticleTile> createState() => _ArticleTileState();
+}
+
+final class _ArticleTileState extends ConsumerState<ArticleTile> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final article = widget.article;
     final canonicalUri = Uri.tryParse(article.canonicalUrl ?? '');
     final isPost = canonicalUri?.scheme == 'nostr';
     final mediaKind = ArticleMediaKind
@@ -328,7 +337,7 @@ final class ArticleTile extends ConsumerWidget {
         : isPost
         ? 'post'
         : 'article';
-    final sourceTitle = showSource
+    final sourceTitle = widget.showSource
         ? ref.watch(feedSnapshotProvider(article.feedId))?.title
         : null;
     final metadata = metadataLine([
@@ -439,8 +448,14 @@ final class ArticleTile extends ConsumerWidget {
             padding: const EdgeInsets.only(right: 8, top: 8),
             child: PopupMenuButton<String>(
               tooltip: '${noun[0].toUpperCase()}${noun.substring(1)} actions',
-              icon: const Icon(Icons.more_horiz_rounded),
-              onSelected: (action) => _action(context, ref, action),
+              enabled: !_busy,
+              icon: _busy
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.more_horiz_rounded),
+              onSelected: _action,
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'star',
@@ -466,13 +481,19 @@ final class ArticleTile extends ConsumerWidget {
     );
   }
 
-  Future<void> _action(
-    BuildContext context,
-    WidgetRef ref,
-    String action,
-  ) async {
+  Future<void> _action(String action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final article = widget.article;
     try {
       if (action == 'star') {
+        if (!article.starred &&
+            privacyYouTubePlaybackUri(
+                  Uri.tryParse(article.canonicalUrl ?? ''),
+                ) ==
+                null) {
+          await ref.read(articleRepositoryProvider).load(article);
+        }
         await ref
             .read(feedRepositoryProvider)
             .starArticle(article.id, starred: !article.starred);
@@ -482,7 +503,9 @@ final class ArticleTile extends ConsumerWidget {
             .markArticleRead(article.id, read: article.readAt == null);
       }
     } on Object catch (error) {
-      if (context.mounted) showErrorSnackBar(context, error);
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

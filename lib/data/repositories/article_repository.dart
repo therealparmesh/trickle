@@ -213,14 +213,14 @@ final class ArticleRepository {
         headers: headers,
         maxBytes: AppConstants.articleLimitBytes,
       );
-      if (!_isHtmlDocument(document)) return _feedFallback(article);
+      if (!_isHtmlDocument(document)) return await _feedFallback(article);
       extracted = await compute(_extractArticle, (
         document.text,
         document.url.toString(),
       )).timeout(AppConstants.shortOperationTimeout);
-      if (extracted.text.isEmpty) return _feedFallback(article);
+      if (extracted.text.isEmpty) return await _feedFallback(article);
     } on Object {
-      return _feedFallback(article);
+      return await _feedFallback(article);
     }
     try {
       final updated =

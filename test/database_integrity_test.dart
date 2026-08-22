@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
+import 'package:trickle/core/content_filters.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 
@@ -13,6 +14,187 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test(
+    'article queries combine category, state, search, and sorting',
+    () async {
+      final now = DateTime.utc(2026, 8, 22);
+      for (final (id, category) in const [
+        ('science', 'Science'),
+        ('news', 'News'),
+      ]) {
+        await database
+            .into(database.feeds)
+            .insert(
+              FeedsCompanion.insert(
+                id: id,
+                title: id,
+                feedUrl: 'https://example.test/$id.xml',
+                category: Value(category),
+                kind: Value(FeedKind.reader.index),
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+      }
+      for (final article in [
+        ArticlesCompanion.insert(
+          id: 'new',
+          feedId: 'science',
+          title: 'New Signal',
+          discoveredAt: now,
+        ),
+        ArticlesCompanion.insert(
+          id: 'old',
+          feedId: 'science',
+          title: 'Old signal',
+          discoveredAt: now.subtract(const Duration(days: 1)),
+        ),
+        ArticlesCompanion.insert(
+          id: 'read',
+          feedId: 'science',
+          title: 'Read Signal',
+          discoveredAt: now.subtract(const Duration(days: 2)),
+          readAt: Value(now),
+        ),
+        ArticlesCompanion.insert(
+          id: 'other-category',
+          feedId: 'news',
+          title: 'News Signal',
+          discoveredAt: now,
+        ),
+      ]) {
+        await database.into(database.articles).insert(article);
+      }
+
+      final query = (
+        category: 'science',
+        sort: ContentSort.oldest,
+        filter: ArticleFeedFilter.unread,
+        query: 'SIGNAL',
+      );
+      final items = await database
+          .watchFilteredArticles(
+            category: query.category,
+            limit: 100,
+            sort: query.sort,
+            filter: query.filter,
+            query: query.query,
+          )
+          .first;
+      final count = await database
+          .watchFilteredArticleCount(
+            category: query.category,
+            filter: query.filter,
+            query: query.query,
+          )
+          .first;
+
+      expect(items.map((article) => article.id), ['old', 'new']);
+      expect(count, 2);
+
+      await (database.update(database.feeds)
+            ..where((feed) => feed.id.equals('science')))
+          .write(const FeedsCompanion(subscribed: Value(false)));
+      final retained = await database
+          .watchFilteredArticles(
+            feedId: 'science',
+            limit: 100,
+            sort: ContentSort.newest,
+            filter: ArticleFeedFilter.all,
+          )
+          .first;
+      final hiddenFromTimeline = await database
+          .watchFilteredArticleCount(
+            category: 'science',
+            filter: ArticleFeedFilter.all,
+          )
+          .first;
+      expect(retained.map((article) => article.id), ['new', 'old', 'read']);
+      expect(hiddenFromTimeline, 0);
+    },
+  );
+
+  test('episode queries apply playback and download filters', () async {
+    final now = DateTime.utc(2026, 8, 22);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'podcast',
+            title: 'Podcast',
+            feedUrl: 'https://example.test/podcast.xml',
+            kind: Value(FeedKind.podcast.index),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    for (final (id, title, discoveredAt) in [
+      ('progress', 'Signal in motion', now.subtract(const Duration(hours: 2))),
+      ('download', 'Signal offline', now.subtract(const Duration(hours: 1))),
+      ('other', 'Other episode', now),
+    ]) {
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: id,
+              feedId: 'podcast',
+              title: title,
+              enclosureUrl: 'https://example.test/$id.mp3',
+              discoveredAt: discoveredAt,
+            ),
+          );
+    }
+    await database
+        .into(database.playbackProgresses)
+        .insert(
+          PlaybackProgressesCompanion.insert(
+            episodeId: 'progress',
+            positionMs: const Value(1000),
+            updatedAt: now,
+          ),
+        );
+    await database
+        .into(database.mediaDownloads)
+        .insert(
+          MediaDownloadsCompanion.insert(
+            episodeId: 'download',
+            taskId: 'task',
+            status: Value(DownloadState.complete.index),
+            updatedAt: now,
+          ),
+        );
+
+    final inProgress = await database
+        .watchFilteredEpisodesForFeed(
+          feedId: 'podcast',
+          limit: 100,
+          sort: ContentSort.newest,
+          filter: EpisodeFeedFilter.inProgress,
+          query: 'SIGNAL',
+        )
+        .first;
+    final inProgressCount = await database
+        .watchFilteredEpisodeCountForFeed(
+          feedId: 'podcast',
+          filter: EpisodeFeedFilter.inProgress,
+          query: 'signal',
+        )
+        .first;
+    final downloaded = await database
+        .watchFilteredEpisodesForFeed(
+          feedId: 'podcast',
+          limit: 100,
+          sort: ContentSort.oldest,
+          filter: EpisodeFeedFilter.downloaded,
+        )
+        .first;
+
+    expect(inProgress.map((episode) => episode.id), ['progress']);
+    expect(inProgressCount, 1);
+    expect(downloaded.map((episode) => episode.id), ['download']);
+  });
 
   test('episode children cascade when a feed is deleted', () async {
     final now = DateTime.utc(2026, 7, 14);

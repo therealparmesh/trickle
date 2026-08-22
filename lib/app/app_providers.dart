@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/constants.dart';
+import '../core/content_filters.dart';
 import '../data/database/app_database.dart';
 import '../data/network/safe_network_client.dart';
 import '../data/repositories/article_repository.dart';
@@ -119,11 +120,6 @@ final readerUnreadArticlesProvider = StreamProvider.autoDispose
       (ref, limit) =>
           ref.watch(databaseProvider).watchUnreadArticles(limit: limit),
     );
-final readerAllArticlesProvider = StreamProvider.autoDispose
-    .family<List<Article>, int>(
-      (ref, limit) =>
-          ref.watch(databaseProvider).watchAllArticles(limit: limit),
-    );
 final starredArticlesPageProvider = StreamProvider.autoDispose
     .family<List<Article>, int>(
       (ref, limit) =>
@@ -132,8 +128,8 @@ final starredArticlesPageProvider = StreamProvider.autoDispose
 final unreadArticleCountProvider = StreamProvider<int>(
   (ref) => ref.watch(databaseProvider).watchUnreadArticleCount(),
 );
-final articleCountProvider = StreamProvider<int>(
-  (ref) => ref.watch(databaseProvider).watchArticleCount(),
+final unreadArticleCountsByFeedProvider = StreamProvider<Map<String, int>>(
+  (ref) => ref.watch(databaseProvider).watchUnreadArticleCountsByFeed(),
 );
 final starredArticleCountProvider = StreamProvider<int>(
   (ref) => ref.watch(databaseProvider).watchStarredArticleCount(),
@@ -161,27 +157,77 @@ final queuedEpisodesProvider = StreamProvider<Map<String, Episode>>(
       .watchQueuedEpisodes()
       .map((episodes) => {for (final episode in episodes) episode.id: episode}),
 );
-final episodesForFeedProvider = StreamProvider.autoDispose
-    .family<List<Episode>, ({String feedId, int limit})>(
-      (ref, page) => ref
+typedef EpisodeFeedQuery = ({
+  String feedId,
+  int limit,
+  ContentSort sort,
+  EpisodeFeedFilter filter,
+  String query,
+});
+final filteredEpisodesForFeedProvider = StreamProvider.autoDispose
+    .family<List<Episode>, EpisodeFeedQuery>(
+      (ref, value) => ref
           .watch(databaseProvider)
-          .watchEpisodesForFeed(page.feedId, limit: page.limit),
+          .watchFilteredEpisodesForFeed(
+            feedId: value.feedId,
+            limit: value.limit,
+            sort: value.sort,
+            filter: value.filter,
+            query: value.query,
+          ),
     );
-final articlesForFeedProvider = StreamProvider.autoDispose
-    .family<List<Article>, ({String feedId, int limit})>(
-      (ref, page) => ref
+typedef EpisodeFeedCountQuery = ({
+  String feedId,
+  EpisodeFeedFilter filter,
+  String query,
+});
+final filteredEpisodeCountForFeedProvider = StreamProvider.autoDispose
+    .family<int, EpisodeFeedCountQuery>(
+      (ref, value) => ref
           .watch(databaseProvider)
-          .watchArticlesForFeed(page.feedId, limit: page.limit),
+          .watchFilteredEpisodeCountForFeed(
+            feedId: value.feedId,
+            filter: value.filter,
+            query: value.query,
+          ),
     );
-final episodeCountForFeedProvider = StreamProvider.autoDispose
-    .family<int, String>(
-      (ref, feedId) =>
-          ref.watch(databaseProvider).watchEpisodeCountForFeed(feedId),
+typedef ArticleListQuery = ({
+  String? feedId,
+  String? category,
+  int limit,
+  ContentSort sort,
+  ArticleFeedFilter filter,
+  String query,
+});
+final filteredArticlesProvider = StreamProvider.autoDispose
+    .family<List<Article>, ArticleListQuery>(
+      (ref, value) => ref
+          .watch(databaseProvider)
+          .watchFilteredArticles(
+            feedId: value.feedId,
+            category: value.category,
+            limit: value.limit,
+            sort: value.sort,
+            filter: value.filter,
+            query: value.query,
+          ),
     );
-final articleCountForFeedProvider = StreamProvider.autoDispose
-    .family<int, String>(
-      (ref, feedId) =>
-          ref.watch(databaseProvider).watchArticleCountForFeed(feedId),
+typedef ArticleListCountQuery = ({
+  String? feedId,
+  String? category,
+  ArticleFeedFilter filter,
+  String query,
+});
+final filteredArticleCountProvider = StreamProvider.autoDispose
+    .family<int, ArticleListCountQuery>(
+      (ref, value) => ref
+          .watch(databaseProvider)
+          .watchFilteredArticleCount(
+            feedId: value.feedId,
+            category: value.category,
+            filter: value.filter,
+            query: value.query,
+          ),
     );
 final feedProvider = StreamProvider.autoDispose.family<Feed?, String>(
   (ref, id) => ref.watch(databaseProvider).watchFeedById(id),
@@ -245,9 +291,10 @@ final chaptersProvider = FutureProvider.autoDispose
     .family<List<Chapter>, String>(
       (ref, id) => ref.watch(episodeExtrasProvider).chapters(id),
     );
-final transcriptProvider = FutureProvider.autoDispose.family<String?, String>(
-  (ref, id) => ref.watch(episodeExtrasProvider).transcript(id),
-);
+final transcriptProvider = FutureProvider.autoDispose
+    .family<TranscriptDocument?, String>(
+      (ref, id) => ref.watch(episodeExtrasProvider).transcript(id),
+    );
 final episodeShowNotesProvider = FutureProvider.autoDispose
     .family<ExtractedArticle?, String>((ref, episodeId) async {
       final episode = await ref.watch(databaseProvider).episodeById(episodeId);
@@ -343,6 +390,9 @@ final refreshIntervalProvider = StreamProvider<RefreshInterval>(
 );
 final remoteImagesProvider = StreamProvider<bool>(
   (ref) => ref.watch(settingsRepositoryProvider).watchRemoteImages(),
+);
+final readerTextScaleProvider = StreamProvider<int>(
+  (ref) => ref.watch(settingsRepositoryProvider).watchReaderTextScale(),
 );
 final _connectivityProvider =
     StreamProvider.autoDispose<List<ConnectivityResult>>(

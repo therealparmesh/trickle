@@ -10,15 +10,52 @@ import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 import '../widgets/episode_playback_button.dart';
 
-final class DownloadsPage extends ConsumerWidget {
+enum _DownloadsAction { removePlayed, removeAll }
+
+final class DownloadsPage extends ConsumerStatefulWidget {
   const DownloadsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DownloadsPage> createState() => _DownloadsPageState();
+}
+
+final class _DownloadsPageState extends ConsumerState<DownloadsPage> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
     final downloads = ref.watch(downloadsProvider);
     final episodes = ref.watch(downloadedEpisodesProvider);
+    final items = downloads.value ?? const <MediaDownload>[];
     return Scaffold(
-      appBar: AppBar(title: const PageTitle('Downloads')),
+      appBar: AppBar(
+        title: const PageTitle('Downloads'),
+        actions: [
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (items.isNotEmpty)
+            PopupMenuButton<_DownloadsAction>(
+              tooltip: 'Download storage actions',
+              onSelected: _runBulkAction,
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: _DownloadsAction.removePlayed,
+                  child: Text('Remove played downloads'),
+                ),
+                PopupMenuItem(
+                  value: _DownloadsAction.removeAll,
+                  child: Text('Remove all downloads'),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: AppBackdrop(
         child: downloads.when(
           data: (items) => items.isEmpty
@@ -29,16 +66,20 @@ final class DownloadsPage extends ConsumerWidget {
                       'Download episodes for playback without a connection.',
                 )
               : episodes.when(
-                  data: (episodes) => ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final download = items[index];
-                      return _DownloadRow(
-                        download,
-                        episode: episodes[download.episodeId],
-                      );
-                    },
+                  data: (episodes) => IgnorePointer(
+                    ignoring: _busy,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                      itemCount: items.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 0) return _StorageSummary(items);
+                        final download = items[index - 1];
+                        return _DownloadRow(
+                          download,
+                          episode: episodes[download.episodeId],
+                        );
+                      },
+                    ),
                   ),
                   loading: () => const LoadingView(label: 'Loading downloads'),
                   error: (error, _) => ErrorView(
@@ -55,10 +96,101 @@ final class DownloadsPage extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _runBulkAction(_DownloadsAction action) async {
+    if (_busy) return;
+    final removeAll = action == _DownloadsAction.removeAll;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          removeAll ? 'Remove all downloads?' : 'Remove played downloads?',
+        ),
+        content: Text(
+          removeAll
+              ? 'Current downloads will be canceled. Episodes remain in your library.'
+              : 'Played downloads marked Keep will remain on this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppConstants.danger,
+              foregroundColor: AppConstants.background,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final coordinator = ref.read(downloadCoordinatorProvider);
+      final removed = removeAll
+          ? await coordinator.removeAllDownloads()
+          : await coordinator.removePlayedDownloads();
+      if (mounted) {
+        showMessageSnackBar(
+          context,
+          removed == 0
+              ? removeAll
+                    ? 'No downloads to remove'
+                    : 'No played downloads to remove'
+              : '$removed ${removed == 1 ? 'download' : 'downloads'} removed',
+        );
+      }
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}
+
+final class _StorageSummary extends StatelessWidget {
+  const _StorageSummary(this.downloads);
+
+  final List<MediaDownload> downloads;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = downloads.fold<int>(
+      0,
+      (total, download) =>
+          total +
+          (download.status == DownloadState.complete.index
+              ? download.totalBytes ?? download.bytesDownloaded
+              : download.bytesDownloaded),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: AppCard(
+        accent: AppConstants.cyan,
+        child: Row(
+          children: [
+            const Icon(Icons.storage_rounded, color: AppConstants.cyan),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '${downloads.length} ${downloads.length == 1 ? 'download' : 'downloads'} · ${formatBytes(bytes)}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 final class _DownloadRow extends ConsumerStatefulWidget {
-  const _DownloadRow(this.download, {required this.episode});
+  _DownloadRow(this.download, {required this.episode})
+    : super(key: ValueKey(download.episodeId));
 
   final MediaDownload download;
   final Episode? episode;

@@ -56,6 +56,31 @@ void main() {
     expect(await database.select(database.feeds).get(), isEmpty);
   });
 
+  test(
+    'podcast-only subscription rejects a reader feed before storage',
+    () async {
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _ReaderFeedAdapter(),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+
+      await expectLater(
+        repository.subscribe(
+          'https://example.test/articles.xml',
+          expectedKind: FeedKind.podcast,
+        ),
+        throwsA(isA<FeedParseException>()),
+      );
+      expect(await database.select(database.feeds).get(), isEmpty);
+    },
+  );
+
   test('mark all read skips retained items from unsubscribed feeds', () async {
     final now = DateTime.utc(2026, 7, 26);
     for (final id in const ['retained', 'active']) {

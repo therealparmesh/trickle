@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/app/theme.dart';
 import 'package:trickle/core/constants.dart';
+import 'package:trickle/core/content_filters.dart';
 import 'package:trickle/core/feed_category.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
@@ -29,11 +30,60 @@ import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/pages/reader_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
+import 'package:trickle/presentation/widgets/content_list_controls.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
 import 'package:trickle/presentation/widgets/episode_playback_button.dart';
 import 'package:trickle/presentation/widgets/navigation_glitch.dart';
 
 void main() {
+  testWidgets('list controls remain operable at accessibility text sizes', (
+    tester,
+  ) async {
+    final search = TextEditingController();
+    addTearDown(search.dispose);
+    var query = '';
+    var sort = ContentSort.newest;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TrickleTheme.dark,
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(393, 852),
+            textScaler: TextScaler.linear(2.2),
+          ),
+          child: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => SingleChildScrollView(
+                child: ContentListControls<String>(
+                  searchController: search,
+                  searchHint: 'Search episodes…',
+                  onSearchChanged: (value) => query = value,
+                  filter: 'all',
+                  filterOptions: const [
+                    AdaptiveFilterOption('all', 'All'),
+                    AdaptiveFilterOption('saved', 'Saved'),
+                  ],
+                  onFilterChanged: (_) {},
+                  sort: sort,
+                  onSortChanged: (value) => setState(() => sort = value),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(EditableText), 'signal');
+    expect(query, 'signal');
+    await tester.tap(find.byTooltip('Sort items'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Oldest first'));
+    await tester.pumpAndSettle();
+    expect(find.text('Oldest'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('feed category options are normalized, unique, and ordered', () {
     expect(
       feedCategoryOptions(const [
@@ -382,6 +432,7 @@ void main() {
           readerUnreadArticlesProvider(
             5,
           ).overrideWith((_) => Stream.value(const [])),
+          unreadArticleCountProvider.overrideWith((_) => Stream.value(1)),
           currentMediaProvider.overrideWith((_) => Stream.value(null)),
           playbackStateProvider.overrideWith(
             (_) => Stream.value(PlaybackState()),
@@ -659,7 +710,7 @@ void main() {
 
     expect((await database.feedById('science-one'))?.category, 'Culture');
     expect((await database.feedById('science-two'))?.category, 'Culture');
-    expect(find.text('Reader'), findsOneWidget);
+    expect(find.text('Feeds'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -2129,10 +2180,10 @@ void main() {
       find.text('Optional. Choose a category or enter a new one.'),
       findsOneWidget,
     );
-    expect(find.text('New article notifications'), findsOneWidget);
+    expect(find.text('New feed item notifications'), findsOneWidget);
     expect(
       find.semantics.byLabel(
-        'New article notifications. '
+        'New feed item notifications. '
         'Alerts depend on iOS or Android background scheduling.',
       ),
       findsOne,

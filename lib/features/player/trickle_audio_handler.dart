@@ -95,6 +95,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
   Future<void> _queueOperationTail = Future<void>.value();
   Future<void> _progressOperationTail = Future<void>.value();
   Future<void> _sessionOperationTail = Future<void>.value();
+  int _queueRevision = 0;
+  int _structuralQueueRevision = 0;
+  int _persistedStructuralQueueRevision = 0;
   int _episodeSelectionGeneration = 0;
   String? _pendingEpisodeSelectionId;
   int _loadGeneration = 0;
@@ -211,7 +214,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
             final index = items.indexWhere((item) => item.id == updated.id);
             if (index >= 0) {
               items[index] = updated;
-              queue.add(items);
+              _publishQueue(items, structural: false);
             }
           }
           _broadcastState();
@@ -333,7 +336,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
           ? 0
           : math.min(currentIndex, items.length);
       items.insert(insertAt, item);
-      queue.add(items);
+      _publishQueue(items);
       await _persistQueue();
       if (generation != _episodeSelectionGeneration) return;
       await _load(item, autoPlay: true);
@@ -367,7 +370,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       ..removeWhere((entry) => entry.id == episodeId);
     final currentIndex = _currentQueueIndex(items);
     items.insert(math.min(currentIndex + 1, items.length), item);
-    queue.add(items);
+    _publishQueue(items);
     await _persistQueue();
   }
 
@@ -417,7 +420,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       if (!currentIds.contains(id) && item != null) additions.add(item);
     }
     if (additions.isEmpty) return;
-    queue.add([...current, ...additions]);
+    _publishQueue([...current, ...additions]);
     await _persistQueue();
   }
 
@@ -588,7 +591,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   @override
   Future<void> addQueueItem(MediaItem mediaItem) async {
     if (queue.value.any((entry) => entry.id == mediaItem.id)) return;
-    queue.add([...queue.value, mediaItem]);
+    _publishQueue([...queue.value, mediaItem]);
     await _persistQueue();
   }
 
@@ -597,7 +600,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     final oldItems = [...queue.value];
     final oldIndex = oldItems.indexWhere((item) => item.id == mediaItem.id);
     final wasCurrent = this.mediaItem.value?.id == mediaItem.id;
-    queue.add(oldItems.where((entry) => entry.id != mediaItem.id).toList());
+    _publishQueue(oldItems.where((entry) => entry.id != mediaItem.id).toList());
     await _persistQueue();
     if (wasCurrent) {
       _episodeSelectionGeneration++;
@@ -618,7 +621,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   @override
   Future<void> updateQueue(List<MediaItem> queue) async {
     final seen = <String>{};
-    this.queue.add(
+    _publishQueue(
       queue.where((item) => seen.add(item.id)).toList(growable: false),
     );
     await _persistQueue();
@@ -627,7 +630,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
   Future<void> clearQueue() async {
     _episodeSelectionGeneration++;
     await stop();
-    queue.add(const []);
+    _publishQueue(const []);
     mediaItem.add(null);
     await _persistQueue();
   }
@@ -892,7 +895,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       if (mediaItem.value?.id != completedId) {
         final items = [...queue.value]
           ..removeWhere((item) => item.id == completedId);
-        queue.add(items);
+        _publishQueue(items);
         await _persistQueue();
         return;
       }
@@ -903,7 +906,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
         final index = _currentQueueIndex(items);
         if (index >= 0) {
           items.removeAt(index);
-          queue.add(items);
+          _publishQueue(items);
           await _persistQueue();
         }
         await pause();
@@ -922,7 +925,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       final index = _currentQueueIndex(items);
       if (index >= 0) {
         items.removeAt(index);
-        queue.add(items);
+        _publishQueue(items);
         await _persistQueue();
       }
       if (index >= 0 && index < items.length) {
@@ -1102,6 +1105,8 @@ final class TrickleAudioHandler extends BaseAudioHandler
   }
 
   Future<void> _restoreQueue() async {
+    if (_structuralQueueRevision != _persistedStructuralQueueRevision) return;
+    final revision = _queueRevision;
     final query = _database.select(_database.queueEntries).join([
       innerJoin(
         _database.episodes,
@@ -1120,6 +1125,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
           row.readTableOrNull(_database.feeds),
         ),
     ];
+    // A user or automation action may have changed Up Next while the database
+    // query was in flight. Its later persisted snapshot must remain visible.
+    if (revision != _queueRevision ||
+        _structuralQueueRevision != _persistedStructuralQueueRevision) {
+      return;
+    }
     queue.add(items);
   }
 
@@ -1162,7 +1173,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       await stop();
       if (mediaItem.value?.id == currentId) mediaItem.add(null);
     }
-    queue.add(
+    _publishQueue(
       queue.value
           .where((item) => !removed.contains(item.id))
           .toList(growable: false),
@@ -1172,6 +1183,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   Future<void> _persistQueue() {
     final now = DateTime.now().toUtc();
+    final revision = _structuralQueueRevision;
     final entries = <QueueEntriesCompanion>[
       for (var index = 0; index < queue.value.length; index++)
         QueueEntriesCompanion.insert(
@@ -1189,7 +1201,16 @@ final class TrickleAudioHandler extends BaseAudioHandler
           batch.insertAll(_database.queueEntries, entries);
         }
       });
+      if (revision > _persistedStructuralQueueRevision) {
+        _persistedStructuralQueueRevision = revision;
+      }
     });
+  }
+
+  void _publishQueue(List<MediaItem> items, {bool structural = true}) {
+    _queueRevision++;
+    if (structural) _structuralQueueRevision++;
+    queue.add(items);
   }
 
   Future<void> _serializeQueueOperation(Future<void> Function() operation) {

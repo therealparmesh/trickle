@@ -18,7 +18,7 @@ if [[ ! -f "$database" ]]; then
   exit 1
 fi
 
-sqlite3 "$database" <<'SQL'
+sqlite3 "$database" >/dev/null <<'SQL'
 PRAGMA foreign_keys = ON;
 BEGIN IMMEDIATE;
 

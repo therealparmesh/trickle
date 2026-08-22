@@ -220,17 +220,18 @@ Future<_TrickleRuntime> _createRuntime() async {
       nostr: nostr,
     );
     final sources = PlaybackSourceResolver(database, privateFeeds, network);
-    audio = TrickleAudioHandler(
+    final audioHandler = TrickleAudioHandler(
       database: database,
       settings: settings,
       sourceResolver: sources,
     );
+    audio = audioHandler;
     downloads = DownloadCoordinator(
       database: database,
       sources: sources,
       settings: settings,
     );
-    completionSubscription = audio.customEvent.listen((event) {
+    completionSubscription = audioHandler.customEvent.listen((event) {
       if (event is Map && event['type'] == 'completed') {
         if (event['episodeId'] != null) {
           unawaited(downloads!.cleanupPlayed().catchError((Object _) {}));
@@ -245,8 +246,8 @@ Future<_TrickleRuntime> _createRuntime() async {
       database,
       privateFeeds: privateFeeds,
       onImported: () async {
-        await audio!.reloadQueueFromDatabase();
-        await audio.reloadSettingsFromDatabase();
+        await audioHandler.reloadQueueFromDatabase();
+        await audioHandler.reloadSettingsFromDatabase();
       },
     );
     final opml = OpmlService(database, feedRepository, privateFeeds);
