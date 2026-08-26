@@ -14,7 +14,7 @@ For the first Google Play and Zapstore launch, follow the staged [Android releas
 
 The version in `pubspec.yaml` uses `major.minor.patch+build` format. Increment the build number for every upload. Increment the public version when the user-visible release version changes.
 
-Release from a clean `main`, commit each version/build change as `chore: prepare <version> build <build>`, and push it before uploading. The committed version and build provide the release history; tags are optional.
+Release from a clean `main` and push the release commit before uploading. Use the repository's conventional commit style; a version-only change is `chore: prepare <version> build <build>`. The committed version and build provide the release history; tags are optional.
 
 ## Preflight checks
 
@@ -53,7 +53,7 @@ If the publisher is using a personal Play developer account created after Novemb
 
 The Xcode project uses automatic development signing with team `7654L3CX5L`. App Store export uses explicit profiles and an Apple Distribution certificate so builds are reproducible without an Xcode UI account. Xcode 26 or later is required on the release Mac.
 
-Version 1.1 adds the registered `com.parmscript.trickle.ShareExtension` target and App Group `group.com.parmscript.trickle`. The group is attached to the main app and extension identifiers. App Store distribution uses the active profiles `trickle App Store` and `trickle Share Extension App Store`; recreate both after changing their capabilities or distribution certificate. `store/apple/AppStoreExportOptions.plist` names both profiles, and the build must fail rather than fall back to development signing when either is missing.
+The registered `com.parmscript.trickle.ShareExtension` target and App Group `group.com.parmscript.trickle` are attached to the main app and extension identifiers. App Store distribution uses the active profiles `trickle App Store` and `trickle Share Extension App Store`; recreate both after changing their capabilities or distribution certificate. The Xcode release configuration and `store/apple/AppStoreExportOptions.plist` pin the certificate and profiles so multiple active certificates cannot make signing nondeterministic. The build must fail rather than fall back to development signing when any required signing asset is missing.
 
 ```sh
 tool/release_ios.sh build
@@ -73,7 +73,7 @@ The main app and share extension include privacy manifests. Their App Group `Use
 
 The application targets iOS 17 or later, exceeding Apple's announced iOS 15 minimum for App Store Connect uploads and distribution submissions beginning in Spring 2027. Test fresh installs and upgrades on iOS 17 before every release.
 
-The iOS target is iPhone-only. The five 1320×2868 images in `store/apple/screenshots/` were regenerated and visually verified against 1.1 on August 22, 2026. Their fictional podcast, feed, copy, and artwork are original project fixtures under `store/apple/fixtures/`; no third-party content appears. To replace the complete set after a visual change, build and launch trickle once on a booted iPhone 16 Pro Max simulator, then run:
+The iOS target is iPhone-only. The five 1320×2868 images in `store/apple/screenshots/` were regenerated and visually verified against 1.2 on August 26, 2026. Their fictional podcast, feed, copy, and artwork are original project fixtures under `store/apple/fixtures/`; no third-party content appears. To replace the complete set after a visual change, build and launch trickle once on a booted iPhone Pro Max simulator with that resolution, then run:
 
 ```sh
 tool/maestro/capture_store_screenshots.sh [simulator-udid]
@@ -90,7 +90,7 @@ In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, a
 - Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, item and byte totals, played-only bulk removal, all-download removal, and every cleanup policy
 - Queue and extras: reorder, remove, persistence, sleep timers, intro/outro skip, repeat-one, chapters, searchable timed and untimed transcripts, tap-to-seek, and bookmarks
 - Subscriptions: complete catalog previews before subscription and after in-place unsubscribe, concurrent row-level catalog subscriptions, catalog recognition of public podcasts imported through OPML, capitalization-stable search, podcast-only direct URL validation, public/private direct URLs, query/path credentials, website discovery, system share-in with editable confirmation, Nostr `npub`/`nprofile`, malformed feeds, redirects, UTF-8/UTF-16 OPML import, reader-category OPML folder round-trips, one OPML scope chooser for podcasts, feeds, or all compatible subscriptions, versioned local backup/restore with duplicate-picker protection and actionable picker/read failures, and unsubscribe cleanup with retained saved or in-progress items
-- Reader: RSS, Atom, JSON Feed, YouTube channel and playlist discovery, verified Nostr root posts without replies or reposts, relay timeouts, early closure, conflicting duplicate IDs, stale-response rejection, optional non-podcast source category assignment and whole-category renaming, category timelines and bulk-read actions, per-source search/filter/sort, persistent text size, offline saved article text, Markdown, content warnings, post attachments, native post audio, direct post video, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
+- Reader: RSS, Atom, JSON Feed, YouTube channel and playlist discovery, verified Nostr root posts without replies or reposts, relay timeouts, early closure, conflicting duplicate IDs, stale-response rejection, category assignment while subscribing and from source details, bulk category moves, confirmed category merges, category unread counts, category timelines and bulk-read actions, per-source search/filter/sort, persistent text size, offline saved article text, Markdown, content warnings, post attachments, native post audio, direct post video, unread/read/saved state, reader extraction, preview images, local search, remote-image toggle, sharing, and external links
 - Video: initial-page loading, official-source fallback only after failure, minimize/expand without reload, a live minimized preview, a thumbnail-only in-app bar during user-started system Picture in Picture, foreground system-window dismissal and restoration to the same live minimized player, background system-window dismissal that fully closes the player, background audio only during Picture in Picture, foreground-only behavior otherwise, network loss, and close/reopen
 - Loading and failures: initial, inline, row-level, and pull-to-refresh progress; repeated-tap prevention; coalesced duplicate refreshes; stale-response rejection; 10-second video-source attempts; 15-second background work; 30-second document and per-feed deadlines; partial refresh results; actionable retry controls; safe malformed-file messages; and replacement rather than stacking of transient messages
 - System behavior: notification denied/granted, per-feed notifications, background refresh, airplane mode, DNS failure, and server errors

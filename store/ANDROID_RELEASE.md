@@ -35,14 +35,14 @@ The future agent should operate those gates through an authenticated browser ses
 ## Current state
 
 - Package: `com.parmscript.trickle`
-- Candidate release: `1.1.0` (`versionCode` 49)
+- Candidate release: `1.2.0` (`versionCode` 50)
 - Android support: API 24 or later
 - Target SDK: API 36
 - Google Play: no locally verifiable app record, production signing, upload credential, or release
 - Zapstore: no `zapstore.yaml`, publisher identity, signed APK, or release
 - Store media: the copyright-safe iPhone fixtures exist, but Google Play needs Android captures with a supported aspect ratio
 
-Build 49 can be the first Android release if live Play and Zapstore checks confirm that neither has consumed it. Before building, query every available track and the Zapstore listing; repository history alone is not proof.
+Build 50 can be the first Android release if live Play and Zapstore checks confirm that neither has consumed it. Before building, query every available track and the Zapstore listing; repository history alone is not proof.
 
 ## Distribution decisions
 
@@ -219,8 +219,8 @@ Flutter writes the first two paths below; the release command copies verified ar
 
 - Play source: `build/app/outputs/bundle/release/app-release.aab`
 - Zapstore source: `build/app/outputs/flutter-apk/app-release.apk`
-- Play upload: `build/releases/trickle-1.1.0-49.aab`
-- GitHub/Zapstore: `build/releases/trickle-1.1.0-49-universal.apk`
+- Play upload: `build/releases/trickle-1.2.0-50.aab`
+- GitHub/Zapstore: `build/releases/trickle-1.2.0-50-universal.apk`
 - Checksums: one matching `.sha256` file per published artifact
 - Local evidence: `build/releases/release-manifest.json`, copied to the encrypted release archive after publication
 
@@ -259,7 +259,7 @@ Save Play assets in Fastlane's standard layout:
 fastlane/metadata/android/en-US/title.txt
 fastlane/metadata/android/en-US/short_description.txt
 fastlane/metadata/android/en-US/full_description.txt
-fastlane/metadata/android/en-US/changelogs/49.txt
+fastlane/metadata/android/en-US/changelogs/50.txt
 fastlane/metadata/android/en-US/images/icon.png
 fastlane/metadata/android/en-US/images/featureGraphic.png
 fastlane/metadata/android/en-US/images/phoneScreenshots/01-home.png
@@ -317,7 +317,7 @@ The release script must resolve `apksigner` from `$ANDROID_SDK_ROOT/build-tools`
 The release command must then verify:
 
 - Package is exactly `com.parmscript.trickle`.
-- Version name is `1.1.0` and version code is 49.
+- Version name is `1.2.0` and version code is 50.
 - Minimum SDK is 24 and target SDK is 36.
 - AAB is signed by the Play upload certificate.
 - APK is signed by the shared app-signing certificate.
@@ -334,17 +334,17 @@ Install and test both delivery forms:
 2. Install the signed Zapstore APK on the same current Android target.
 3. On one disposable emulator snapshot, install an AAB-derived APK and update it with a higher-version distribution APK.
 4. On a separate disposable snapshot, install a distribution APK and update it with a higher-version AAB-derived APK.
-5. Use temporary version overrides that are never uploaded, then wipe both snapshots so their higher version codes cannot block public build 49.
+5. Use temporary version overrides that are never uploaded, then wipe both snapshots so their higher version codes cannot block public build 50.
 
 ## Phase 6: Acceptance test
 
 Run the complete acceptance checklist in [RELEASE.md](RELEASE.md) against both signed delivery forms, not a debug build. Add Android-specific evidence for API 24, a current Android version, TalkBack, predictive back, notification permission, background restrictions, Picture in Picture, Play-delivered installation, direct APK installation, and both cross-store update directions.
 
-Record pass/fail evidence in the private release archive. Any code, dependency, manifest, resource, or runtime configuration change invalidates both candidate artifacts. Rebuild both from the new commit; retain version code 49 only if neither store has consumed it, otherwise increment the version code.
+Record pass/fail evidence in the private release archive. Any code, dependency, manifest, resource, or runtime configuration change invalidates both candidate artifacts. Rebuild both from the new commit; retain version code 50 only if neither store has consumed it, otherwise increment the version code.
 
 ## Phase 7: Google Play rollout
 
-1. Upload the verified candidate AAB from `build/releases/trickle-1.1.0-49.aab` to Internal testing through Play Console. Install it once. This activates Publishing API access and consumes version code 49; any later binary change requires 50.
+1. Upload the verified candidate AAB from `build/releases/trickle-1.2.0-50.aab` to Internal testing through Play Console. Install it once. This activates Publishing API access and consumes version code 50; any later binary change requires 51.
 2. Validate the publisher credential:
 
    ```sh
@@ -356,7 +356,7 @@ Record pass/fail evidence in the private release archive. Any code, dependency, 
 4. Install from Play Internal testing and repeat the critical acceptance paths.
 5. Resolve Pre-launch report, policy, signing, compatibility, and Android vitals findings.
 6. If required, run the closed test with at least 12 opted-in testers continuously for 14 days and then request production access.
-7. Run `bundle exec fastlane android play_status` and confirm production has no version 49 before promotion.
+7. Run `bundle exec fastlane android play_status` and confirm production has no version 50 before promotion.
 8. Prepare and validate the production track through the CLI, but complete all first-publication legal consents and the final publication in Play Console. Google's API cannot publish a draft app, and Managed Publishing is unavailable for the first release.
 9. Expect the first approved production release to become public without a managed-publishing hold. Confirm the live package, version, listing, privacy link, and install before publishing Zapstore.
 
@@ -369,20 +369,20 @@ bundle exec fastlane android play_metadata
 
 # Later releases upload the verified AAB to Internal testing.
 bundle exec fastlane android play_internal \
-  aab:build/releases/trickle-1.1.0-49.aab
+  aab:build/releases/trickle-1.2.0-50.aab
 
 # Promotion requires an explicit version and production confirmation.
 CONFIRM_PRODUCTION=1 bundle exec fastlane android play_promote \
-  version_code:49 rollout:0.1
+  version_code:50 rollout:0.1
 ```
 
-The lane must reject a rollout outside `0 < rollout < 1`; completion to 100 percent is a separate deliberate operation after vitals review. Build 49's first production transition remains a Play Console gate rather than pretending the API can publish a draft app.
+The lane must reject a rollout outside `0 < rollout < 1`; completion to 100 percent is a separate deliberate operation after vitals review. Build 50's first production transition remains a Play Console gate because the API cannot publish a draft app.
 
-Do not reuse a rejected version code. If Play consumes 49 and requires another binary, increment `pubspec.yaml`, commit `chore: prepare 1.1.0 build 50`, rebuild both artifacts, and publish the matching version to both stores.
+Do not reuse a rejected version code. If Play consumes 50 and requires another binary, increment `pubspec.yaml`, commit `chore: prepare 1.2.0 build 51`, rebuild both artifacts, and publish the matching version to both stores.
 
 ## Phase 8: Zapstore rollout
 
-1. Create Git tag `v1.1.0-android.49` at the exact release commit.
+1. Create Git tag `v1.2.0-android.50` at the exact release commit.
 2. Create a GitHub release without auto-generated or unreviewed copy.
 3. Attach the signed universal APK, its SHA-256 checksum, and concise release notes.
 4. Run `zsp publish --check zapstore.yaml` and confirm package, version, source, APK selection, and certificate.
@@ -394,8 +394,8 @@ The first release command sequence is:
 
 ```sh
 SHA="$(git rev-parse HEAD)"
-VERSION=1.1.0
-BUILD=49
+VERSION=1.2.0
+BUILD=50
 TAG="v${VERSION}-android.${BUILD}"
 APK="build/releases/trickle-${VERSION}-${BUILD}-universal.apk"
 

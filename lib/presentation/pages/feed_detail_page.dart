@@ -18,6 +18,7 @@ import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/content_list_controls.dart';
 import '../widgets/design_system.dart';
+import '../widgets/feed_category_field.dart';
 
 enum _FeedMenuAction { settings, markAllRead }
 
@@ -215,6 +216,9 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                               : () => _resubscribe(value),
                         ),
                       ),
+                      onCategoryTap: value.subscribed && canShowArticles
+                          ? () => _openFeedSettings(value)
+                          : null,
                     ),
                   ),
                   if (canShowEpisodes) ...[
@@ -433,6 +437,10 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       }
       return;
     }
+    await _openFeedSettings(feed);
+  }
+
+  Future<void> _openFeedSettings(Feed feed) async {
     final deleted = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -727,12 +735,14 @@ final class _FeedHero extends StatelessWidget {
     required this.refreshing,
     this.onRefresh,
     this.subscriptionControl,
+    this.onCategoryTap,
   });
 
   final Feed feed;
   final bool refreshing;
   final VoidCallback? onRefresh;
   final Widget? subscriptionControl;
+  final VoidCallback? onCategoryTap;
 
   @override
   Widget build(BuildContext context) {
@@ -817,6 +827,13 @@ final class _FeedHero extends StatelessWidget {
                   child: subscriptionControl,
                 ),
               ],
+              if (onCategoryTap != null) ...[
+                const SizedBox(height: 8),
+                _FeedCategoryChip(
+                  category: feed.category,
+                  onPressed: onCategoryTap!,
+                ),
+              ],
               if (refreshing) ...[
                 const SizedBox(height: 14),
                 const InlineLoadingView(label: 'Refreshing feed'),
@@ -829,6 +846,39 @@ final class _FeedHero extends StatelessWidget {
                 ),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _FeedCategoryChip extends StatelessWidget {
+  const _FeedCategoryChip({required this.category, required this.onPressed});
+
+  final String? category;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = normalizeFeedCategory(category) ?? 'Uncategorized';
+    return Tooltip(
+      message: 'Change category',
+      child: Semantics(
+        label: 'Category: $label. Change category',
+        button: true,
+        excludeSemantics: true,
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 2,
+          child: ActionChip(
+            avatar: const Icon(Icons.folder_outlined, size: 17),
+            label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onPressed: onPressed,
+            backgroundColor: AppConstants.magenta.withValues(alpha: 0.08),
+            side: BorderSide(
+              color: AppConstants.magenta.withValues(alpha: 0.35),
+            ),
+            shape: const CutCornerBorder(cut: 7),
           ),
         ),
       ),
@@ -1135,7 +1185,13 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
               }, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 14),
               if (_isReader) ...[
-                _categoryField(context, categoryOptions),
+                FeedCategoryField(
+                  controller: _category,
+                  focusNode: _categoryFocus,
+                  options: categoryOptions,
+                  enabled: !_busy,
+                  initialCategory: widget.feed.category,
+                ),
                 const SizedBox(height: 4),
               ],
               if (!_isReader) ...[
@@ -1260,120 +1316,6 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
     );
   }
 
-  Widget _categoryField(BuildContext context, List<String> options) {
-    const helper = 'Optional. Choose a category or enter a new one.';
-    final initialCategory = feedCategoryIdentity(widget.feed.category);
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
-    final field = LayoutBuilder(
-      builder: (context, constraints) => RawAutocomplete<String>(
-        textEditingController: _category,
-        focusNode: _categoryFocus,
-        optionsBuilder: (value) {
-          if (_busy) return const Iterable<String>.empty();
-          final query = value.text.trim().toLowerCase();
-          if (query.isEmpty ||
-              feedCategoryIdentity(value.text) == initialCategory) {
-            return options;
-          }
-          return options.where(
-            (category) => category.toLowerCase().contains(query),
-          );
-        },
-        onSelected: (category) {
-          _category.value = TextEditingValue(
-            text: category,
-            selection: TextSelection.collapsed(offset: category.length),
-          );
-        },
-        fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) =>
-            TextField(
-              enabled: !_busy,
-              controller: controller,
-              focusNode: focusNode,
-              inputFormatters: [
-                LengthLimitingTextInputFormatter(maxFeedCategoryLength),
-              ],
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                labelText: largeText ? null : 'Category',
-                helperText: largeText ? null : helper,
-                suffixIcon: options.isEmpty
-                    ? null
-                    : const Icon(Icons.arrow_drop_down_rounded),
-              ),
-              onSubmitted: (_) => onFieldSubmitted(),
-            ),
-        optionsViewBuilder: (context, onSelected, matches) {
-          final categories = matches.toList(growable: false);
-          final highlighted = AutocompleteHighlightedOption.of(context);
-          return Align(
-            alignment: Alignment.topLeft,
-            child: Material(
-              color: AppConstants.elevated,
-              elevation: 8,
-              shape: const CutCornerBorder(
-                cut: 10,
-                side: BorderSide(color: AppConstants.hairline),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth,
-                  maxHeight: 240,
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  itemCount: categories.length,
-                  itemBuilder: (context, index) {
-                    final category = categories[index];
-                    return InkWell(
-                      onTap: () => onSelected(category),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 48),
-                        child: ColoredBox(
-                          color: index == highlighted
-                              ? AppConstants.cyan.withValues(alpha: 0.1)
-                              : Colors.transparent,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(category),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-    if (!largeText) return field;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text('Category'),
-        const SizedBox(height: 8),
-        field,
-        const SizedBox(height: 6),
-        Text(
-          helper,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: AppConstants.secondaryText),
-        ),
-      ],
-    );
-  }
-
   Future<void> _save() async {
     if (_busy) return;
     final intro = int.tryParse(_intro.text.trim().isEmpty ? '0' : _intro.text);
@@ -1385,6 +1327,8 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
       );
       return;
     }
+    final category = _isReader ? normalizeFeedCategory(_category.text) : null;
+    final categoryChanged = _isReader && widget.feed.category != category;
     setState(() => _operation = _FeedSettingsOperation.save);
     try {
       await ref
@@ -1397,10 +1341,16 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
             introSkipMs: intro * 1000,
             outroSkipMs: outro * 1000,
             autoQueue: _autoQueue,
-            category: _isReader ? _category.text : null,
+            category: category,
           );
       if (!mounted) return;
       setState(() => _operation = null);
+      if (categoryChanged) {
+        showMessageSnackBar(
+          context,
+          'Moved ${widget.feed.title} to ${category ?? 'Uncategorized'}',
+        );
+      }
       Navigator.pop(context);
     } on Object catch (error) {
       if (!mounted) return;

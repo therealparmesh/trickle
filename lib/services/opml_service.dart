@@ -201,7 +201,7 @@ final class OpmlService {
     }
     final category = normalizeFeedCategory(subscription.category);
     if (category != null && feed.kind == FeedKind.reader.index) {
-      await _feeds.updateFeedCategory(feed.id, category);
+      await _feeds.updateFeedCategories([feed.id], category);
     }
   }
 }

@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.1.0
-- Build: 49
+- Version: 1.2.0
+- Build: 50
 
 ## Name
 
@@ -84,7 +84,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-The checked-in 1320×2868 iPhone images were regenerated and visually verified against 1.1 on August 22, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone 16 Pro Max simulator, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
+The checked-in 1320×2868 iPhone images were regenerated and visually verified against 1.2 on August 26, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
 
 1. Home
 2. Podcast
@@ -99,19 +99,17 @@ The checked-in 1320×2868 iPhone images were regenerated and visually verified a
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.1.0 release notes
+## Version 1.2.0 release notes
 
-This update makes large podcast and feed libraries easier to manage:
+Feed categories are quicker to use:
 
-• Search, filter, and sort episodes and feed items inside each subscription
-• Browse feed items by category and mark a source or category read
-• Search timed transcripts and tap a segment to seek
-• See download storage and remove played or all downloads
-• Keep reader text size and saved article text available between sessions
-• Share feed and website addresses to trickle from other apps
-• Choose podcasts, feeds, or all subscriptions from one OPML export action
+• Pick or create a category while adding a feed
+• Change a source’s category from its page
+• Move several sources at once
+• See unread counts by category
+• Confirm before merging categories
 
-This update also simplifies episode actions, subscription status, settings, and loading states.
+This update also fixes small layout and category-management issues.
 
 ## Privacy declarations
 

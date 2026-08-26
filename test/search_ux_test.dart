@@ -578,19 +578,25 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: const Scaffold(body: AddFeedDialog()),
+      ProviderScope(
+        overrides: [feedsProvider.overrideWith((_) => Stream.value(const []))],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const Scaffold(body: AddFeedDialog()),
+        ),
       ),
     );
 
-    await tester.enterText(find.byType(EditableText), 'ftp://example.com/feed');
+    await tester.enterText(
+      find.byType(EditableText).first,
+      'ftp://example.com/feed',
+    );
     await tester.tap(find.text('Subscribe'));
     await tester.pump();
     expect(find.text('Use an HTTP or HTTPS address.'), findsOneWidget);
 
     await tester.enterText(
-      find.byType(EditableText),
+      find.byType(EditableText).first,
       'https://user:password@example.com/feed',
     );
     await tester.tap(find.text('Subscribe'));
@@ -608,9 +614,12 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: const Scaffold(body: AddFeedDialog.youtube()),
+      ProviderScope(
+        overrides: [feedsProvider.overrideWith((_) => Stream.value(const []))],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const Scaffold(body: AddFeedDialog.youtube()),
+        ),
       ),
     );
 
@@ -624,7 +633,7 @@ void main() {
     expect(find.text('Private feed'), findsNothing);
 
     await tester.enterText(
-      find.byType(EditableText),
+      find.byType(EditableText).first,
       'https://example.com/channel',
     );
     await tester.tap(find.text('Subscribe'));
@@ -653,7 +662,10 @@ void main() {
     );
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [feedRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+        ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
           home: Builder(
@@ -674,7 +686,7 @@ void main() {
     await tester.tap(find.text('Open add feed'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byType(EditableText),
+      find.byType(EditableText).first,
       'https://example.test/feed.xml',
     );
     await tester.tap(find.text('Subscribe'));
@@ -706,10 +718,15 @@ void main() {
       );
       if (subscribed?.isNotEmpty == true) break;
     }
-    expect(await database.select(database.feeds).get(), isNotEmpty);
+    final subscribed = await database.select(database.feeds).get();
+    expect(subscribed, isNotEmpty);
     expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
     network.close();
     await database.close();
+    await tester.pump(const Duration(milliseconds: 1));
   });
 }
 

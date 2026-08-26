@@ -11,7 +11,7 @@ trickle is a podcast player and feed reader for iOS and Android, with a cyberpun
 - Native system playback, background audio, lock-screen controls, interruptions, headphone-disconnect pause, repeat-one, sleep timer, bookmarks, chapters, searchable timed transcripts, and per-feed intro/outro skip
 - One global playback speed with `1x`, `1.25x`, `1.5x`, `1.75x`, and `2x`
 - Unread, all, and saved article views; category timelines; per-source search, filters, and sorting; persistent reader text size; offline saved article text; link previews; local full-text search; and external share/browser actions
-- Reusable optional categories for non-podcast sources, with feed reassignment, whole-category renaming, case-insensitive suggestions and grouping, and standard OPML folder import and export
+- Reusable optional categories for non-podcast sources, with assignment while subscribing, one-tap reassignment from source details, bulk moves, confirmed merges, unread counts, case-insensitive suggestions and grouping, and standard OPML folder import and export
 - New, in-progress, and played episode states; New, In Progress, and All podcast filters; partial-progress bars and Resume actions; full show notes; no play-on-open side effect; and separate quick-play buttons throughout episode lists
 - YouTube video entries and recognized YouTube attachments play without ads when supported, with an official-source fallback and a live minimized Now Playing preview that does not reload; Picture in Picture supports background and locked-screen audio
 - Public and private feeds, including credentials in URL query strings or opaque paths and Basic or Bearer authorization
@@ -34,7 +34,7 @@ The visual system uses clipped control geometry, functional state rails, and a s
 
 ## Prerequisites
 
-- Flutter 3.44.4 or later with Dart 3.12.2 or later; the follow-up build is verified with Flutter 3.47.1
+- Flutter 3.44.4 or later with Dart 3.12.2 or later; the current release is verified with Flutter 3.47.1
 - oxfmt 0.57.0 or later for Markdown formatting
 - Android SDK 36 for Android builds
 - JDK 17 or 21 for Android builds; JDK 26 is not supported by the current Android toolchain
@@ -101,4 +101,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in copyright-safe images were regenerated and visually verified against 1.1 on August 22, 2026.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in copyright-safe images were regenerated and visually verified against 1.2 on August 26, 2026.

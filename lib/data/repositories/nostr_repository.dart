@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/feed_category.dart';
 import '../../core/feed_identity.dart';
 import '../../core/formatters.dart';
 import '../../core/nostr_identifier.dart';
@@ -60,7 +61,7 @@ final class NostrRepository {
     return (await _database.episodeById(attachment.id))!;
   }
 
-  Future<Feed> subscribe(String rawAddress) async {
+  Future<Feed> subscribe(String rawAddress, {String? category}) async {
     final address = parseNostrProfile(rawAddress);
     final existingProfile =
         await (_database.select(_database.nostrProfiles)
@@ -87,7 +88,9 @@ final class NostrRepository {
               siteUrl: Value(existing?.siteUrl),
               imageUrl: Value(existing?.imageUrl),
               author: Value(existing?.author ?? encodeNpub(address.publicKey)),
-              category: Value(existing?.category),
+              category: Value(
+                normalizeFeedCategory(category) ?? existing?.category,
+              ),
               kind: Value(FeedKind.reader.index),
               protocol: Value(FeedProtocol.nostr.index),
               subscribed: const Value(true),

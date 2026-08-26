@@ -16,7 +16,7 @@
 		<string>trickle Share Extension App Store</string>
 	</dict>
 	<key>signingCertificate</key>
-	<string>Apple Distribution</string>
+	<string>95FABB15DA0B039B7C4308B9B4E05801747EDB79</string>
 	<key>signingStyle</key>
 	<string>manual</string>
 	<key>stripSwiftSymbols</key>

@@ -8,19 +8,24 @@ appId: com.parmscript.trickle
 - tapOn:
     text: "Back"
     optional: true
-- assertVisible: ".*Neon Dispatch.*"
+- assertVisible: "Library"
+- waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/01-home"
 - tapOn: "Podcast Neon Dispatch. trickle studio"
-- assertVisible: ".*Neon Dispatch.*"
+- assertVisible: "Episodes"
+- waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/02-podcast"
 - tapOn: ".*Signal Check: Listening without friction.*"
-- assertVisible: ".*Signal Check: Listening without friction.*"
+- assertVisible: "Show notes"
+- waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/03-episode"
 - tapOn: "Back"
 - tapOn: "Back"
 - tapOn: "See all Unread"
-- assertVisible: "Unread"
+- assertVisible: ".*All feeds.*"
+- waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/04-unread"
 - tapOn: ".*A calmer way to follow the web.*"
-- assertVisible: ".*A calmer way to follow the web.*"
+- assertVisible: "Reader"
+- waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/05-reader"

@@ -118,7 +118,7 @@ void main() {
   });
 
   test(
-    'reader categories normalize, rename, survive refresh, and stay reader-only',
+    'reader categories normalize, move, rename, survive refresh, and stay reader-only',
     () async {
       network.close();
       network = SafeNetworkClient.forTesting(
@@ -132,16 +132,6 @@ void main() {
       );
       final reader = await repository.subscribe(
         'https://example.test/articles.xml',
-      );
-
-      await repository.updateFeedSettings(
-        reader.id,
-        autoDownload: false,
-        autoDownloadLimit: 3,
-        notifications: false,
-        introSkipMs: 0,
-        outroSkipMs: 0,
-        autoQueue: false,
         category: '  Science   & Tech  ',
       );
       final categorized = (await database.feedById(reader.id))!;
@@ -180,7 +170,7 @@ void main() {
 
       expect(await repository.refreshFeed(reader), isTrue);
       expect((await database.feedById(reader.id))?.category, 'Research');
-      await repository.updateFeedCategory(reader.id, '   ');
+      await repository.updateFeedCategories([reader.id], '   ');
       expect((await database.feedById(reader.id))?.category, isNull);
 
       network.close();
@@ -196,7 +186,11 @@ void main() {
       final podcast = await repository.subscribe(
         'https://example.test/podcast.xml',
       );
-      await repository.updateFeedCategory(podcast.id, 'News');
+      expect(
+        await repository.updateFeedCategories([reader.id, podcast.id], 'News'),
+        1,
+      );
+      expect((await database.feedById(reader.id))?.category, 'News');
       expect((await database.feedById(podcast.id))?.category, isNull);
     },
   );

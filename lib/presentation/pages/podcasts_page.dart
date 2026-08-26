@@ -7,10 +7,13 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
+import '../../core/feed_category.dart';
 import '../../core/nostr_identifier.dart';
 import '../../core/youtube_support.dart';
+import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/feed_category_field.dart';
 
 enum _PodcastEpisodeFilter { newEpisodes, inProgress, all }
 
@@ -199,6 +202,8 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _bearer = TextEditingController();
+  final _category = TextEditingController();
+  final _categoryFocus = FocusNode();
   bool _private = false;
   bool _busy = false;
   String? _error;
@@ -215,11 +220,20 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
     _username.dispose();
     _password.dispose();
     _bearer.dispose();
+    _category.dispose();
+    _categoryFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final categoryOptions = widget.podcastOnly
+        ? const <String>[]
+        : feedCategoryOptions(
+            (ref.watch(readerFeedsProvider).value ?? const <Feed>[]).map(
+              (feed) => feed.category,
+            ),
+          );
     return AlertDialog(
       title: Text(
         widget.youtubeOnly
@@ -260,6 +274,15 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                       : 'RSS, Atom, JSON Feed, website, npub, or nprofile',
                 ),
               ),
+              if (!widget.podcastOnly) ...[
+                const SizedBox(height: 14),
+                FeedCategoryField(
+                  controller: _category,
+                  focusNode: _categoryFocus,
+                  options: categoryOptions,
+                  enabled: !_busy,
+                ),
+              ],
               if (!widget.youtubeOnly)
                 AdaptiveSwitchTile(
                   value: _private,
@@ -367,7 +390,9 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
         _error = null;
       });
       try {
-        final feed = await ref.read(nostrRepositoryProvider).subscribe(url);
+        final feed = await ref
+            .read(nostrRepositoryProvider)
+            .subscribe(url, category: _category.text);
         if (!mounted) return;
         final router = GoRouter.of(context);
         Navigator.pop(context);
@@ -438,6 +463,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
             bearerToken: _private ? bearer : null,
             forcePrivate: _private,
             expectedKind: widget.podcastOnly ? FeedKind.podcast : null,
+            category: widget.podcastOnly ? null : _category.text,
           );
       if (!mounted) return;
       final kind =

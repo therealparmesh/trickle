@@ -607,7 +607,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('reader category rename updates every matching feed', (
+  testWidgets('reader category merge is explicit and updates matching feeds', (
     tester,
   ) async {
     final database = AppDatabase.forTesting(NativeDatabase.memory());
@@ -626,43 +626,27 @@ void main() {
     );
     final now = DateTime.utc(2026, 8, 15);
     final feeds = [
-      Feed(
+      _readerFeed(
         id: 'science-one',
         title: 'First source',
-        feedUrl: 'https://example.test/one.xml',
         category: 'Science',
-        kind: FeedKind.reader.index,
-        protocol: FeedProtocol.syndication.index,
-        subscribed: true,
-        isPrivate: false,
-        autoDownload: false,
-        autoDownloadLimit: 3,
-        notifications: false,
-        introSkipMs: 0,
-        outroSkipMs: 0,
-        autoQueue: false,
-        createdAt: now,
-        updatedAt: now,
+        now: now,
       ),
-      Feed(
+      _readerFeed(
         id: 'science-two',
         title: 'Second source',
-        feedUrl: 'https://example.test/two.xml',
         category: 'science',
-        kind: FeedKind.reader.index,
-        protocol: FeedProtocol.syndication.index,
-        subscribed: true,
-        isPrivate: false,
-        autoDownload: false,
-        autoDownloadLimit: 3,
-        notifications: false,
-        introSkipMs: 0,
-        outroSkipMs: 0,
-        autoQueue: false,
-        createdAt: now,
-        updatedAt: now,
+        now: now,
       ),
     ];
+    feeds.add(
+      feeds.first.copyWith(
+        id: 'culture',
+        title: 'Culture source',
+        feedUrl: 'https://example.test/culture.xml',
+        category: const Value('Culture'),
+      ),
+    );
     for (final feed in feeds) {
       await database.into(database.feeds).insert(feed);
     }
@@ -708,10 +692,171 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Merge categories?'), findsOneWidget);
+    expect(
+      find.text('Culture already exists. Move 2 feeds from Science into it?'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Merge'));
+    await tester.pumpAndSettle();
+
     expect((await database.feedById('science-one'))?.category, 'Culture');
     expect((await database.feedById('science-two'))?.category, 'Culture');
+    expect(find.text('Merged 2 feeds into Culture'), findsOneWidget);
     expect(find.text('Feeds'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reader category counts and bulk moves stay in the source flow', (
+    tester,
+  ) async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: PrivateFeedStore(),
+    );
+    final now = DateTime.utc(2026, 8, 20);
+    final science = _readerFeed(
+      id: 'science',
+      title: 'Science source',
+      category: 'Science',
+      now: now,
+    );
+    final news = science.copyWith(
+      id: 'news',
+      title: 'News source',
+      feedUrl: 'https://example.test/news.xml',
+      category: const Value('News'),
+    );
+    await database.batch((batch) {
+      batch.insertAll(database.feeds, [science, news]);
+      batch.insertAll(database.articles, [
+        for (final (id, feedId) in const [
+          ('science-one', 'science'),
+          ('science-two', 'science'),
+          ('news-one', 'news'),
+        ])
+          ArticlesCompanion.insert(
+            id: id,
+            feedId: feedId,
+            title: id,
+            discoveredAt: now,
+          ),
+      ]);
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(theme: TrickleTheme.dark, home: const ReaderPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('All feeds · 3 unread'), findsOneWidget);
+    await tester.tap(find.text('All feeds · 3 unread'));
+    await tester.pumpAndSettle();
+    expect(find.text('Science · 2 unread'), findsOneWidget);
+    expect(find.text('News · 1 unread'), findsOneWidget);
+    await tester.tap(find.text('Science · 2 unread'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Sources'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Organize feeds'));
+    await tester.pumpAndSettle();
+    expect(find.text('0 selected'), findsOneWidget);
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Science source'));
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Culture');
+    await tester.pumpAndSettle();
+    final moveButton = find.widgetWithText(FilledButton, 'Move');
+    await tester.ensureVisible(moveButton);
+    await tester.tap(moveButton);
+    await tester.pumpAndSettle();
+
+    expect((await database.feedById('science'))?.category, 'Culture');
+    expect((await database.feedById('news'))?.category, 'News');
+    expect(find.text('Moved 1 feed to Culture'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    network.close();
+    await database.close();
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('feed category chip opens settings and reports a move', (
+    tester,
+  ) async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: PrivateFeedStore(),
+    );
+    final now = DateTime.utc(2026, 8, 20);
+    final feed = _readerFeed(
+      id: 'reader',
+      title: 'Signal source',
+      category: 'Science',
+      now: now,
+    );
+    await database.into(database.feeds).insert(feed);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const FeedDetailPage(feedId: 'reader'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final category = find.bySemanticsLabel(
+      'Category: Science. Change category',
+    );
+    expect(category, findsOneWidget);
+    await tester.tap(category);
+    await tester.pumpAndSettle();
+    expect(find.text('Feed settings'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Science'),
+      'Culture',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Save settings'));
+    await tester.pumpAndSettle();
+
+    expect((await database.feedById('reader'))?.category, 'Culture');
+    expect(find.text('Moved Signal source to Culture'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    network.close();
+    await database.close();
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('podcast episode filters keep their empty states distinct', (
@@ -2332,6 +2477,32 @@ Feed _privateFeed() {
     subscribed: true,
     isPrivate: true,
     credentialRef: 'credential',
+    autoDownload: false,
+    autoDownloadLimit: 3,
+    notifications: false,
+    introSkipMs: 0,
+    outroSkipMs: 0,
+    autoQueue: false,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
+Feed _readerFeed({
+  required String id,
+  required String title,
+  required String? category,
+  required DateTime now,
+}) {
+  return Feed(
+    id: id,
+    title: title,
+    feedUrl: 'https://example.test/$id.xml',
+    category: category,
+    kind: FeedKind.reader.index,
+    protocol: FeedProtocol.syndication.index,
+    subscribed: true,
+    isPrivate: false,
     autoDownload: false,
     autoDownloadLimit: 3,
     notifications: false,

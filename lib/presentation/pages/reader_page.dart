@@ -14,6 +14,7 @@ import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/content_list_controls.dart';
+import '../widgets/feed_category_field.dart';
 import 'podcasts_page.dart';
 
 enum _ReaderFilter { unread, all, starred }
@@ -38,9 +39,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     with SingleTickerProviderStateMixin {
   static const _pageSize = 100;
   late final TabController _tabs;
+  late int _tabIndex;
   late _ReaderFilter _filter;
   int _limit = _pageSize;
   bool _markingAllRead = false;
+  bool _organizingFeeds = false;
   final TextEditingController _search = TextEditingController();
   Timer? _searchDebounce;
   String _query = '';
@@ -50,11 +53,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(
-      length: 2,
-      vsync: this,
-      initialIndex: widget.initialFeeds ? 1 : 0,
-    );
+    _tabIndex = widget.initialFeeds ? 1 : 0;
+    _tabs = TabController(length: 2, vsync: this, initialIndex: _tabIndex)
+      ..addListener(_onTabChanged);
     _filter = switch (widget.initialFilter) {
       'all' => _ReaderFilter.all,
       'starred' => _ReaderFilter.starred,
@@ -66,6 +67,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   void dispose() {
     _searchDebounce?.cancel();
     _search.dispose();
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }
@@ -83,6 +85,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           ],
         ),
         actions: [
+          if (_tabIndex == 1)
+            IconButton(
+              tooltip: 'Organize feeds',
+              onPressed: _organizingFeeds ? null : _organizeFeeds,
+              icon: _organizingFeeds
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.drive_file_move_outline),
+            ),
           IconButton(
             tooltip: 'Add source',
             onPressed: _showAddSourceSheet,
@@ -97,10 +110,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   Widget _articles() {
+    final readerFeeds = ref.watch(readerFeedsProvider).value ?? const <Feed>[];
+    final unreadByFeed =
+        ref.watch(unreadArticleCountsByFeedProvider).value ?? const {};
     final categories = feedCategoryOptions(
-      (ref.watch(readerFeedsProvider).value ?? const <Feed>[]).map(
-        (feed) => feed.category,
-      ),
+      readerFeeds.map((feed) => feed.category),
+    );
+    final unreadByCategory = _categoryUnreadCounts(readerFeeds, unreadByFeed);
+    final allUnread = readerFeeds.fold<int>(
+      0,
+      (total, feed) => total + (unreadByFeed[feed.id] ?? 0),
     );
     final selectedCategory =
         categories.any(
@@ -147,19 +166,27 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               children: [
                 if (categories.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
                     child: AdaptiveDropdownField<String>(
                       label: 'Category',
                       initialValue: selectedCategory ?? '',
                       items: [
-                        const DropdownMenuItem(
+                        DropdownMenuItem(
                           value: '',
-                          child: Text('All feeds'),
+                          child: Text(_unreadLabel('All feeds', allUnread)),
                         ),
                         for (final category in categories)
                           DropdownMenuItem(
                             value: category,
-                            child: Text(category),
+                            child: Text(
+                              _unreadLabel(
+                                category,
+                                unreadByCategory[feedCategoryIdentity(
+                                      category,
+                                    )] ??
+                                    0,
+                              ),
+                            ),
                           ),
                       ],
                       onChanged: (value) => setState(() {
@@ -324,6 +351,41 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     });
   }
 
+  void _onTabChanged() {
+    if (_tabs.index == _tabIndex) return;
+    setState(() => _tabIndex = _tabs.index);
+  }
+
+  Future<void> _organizeFeeds() async {
+    if (_organizingFeeds) return;
+    final feeds = ref.read(readerFeedsProvider).value ?? const <Feed>[];
+    if (feeds.isEmpty) return;
+    final move = await showModalBottomSheet<_FeedCategoryMove>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _OrganizeFeedsSheet(feeds: feeds),
+    );
+    if (!mounted || move == null) return;
+    setState(() => _organizingFeeds = true);
+    try {
+      final moved = await ref
+          .read(feedRepositoryProvider)
+          .updateFeedCategories(move.feedIds, move.category);
+      if (!mounted) return;
+      final destination = move.category ?? 'Uncategorized';
+      showMessageSnackBar(
+        context,
+        moved == 0
+            ? 'Selected feeds are already in $destination'
+            : 'Moved $moved ${moved == 1 ? 'feed' : 'feeds'} to $destination',
+      );
+    } on Object catch (error) {
+      if (mounted) showErrorSnackBar(context, error);
+    } finally {
+      if (mounted) setState(() => _organizingFeeds = false);
+    }
+  }
+
   Future<void> _markAllRead(String? category) async {
     if (_markingAllRead) return;
     setState(() => _markingAllRead = true);
@@ -479,11 +541,60 @@ final class _FeedListState extends ConsumerState<_FeedList> {
     );
     if (!mounted || renamed == null || renamed == currentName) return;
 
+    final currentIdentity = feedCategoryIdentity(currentName);
+    final targetIdentity = feedCategoryIdentity(renamed);
+    String? existingTarget;
+    if (targetIdentity != currentIdentity) {
+      for (final category in feedCategoryOptions(
+        widget.feeds.map((feed) => feed.category),
+      )) {
+        if (feedCategoryIdentity(category) == targetIdentity) {
+          existingTarget = category;
+          break;
+        }
+      }
+    }
+    final sourceCount = widget.feeds
+        .where((feed) => feedCategoryIdentity(feed.category) == currentIdentity)
+        .length;
+    final destination = existingTarget ?? renamed;
+    if (existingTarget != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Merge categories?'),
+          content: Text(
+            '$existingTarget already exists. Move $sourceCount '
+            '${sourceCount == 1 ? 'feed' : 'feeds'} from $currentName into it?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Merge'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+    }
+
     setState(() => _renamingCategory = feedCategoryIdentity(currentName));
     try {
-      await ref
+      final changed = await ref
           .read(feedRepositoryProvider)
-          .renameFeedCategory(currentName, renamed);
+          .renameFeedCategory(currentName, destination);
+      if (mounted && changed > 0) {
+        showMessageSnackBar(
+          context,
+          existingTarget == null
+              ? 'Renamed $currentName to $destination'
+              : 'Merged $changed ${changed == 1 ? 'feed' : 'feeds'} into $destination',
+        );
+      }
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
@@ -587,6 +698,163 @@ List<_FeedGroup> _feedGroups(List<Feed> feeds) {
     );
   if (uncategorized.isNotEmpty) groups.add(_FeedGroup(null, uncategorized));
   return groups;
+}
+
+Map<String, int> _categoryUnreadCounts(
+  List<Feed> feeds,
+  Map<String, int> unreadByFeed,
+) {
+  final result = <String, int>{};
+  for (final feed in feeds) {
+    final identity = feedCategoryIdentity(feed.category);
+    if (identity == null) continue;
+    result.update(
+      identity,
+      (count) => count + (unreadByFeed[feed.id] ?? 0),
+      ifAbsent: () => unreadByFeed[feed.id] ?? 0,
+    );
+  }
+  return result;
+}
+
+String _unreadLabel(String label, int unread) =>
+    unread == 0 ? label : '$label · $unread unread';
+
+typedef _FeedCategoryMove = ({Set<String> feedIds, String? category});
+
+final class _OrganizeFeedsSheet extends StatefulWidget {
+  const _OrganizeFeedsSheet({required this.feeds});
+
+  final List<Feed> feeds;
+
+  @override
+  State<_OrganizeFeedsSheet> createState() => _OrganizeFeedsSheetState();
+}
+
+final class _OrganizeFeedsSheetState extends State<_OrganizeFeedsSheet> {
+  final Set<String> _selected = {};
+  final TextEditingController _category = TextEditingController();
+  final FocusNode _categoryFocus = FocusNode();
+
+  @override
+  void dispose() {
+    _category.dispose();
+    _categoryFocus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final options = feedCategoryOptions(
+      widget.feeds.map((feed) => feed.category),
+    );
+    final allSelected = _selected.length == widget.feeds.length;
+    return SafeArea(
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: FractionallySizedBox(
+          heightFactor: 0.9,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Organize feeds',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      if (allSelected) {
+                        _selected.clear();
+                      } else {
+                        _selected.addAll(widget.feeds.map((feed) => feed.id));
+                      }
+                    }),
+                    child: Text(allSelected ? 'Deselect all' : 'Select all'),
+                  ),
+                ],
+              ),
+              Text(
+                '${_selected.length} selected',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppConstants.secondaryText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: widget.feeds.length,
+                  itemBuilder: (context, index) {
+                    final feed = widget.feeds[index];
+                    final selected = _selected.contains(feed.id);
+                    return CheckboxListTile(
+                      value: selected,
+                      onChanged: (value) => setState(() {
+                        if (value == true) {
+                          _selected.add(feed.id);
+                        } else {
+                          _selected.remove(feed.id);
+                        }
+                      }),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: AppConstants.magenta,
+                      title: Text(
+                        feed.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        normalizeFeedCategory(feed.category) ?? 'Uncategorized',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              FeedCategoryField(
+                controller: _category,
+                focusNode: _categoryFocus,
+                options: options,
+                helperText: 'Choose a category or clear it for Uncategorized.',
+              ),
+              const SizedBox(height: 12),
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: _selected.isEmpty
+                        ? null
+                        : () => Navigator.pop(context, (
+                            feedIds: Set.unmodifiable(_selected),
+                            category: normalizeFeedCategory(_category.text),
+                          )),
+                    child: const Text('Move'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 final class _FeedRow extends StatelessWidget {

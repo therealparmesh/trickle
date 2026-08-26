@@ -33,9 +33,11 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 
 ### Feed categories
 
-Open a non-podcast source, then open Feed settings. Choose an existing category or enter a new one. To rename a category, open Feeds > Sources and choose Rename. Clear the Category field to move a source back to Uncategorized. Podcasts do not use categories.
+Choose an existing category or enter a new one while adding a feed. To change it later, tap the category on the source page or open Feed settings. Clear the Category field to move a source back to Uncategorized. Podcasts do not use categories.
 
-The Feed items tab can show one category at a time. Search, filter, sort, or mark the selected category read from the same screen.
+To move several sources at once, open Feeds > Sources and choose Organize feeds. Rename changes every source in a category; renaming to an existing category asks before merging them.
+
+The Feed items tab can show one category at a time, with unread counts in the category picker. Search, filter, sort, or mark the selected category read from the same screen.
 
 ### Playback
 

@@ -76,6 +76,7 @@ final class FeedRepository {
     String? bearerToken,
     bool forcePrivate = false,
     FeedKind? expectedKind,
+    String? category,
     Duration totalTimeout = AppConstants.feedRefreshTimeout,
   }) async {
     final initial = _network.normalizeHttps(Uri.parse(rawAddress.trim()));
@@ -143,6 +144,7 @@ final class FeedRepository {
         credentialRef: credentialRef,
         document: document,
         requireExisting: false,
+        initialCategory: normalizeFeedCategory(category),
       );
     } on Object {
       if (credentialRef != null) {
@@ -783,21 +785,36 @@ final class FeedRepository {
     });
   }
 
-  Future<void> updateFeedCategory(String feedId, String? category) async {
-    await _database.transaction(() async {
-      final current = await _database.feedById(feedId);
-      if (current == null || current.kind != FeedKind.reader.index) return;
-      final normalized = normalizeFeedCategory(category);
-      if (current.category == normalized) return;
-      final now = DateTime.now().toUtc();
-      await (_database.update(
+  Future<int> updateFeedCategories(
+    Iterable<String> feedIds,
+    String? category,
+  ) async {
+    final ids = feedIds.toSet();
+    if (ids.isEmpty) return 0;
+    final normalized = normalizeFeedCategory(category);
+    return _database.transaction(() async {
+      final readerFeeds = await (_database.select(
         _database.feeds,
-      )..where((row) => row.id.equals(feedId))).write(
-        FeedsCompanion(
-          category: Value(normalized),
-          updatedAt: Value(_nextFeedRevision(now, current.updatedAt)),
-        ),
-      );
+      )..where((row) => row.kind.equals(FeedKind.reader.index))).get();
+      final matchingFeeds = readerFeeds
+          .where((feed) => ids.contains(feed.id) && feed.category != normalized)
+          .toList(growable: false);
+      if (matchingFeeds.isEmpty) return 0;
+
+      final now = DateTime.now().toUtc();
+      await _database.batch((batch) {
+        for (final feed in matchingFeeds) {
+          batch.update(
+            _database.feeds,
+            FeedsCompanion(
+              category: Value(normalized),
+              updatedAt: Value(_nextFeedRevision(now, feed.updatedAt)),
+            ),
+            where: (row) => row.id.equals(feed.id),
+          );
+        }
+      });
+      return matchingFeeds.length;
     });
   }
 
@@ -921,6 +938,7 @@ final class FeedRepository {
     required String? credentialRef,
     required NetworkDocument document,
     required bool requireExisting,
+    String? initialCategory,
     DateTime? expectedRevision,
   }) async {
     final parsed = prepared.feed;
@@ -1040,7 +1058,9 @@ final class FeedRepository {
                 imageUrl: Value(parsed.imageUrl?.toString()),
                 author: Value(parsed.author),
                 category: Value(
-                  kind == FeedKind.reader ? effectiveFeed?.category : null,
+                  kind == FeedKind.reader
+                      ? initialCategory ?? effectiveFeed?.category
+                      : null,
                 ),
                 kind: Value(kind.index),
                 protocol: Value(

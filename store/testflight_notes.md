@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Search, filter, and sort inside subscriptions; browse feed items by category; search timed transcripts; manage download storage; save readable article text offline; and share feed addresses to trickle from other apps. Public YouTube videos play without ads when supported, with official playback as a fallback. Picture in Picture keeps their audio playing in the background or when the screen is locked.
+Requires iOS 17 or later. Pick a category while adding a feed, change it from the source page, move several sources at once, see unread counts by category, and confirm category merges. This build also fixes small layout and category-management issues.
 
 ## What to test
 
@@ -50,7 +50,7 @@ Please test the combined podcast and feed flow:
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
 - Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Subscribed and remain actionable
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
-- Assign categories to RSS, YouTube, and Nostr sources from Feed settings; verify the field suggests previous categories case-insensitively, accepts a new category, and moves only that source. In Feeds > Sources, rename a category and verify every matching source moves together, including a case-only rename or a merge into an existing category. In Feed items, choose a category, search and sort it, then mark that category read. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
+- Assign categories while adding RSS, YouTube, and Nostr sources; verify the field suggests previous categories case-insensitively and accepts a new category. Change a category from the source page, then use Feeds > Sources > Organize feeds to move several sources at once. Rename a category and verify every matching source moves together; merging into an existing category must ask first. In Feed items, verify category unread counts, choose a category, search and sort it, then mark it read. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
 - During refresh, OPML import, or local backup restore, confirm the active row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker
 - Import one mixed OPML file containing a podcast and a feed; verify each appears exactly once in its matching section. Choose each scope from Export OPML and confirm the files contain podcasts, feeds, or all compatible subscriptions with the expected category folders
