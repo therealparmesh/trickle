@@ -1,0 +1,92 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Tag, branch, or commit to build
+        required: true
+        default: main
+      release_tag:
+        description: Existing GitHub Release to attach to
+        required: false
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.source_ref }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          channel: stable
+          cache: true
+
+      - name: Build signed APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+
+          keystore="$RUNNER_TEMP/trickle-signing.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          printf '%s\n' \
+            "storePassword=$KEYSTORE_PASSWORD" \
+            "keyPassword=$KEYSTORE_PASSWORD" \
+            "keyAlias=trickle" \
+            "storeFile=$keystore" \
+            > android/key.properties
+
+          flutter build apk --release
+
+      - name: Verify and name APK
+        id: apk
+        run: |
+          version="$(awk '$1 == "version:" {print $2}' pubspec.yaml)"
+          version_name="${version%%+*}"
+          version_code="${version##*+}"
+          filename="trickle-${version_name}-${version_code}-universal.apk"
+          source="build/app/outputs/flutter-apk/app-release.apk"
+
+          mkdir dist
+          cp "$source" "dist/$filename"
+
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          test -n "$apksigner"
+          "$apksigner" verify --verbose "dist/$filename"
+
+          expected="d92e9c5ffe5901296c3b2886ad7b751750d8239e48322aa15cd4ba4ee87b77e2"
+          actual="$("$apksigner" verify --print-certs "dist/$filename" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print tolower($2); exit}')"
+          test "$actual" = "$expected"
+
+          (cd dist && sha256sum "$filename" > "$filename.sha256")
+          echo "name=trickle-${version_name}-${version_code}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Attach APK to release
+        if: github.event_name == 'release' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" dist/*

@@ -38,8 +38,10 @@ The future agent should operate those gates through an authenticated browser ses
 - Candidate release: `1.2.0` (`versionCode` 50)
 - Android support: API 24 or later
 - Target SDK: API 36
-- Google Play: no locally verifiable app record, production signing, upload credential, or release
-- Zapstore: no `zapstore.yaml`, publisher identity, signed APK, or release
+- App signing: permanent RSA 4096-bit identity created and verified
+- GitHub: signed universal APK workflow configured for manual and release builds
+- Google Play: no locally verifiable app record, upload credential, or release
+- Zapstore: no `zapstore.yaml`, publisher identity, or release
 - Store media: the copyright-safe iPhone fixtures exist, but Google Play needs Android captures with a supported aspect ratio
 
 Build 50 can be the first Android release if live Play and Zapstore checks confirm that neither has consumed it. Before building, query every available track and the Zapstore listing; repository history alone is not proof.
@@ -58,49 +60,22 @@ Google can generate the app-signing key and provide a signed universal APK for o
 
 ## Secrets and signing
 
-Create two RSA keys:
+The permanent app-signing identity is:
 
-- App-signing key: signs installable Zapstore APKs and is transferred securely to Play App Signing.
-- Play upload key: signs AAB files submitted to Google Play.
+- Keystore: `iCloud Drive/Android/trickle-signing.p12`
+- Alias: `trickle`
+- Algorithm: RSA 4096-bit
+- Valid through August 2, 2126
+- Certificate SHA-256: `D9:2E:9C:5F:FE:59:01:29:6C:3B:28:86:AD:7B:75:17:50:D8:23:9E:48:32:2A:A1:5C:D4:BA:4E:E8:7B:77:E2`
+- Local password record: macOS Keychain service `com.parmscript.trickle.android-signing`, account `trickle`
 
-Requirements:
+GitHub Actions stores an encoded copy and its password as `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`. Base64 is transport encoding, not another form of encryption. Keep the original keystore and a separate password-manager record; GitHub must not be the only recovery copy.
 
-- Use RSA 4096-bit keys with a validity of 10,000 days. This exceeds Android's 25-year recommendation without relying on default keytool values.
-- Give the keys different aliases and passwords.
-- Keep both keystores and recovery information outside the repository.
-- Keep two encrypted backups in separate locations and test recovery before the first public upload.
-- Store local properties under `~/.config/trickle/android/` with owner-only permissions:
-  - `app-signing.jks`
-  - `app-signing.properties`
-  - `play-upload.jks`
-  - `play-upload.properties`
-  - `play-service-account.json`
-- Never commit keystores, passwords, Play credentials, Nostr private keys, bunker URLs, generated `.aab` files, or generated `.apk` files.
-- Record the SHA-256 certificate fingerprint in the private release record and compare it with both stores before publishing.
+Never create another app-signing identity for `com.parmscript.trickle`. Every direct APK and Zapstore update must use this certificate. When enrolling in Play App Signing, provide this existing app-signing key so installations from every store retain the same Android identity.
 
-Create the keystores interactively so passwords never enter shell history:
+Google Play should use a separate upload key for AAB submissions. Create it during Play setup, keep it outside the repository, and register only its public certificate with Play. Unlike the app-signing key, Play can replace a compromised upload key.
 
-```sh
-install -d -m 700 "$HOME/.config/trickle/android"
-keytool -genkeypair -v \
-  -keystore "$HOME/.config/trickle/android/app-signing.jks" \
-  -alias trickle-app -keyalg RSA -keysize 4096 -validity 10000
-keytool -genkeypair -v \
-  -keystore "$HOME/.config/trickle/android/play-upload.jks" \
-  -alias trickle-upload -keyalg RSA -keysize 4096 -validity 10000
-chmod 600 "$HOME/.config/trickle/android/"*.jks
-```
-
-Each external properties file uses the same four keys as `android/key.properties.example`: `storePassword`, `keyPassword`, `keyAlias`, and absolute `storeFile`. Never print either file.
-
-Add a small Android release command that selects one of two external signing profiles without copying secrets into the repository:
-
-- `play`: signs an AAB with the upload key.
-- `distribution`: signs an APK with the app-signing key.
-
-The command must refuse to run from a dirty tree, refuse missing credentials, print the package/version/certificate fingerprint, and never fall back to the debug key.
-
-Update Gradle once to read the properties path from `TRICKLE_ANDROID_KEY_PROPERTIES`. Verification builds remain unsigned when that variable is absent. The release command sets it to `play-upload.properties` for the AAB and `app-signing.properties` for the APK. This avoids swapping `android/key.properties` and makes the chosen signing role explicit in every build.
+Never commit keystores, passwords, Play credentials, Nostr private keys, generated `.aab` files, generated `.apk` files, or `android/key.properties`.
 
 ## Phase 1: Publisher setup
 
@@ -181,27 +156,41 @@ Do not run publication while the placeholder `npub` remains. The repository rele
 
 ## Phase 2: Repository release support
 
-Implement these narrow, removable release-only additions:
+`.github/workflows/android-apk.yml` is the only signed APK build path. It restores the app-signing key on an ephemeral runner, builds the release APK, verifies its certificate fingerprint, writes a SHA-256 checksum, and uploads both files as workflow artifacts.
 
-- `tool/release_android.sh`: preflight, signed AAB/APK builds, signature inspection, and checksums
-- `Gemfile` and `Gemfile.lock`: pin Fastlane rather than relying on the machine-global Ruby
-- `fastlane/Appfile`: package name plus `GOOGLE_PLAY_JSON_KEY` lookup; no credential value
-- `fastlane/Fastfile`: status, validation, metadata, internal-test, and production-promotion lanes
-- `fastlane/metadata/android/en-US/`: canonical Google listing text, release notes, and media
-- `tool/maestro/seed_store_screenshot_data_android.sh`: seed only a selected debuggable emulator through `adb run-as`
-- `tool/maestro/capture_store_screenshots_android.yaml`: capture the five Android listing screens
-- `zapstore.yaml`: public Zapstore configuration
-- `store/google/declarations.md`: the final Play Console answers and the evidence used for them
-
-The release command should support:
+Run it without publishing:
 
 ```sh
-tool/release_android.sh verify
-tool/release_android.sh play
-tool/release_android.sh distribution
+gh workflow run android-apk.yml --ref main -f source_ref=main
 ```
 
-`verify` runs all non-publishing checks. `play` creates only the Play AAB. `distribution` creates only the Zapstore APK. Upload and publication remain separate commands so a build cannot accidentally release itself.
+For a historical release, create the release first and then run the current workflow against the exact old source commit:
+
+```sh
+gh workflow run android-apk.yml \
+  --ref main \
+  -f source_ref=<commit-or-tag> \
+  -f release_tag=<release-tag>
+```
+
+Publishing a future GitHub Release whose tag already contains the workflow triggers the build automatically. A release tag pointing to an older commit cannot discover a workflow that did not exist in that commit, so historical releases use the manual command above.
+
+The workflow produces:
+
+- `trickle-<version>-<build>-universal.apk`
+- `trickle-<version>-<build>-universal.apk.sha256`
+
+Do not replace an APK attached to a published release. Fix the source, increment the build number, and create a new release.
+
+Google Play support still requires these release-only additions:
+
+- A separate Play upload key
+- Pinned Fastlane configuration and Android listing metadata
+- Copyright-safe Android screenshots, icon, and feature graphic
+- `store/google/declarations.md` with reviewed console answers
+- A least-privileged Play publisher service account after the first console upload
+
+Zapstore support still requires `zapstore.yaml`, a long-lived Nostr publisher identity, and a NIP-46 signing connection. It reuses the immutable signed APK attached to GitHub Releases.
 
 Use these Fastlane lanes and no overlapping upload scripts:
 
@@ -215,14 +204,7 @@ All lanes read the credential from `GOOGLE_PLAY_JSON_KEY`, defaulting to `~/.con
 
 Bootstrap Fastlane with a managed Ruby 3.3 or later and Bundler, commit the lockfile, and always invoke it through `bundle exec fastlane`. Do not use macOS system Ruby 2.6.
 
-Flutter writes the first two paths below; the release command copies verified artifacts into ignored `build/releases/` names used by upload commands:
-
-- Play source: `build/app/outputs/bundle/release/app-release.aab`
-- Zapstore source: `build/app/outputs/flutter-apk/app-release.apk`
-- Play upload: `build/releases/trickle-1.2.0-50.aab`
-- GitHub/Zapstore: `build/releases/trickle-1.2.0-50-universal.apk`
-- Checksums: one matching `.sha256` file per published artifact
-- Local evidence: `build/releases/release-manifest.json`, copied to the encrypted release archive after publication
+Flutter writes unsigned verification bundles to `build/app/outputs/bundle/release/`. The GitHub workflow's signed APK is the only artifact intended for direct distribution. A later Play workflow will produce an AAB signed with the separate upload key.
 
 ## Phase 3: Store media and copy
 
@@ -299,52 +281,35 @@ Before uploading the first binary, create a dated decision record in `store/goog
 From a clean, pushed `main` commit:
 
 ```sh
-export JAVA_HOME="$(mise where java@openjdk-21.0.2)"
-export PATH="$JAVA_HOME/bin:$PATH"
-export ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
-export GOOGLE_PLAY_JSON_KEY="$HOME/.config/trickle/android/play-service-account.json"
-tool/release_android.sh verify
-tool/release_android.sh play
-tool/release_android.sh distribution
+flutter pub get
+oxfmt --check README.md 'docs/**/*.md' 'store/**/*.md'
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+flutter build appbundle --release
+(cd android && ./gradlew :app:lintRelease)
+gh workflow run android-apk.yml --ref main -f source_ref="$(git rev-parse HEAD)"
 ```
 
-Run `bundle exec fastlane android play_status` before building only when the Publishing API has already been activated by an earlier Play upload. For the first Android release, confirm unused package/version state in Play Console and Zapstore instead.
+The ordinary bundle build remains unsigned until the separate Play upload key is configured. The GitHub workflow reads the version name and code from `pubspec.yaml`, uses them in the artifact name, and verifies:
 
-`verify` runs `flutter pub get`, documentation and Dart formatting checks, `flutter analyze`, `flutter test`, Android `lintRelease`, an unsigned release bundle build, tool/version checks, and secret scans exactly once. The signed build modes depend on a successful `verify` result from the same commit and toolchain.
-
-The release script must resolve `apksigner` from `$ANDROID_SDK_ROOT/build-tools` and fail if API 36 build tools are unavailable. Pin `bundletool` and `zsp` versions in the release manifest before using them; do not silently download latest binaries during a release.
-
-The release command must then verify:
-
-- Package is exactly `com.parmscript.trickle`.
-- Version name is `1.2.0` and version code is 50.
-- Minimum SDK is 24 and target SDK is 36.
-- AAB is signed by the Play upload certificate.
 - APK is signed by the shared app-signing certificate.
 - APK signature schemes and certificate chain pass `apksigner verify`.
-- AAB passes `jarsigner -verify` and bundle manifest inspection.
-- Release artifacts contain no debug certificate, secrets, screenshot fixtures, or capture tooling.
-- SHA-256 checksums, Git commit, Flutter version, Java version, and artifact sizes are written to a local release manifest.
-- The two artifacts report the same application ID, version name, version code, minimum SDK, and target SDK; the release manifest maps both artifact hashes to the same source commit.
-- The only expected byte difference between rebuilt identical artifacts is signing or nondeterministic tool output documented in the manifest; compare extracted manifests and file inventories rather than assuming equality.
+- A matching SHA-256 checksum accompanies the APK.
 
-Install and test both delivery forms:
+Download the workflow artifact and test the signed APK on Android 7/API 24 and a current Android version. After Play setup, also generate an installable APK set from its AAB with `bundletool` and test the Play-delivered form.
 
-1. Generate a device APK set from the AAB with `bundletool`, explicitly sign the generated APKs with the retained app-signing key, verify that fingerprint, and install it on an Android 7/API 24 target and a current Android target. Never accept bundletool's debug-signing fallback.
-2. Install the signed Zapstore APK on the same current Android target.
-3. On one disposable emulator snapshot, install an AAB-derived APK and update it with a higher-version distribution APK.
-4. On a separate disposable snapshot, install a distribution APK and update it with a higher-version AAB-derived APK.
-5. Use temporary version overrides that are never uploaded, then wipe both snapshots so their higher version codes cannot block public build 50.
+Run `bundle exec fastlane android play_status` before a Play build only after the Publishing API has been activated by an earlier console upload. For the first Android release, confirm unused package and version state in Play Console and Zapstore instead.
 
 ## Phase 6: Acceptance test
 
-Run the complete acceptance checklist in [RELEASE.md](RELEASE.md) against both signed delivery forms, not a debug build. Add Android-specific evidence for API 24, a current Android version, TalkBack, predictive back, notification permission, background restrictions, Picture in Picture, Play-delivered installation, direct APK installation, and both cross-store update directions.
+Run the complete acceptance checklist in [RELEASE.md](RELEASE.md) against the signed APK, not a debug build. Before Google Play publication, repeat it against a Play-delivered build. Add Android-specific evidence for API 24, a current Android version, TalkBack, predictive back, notification permission, background restrictions, Picture in Picture, and direct APK installation.
 
 Record pass/fail evidence in the private release archive. Any code, dependency, manifest, resource, or runtime configuration change invalidates both candidate artifacts. Rebuild both from the new commit; retain version code 50 only if neither store has consumed it, otherwise increment the version code.
 
 ## Phase 7: Google Play rollout
 
-1. Upload the verified candidate AAB from `build/releases/trickle-1.2.0-50.aab` to Internal testing through Play Console. Install it once. This activates Publishing API access and consumes version code 50; any later binary change requires 51.
+1. Create an AAB signed with the separate Play upload key and upload it to Internal testing through Play Console. Install it once. This activates Publishing API access and consumes its version code; any later binary change requires a higher code.
 2. Validate the publisher credential:
 
    ```sh
@@ -369,7 +334,7 @@ bundle exec fastlane android play_metadata
 
 # Later releases upload the verified AAB to Internal testing.
 bundle exec fastlane android play_internal \
-  aab:build/releases/trickle-1.2.0-50.aab
+  aab:<verified-aab-path>
 
 # Promotion requires an explicit version and production confirmation.
 CONFIRM_PRODUCTION=1 bundle exec fastlane android play_promote \
@@ -390,24 +355,24 @@ Do not reuse a rejected version code. If Play consumes 50 and requires another b
 6. Verify the application and release events reached the intended relay.
 7. Open the public Zapstore listing, download the APK, compare its hash with the GitHub asset, verify its certificate, install it, and repeat the critical acceptance paths.
 
-The first release command sequence is:
+Create the release, then let the current workflow build the exact tagged source and attach its output:
 
 ```sh
 SHA="$(git rev-parse HEAD)"
 VERSION=1.2.0
 BUILD=50
 TAG="v${VERSION}-android.${BUILD}"
-APK="build/releases/trickle-${VERSION}-${BUILD}-universal.apk"
 
-git tag "$TAG" "$SHA"
-git push origin "$TAG"
-(cd "$(dirname "$APK")" && \
-  shasum -a 256 "$(basename "$APK")" > "$(basename "$APK").sha256")
-gh release create "$TAG" "$APK" "${APK}.sha256" \
+gh release create "$TAG" \
   --repo therealparmesh/trickle \
+  --target "$SHA" \
   --title "trickle ${VERSION}" \
-  --notes-file "fastlane/metadata/android/en-US/changelogs/${BUILD}.txt" \
-  --verify-tag
+  --notes-file "fastlane/metadata/android/en-US/changelogs/${BUILD}.txt"
+gh workflow run android-apk.yml \
+  --repo therealparmesh/trickle \
+  --ref main \
+  -f source_ref="$SHA" \
+  -f release_tag="$TAG"
 
 export SIGN_WITH="$(security find-generic-password \
   -s trickle-zapstore-bunker -a trickle -w)"

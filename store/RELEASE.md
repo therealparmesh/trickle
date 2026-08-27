@@ -39,11 +39,22 @@ Flutter reports forward-compatibility warnings because `disk_space_plus` and `wo
 
 ## Android signing and upload
 
-Use [ANDROID_RELEASE.md](ANDROID_RELEASE.md) for the authoritative first-release and recurring-release workflow. It defines the shared Google Play/Zapstore app-signing identity, separate Play upload key, external credential paths, reproducible AAB and APK builds, Fastlane lanes, Zapstore publication, and recovery checks.
+Use [ANDROID_RELEASE.md](ANDROID_RELEASE.md) for the Android signing identity and store rollout plan.
 
 If signing properties are absent, release bundles are deliberately unsigned. This allows local and CI compilation checks without ever using the public Android debug key for a release artifact. Never upload an artifact produced by the unsigned verification command.
 
-Current Android release status: the application identifier and API levels are ready, but no Play or Zapstore signing material, publisher credential, app record, or release is locally verifiable. The project has a minimum API of 24 and targets API 36, including Google's [API 36 requirement beginning August 31, 2026](https://developer.android.com/google/play/requirements/target-sdk).
+The `Android APK` workflow builds a universal APK with trickle's permanent app-signing key. A manual run stores the APK and its SHA-256 checksum as workflow artifacts. Publishing a GitHub Release runs the same build and attaches both files to that release. For a historical commit, run the workflow from `main`, set `source_ref` to the old commit or tag, and set `release_tag` to the existing release:
+
+```sh
+gh workflow run android-apk.yml \
+  --ref main \
+  -f source_ref=<commit-or-tag> \
+  -f release_tag=<release-tag>
+```
+
+The repository secrets are `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`. The original keystore remains outside Git and must be retained for every direct APK and Zapstore update.
+
+Current Android store status: the shared app-signing identity and signed GitHub APK workflow are ready, but Google Play and Zapstore still require their publisher setup. The project has a minimum API of 24 and targets API 36, including Google's [API 36 requirement beginning August 31, 2026](https://developer.android.com/google/play/requirements/target-sdk).
 
 Complete Play Console Data safety from `store/metadata.md`, select News & Magazines, provide the hosted privacy URL, complete the required declarations and content rating, and test the exact signed bundle in internal testing before production.
 
