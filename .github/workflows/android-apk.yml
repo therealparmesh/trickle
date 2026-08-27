@@ -72,8 +72,9 @@ jobs:
           "$apksigner" verify --verbose "dist/$filename"
 
           expected="d92e9c5ffe5901296c3b2886ad7b751750d8239e48322aa15cd4ba4ee87b77e2"
-          actual="$("$apksigner" verify --print-certs "dist/$filename" | awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print tolower($2); exit}')"
-          test "$actual" = "$expected"
+          certificates="$("$apksigner" verify --print-certs "dist/$filename" 2>&1)"
+          printf '%s\n' "$certificates"
+          printf '%s\n' "$certificates" | tr '[:upper:]' '[:lower:]' | grep -F "$expected"
 
           (cd dist && sha256sum "$filename" > "$filename.sha256")
           echo "name=trickle-${version_name}-${version_code}" >> "$GITHUB_OUTPUT"
