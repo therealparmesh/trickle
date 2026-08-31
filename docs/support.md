@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: August 22, 2026_
+_Last updated: August 31, 2026_
 
 ## Contact
 
@@ -46,6 +46,8 @@ Confirm the device is online and the publisher's media URL is still available. R
 Episodes are marked New, In Progress, or Played. An episode becomes In Progress after 10 seconds. Position is checkpointed every 15 seconds and when playback is paused, changed, or closed.
 
 If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
+
+If the operating system stops an episode that was still playing, trickle tries once to restore the audio session and continue. If it still cannot play, the player leaves the loading state and shows Retry.
 
 ### Video feeds
 

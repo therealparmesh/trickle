@@ -35,7 +35,7 @@ The future agent should operate those gates through an authenticated browser ses
 ## Current state
 
 - Package: `com.parmscript.trickle`
-- Candidate release: `1.2.0` (`versionCode` 50)
+- Candidate release: `1.2.1` (`versionCode` 51)
 - Android support: API 24 or later
 - Target SDK: API 36
 - App signing: permanent RSA 4096-bit identity created and verified
@@ -44,7 +44,7 @@ The future agent should operate those gates through an authenticated browser ses
 - Zapstore: no `zapstore.yaml`, publisher identity, or release
 - Store media: the copyright-safe iPhone fixtures exist, but Google Play needs Android captures with a supported aspect ratio
 
-Build 50 can be the first Android release if live Play and Zapstore checks confirm that neither has consumed it. Before building, query every available track and the Zapstore listing; repository history alone is not proof.
+Build 51 can be the first Android store release if live Play and Zapstore checks confirm that neither has consumed it. Before building, query every available track and the Zapstore listing; repository history alone is not proof.
 
 ## Distribution decisions
 
@@ -241,7 +241,7 @@ Save Play assets in Fastlane's standard layout:
 fastlane/metadata/android/en-US/title.txt
 fastlane/metadata/android/en-US/short_description.txt
 fastlane/metadata/android/en-US/full_description.txt
-fastlane/metadata/android/en-US/changelogs/50.txt
+fastlane/metadata/android/en-US/changelogs/51.txt
 fastlane/metadata/android/en-US/images/icon.png
 fastlane/metadata/android/en-US/images/featureGraphic.png
 fastlane/metadata/android/en-US/images/phoneScreenshots/01-home.png
@@ -305,7 +305,7 @@ Run `bundle exec fastlane android play_status` before a Play build only after th
 
 Run the complete acceptance checklist in [RELEASE.md](RELEASE.md) against the signed APK, not a debug build. Before Google Play publication, repeat it against a Play-delivered build. Add Android-specific evidence for API 24, a current Android version, TalkBack, predictive back, notification permission, background restrictions, Picture in Picture, and direct APK installation.
 
-Record pass/fail evidence in the private release archive. Any code, dependency, manifest, resource, or runtime configuration change invalidates both candidate artifacts. Rebuild both from the new commit; retain version code 50 only if neither store has consumed it, otherwise increment the version code.
+Record pass/fail evidence in the private release archive. Any code, dependency, manifest, resource, or runtime configuration change invalidates both candidate artifacts. Rebuild both from the new commit; retain version code 51 only if neither store has consumed it, otherwise increment the version code.
 
 ## Phase 7: Google Play rollout
 
@@ -321,7 +321,7 @@ Record pass/fail evidence in the private release archive. Any code, dependency, 
 4. Install from Play Internal testing and repeat the critical acceptance paths.
 5. Resolve Pre-launch report, policy, signing, compatibility, and Android vitals findings.
 6. If required, run the closed test with at least 12 opted-in testers continuously for 14 days and then request production access.
-7. Run `bundle exec fastlane android play_status` and confirm production has no version 50 before promotion.
+7. Run `bundle exec fastlane android play_status` and confirm production has no version 51 before promotion.
 8. Prepare and validate the production track through the CLI, but complete all first-publication legal consents and the final publication in Play Console. Google's API cannot publish a draft app, and Managed Publishing is unavailable for the first release.
 9. Expect the first approved production release to become public without a managed-publishing hold. Confirm the live package, version, listing, privacy link, and install before publishing Zapstore.
 
@@ -338,16 +338,16 @@ bundle exec fastlane android play_internal \
 
 # Promotion requires an explicit version and production confirmation.
 CONFIRM_PRODUCTION=1 bundle exec fastlane android play_promote \
-  version_code:50 rollout:0.1
+  version_code:51 rollout:0.1
 ```
 
-The lane must reject a rollout outside `0 < rollout < 1`; completion to 100 percent is a separate deliberate operation after vitals review. Build 50's first production transition remains a Play Console gate because the API cannot publish a draft app.
+The lane must reject a rollout outside `0 < rollout < 1`; completion to 100 percent is a separate deliberate operation after vitals review. Build 51's first production transition remains a Play Console gate because the API cannot publish a draft app.
 
-Do not reuse a rejected version code. If Play consumes 50 and requires another binary, increment `pubspec.yaml`, commit `chore: prepare 1.2.0 build 51`, rebuild both artifacts, and publish the matching version to both stores.
+Do not reuse a rejected version code. If Play consumes 51 and requires another binary, increment `pubspec.yaml`, commit `chore: prepare 1.2.1 build 52`, rebuild both artifacts, and publish the matching version to both stores.
 
 ## Phase 8: Zapstore rollout
 
-1. Create Git tag `v1.2.0-android.50` at the exact release commit.
+1. Create Git tag `v1.2.1-android.51` at the exact release commit.
 2. Create a GitHub release without auto-generated or unreviewed copy.
 3. Attach the signed universal APK, its SHA-256 checksum, and concise release notes.
 4. Run `zsp publish --check zapstore.yaml` and confirm package, version, source, APK selection, and certificate.
@@ -359,8 +359,8 @@ Create the release, then let the current workflow build the exact tagged source 
 
 ```sh
 SHA="$(git rev-parse HEAD)"
-VERSION=1.2.0
-BUILD=50
+VERSION=1.2.1
+BUILD=51
 TAG="v${VERSION}-android.${BUILD}"
 
 gh release create "$TAG" \

@@ -51,6 +51,37 @@ void main() {
     }
   });
 
+  test('playback recovery excludes pauses, transitions, and completion', () {
+    bool shouldRecover({
+      bool requested = true,
+      bool playing = false,
+      bool loading = false,
+      bool completing = false,
+      bool terminal = false,
+      Duration position = const Duration(minutes: 10),
+    }) => shouldRecoverUnexpectedPlaybackStop(
+      playRequested: requested,
+      playerPlaying: playing,
+      loadingMedia: loading,
+      handlingCompletion: completing,
+      terminalState: terminal,
+      position: position,
+      duration: const Duration(minutes: 30),
+    );
+
+    expect(shouldRecover(), isTrue);
+    expect(shouldRecover(requested: false), isFalse);
+    expect(shouldRecover(playing: true), isFalse);
+    expect(shouldRecover(loading: true), isFalse);
+    expect(shouldRecover(completing: true), isFalse);
+    expect(shouldRecover(terminal: true), isFalse);
+    expect(
+      shouldRecover(position: const Duration(minutes: 29, seconds: 30)),
+      isTrue,
+    );
+    expect(shouldRecover(position: const Duration(minutes: 30)), isFalse);
+  });
+
   test('subscription removal invalidates only affected playback', () {
     expect(
       removedEpisodesAffectPlayback(

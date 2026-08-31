@@ -97,7 +97,7 @@ In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, a
 ## Acceptance checklist
 
 - Installation: fresh install, upgrade, relaunch, offline launch, low storage, and database migration
-- Playback: stream, seek, pause, resume, previous/next, interruptions, unplugged headphones, lock screen, background audio, and every global speed
+- Playback: stream, seek, pause, resume, previous/next, interruptions, unplugged headphones, lock screen, background audio, one bounded recovery after an unexpected native stop, and every global speed
 - Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, item and byte totals, played-only bulk removal, all-download removal, and every cleanup policy
 - Queue and extras: reorder, remove, persistence, sleep timers, intro/outro skip, repeat-one, chapters, searchable timed and untimed transcripts, tap-to-seek, and bookmarks
 - Subscriptions: complete catalog previews before subscription and after in-place unsubscribe, concurrent row-level catalog subscriptions, catalog recognition of public podcasts imported through OPML, capitalization-stable search, podcast-only direct URL validation, public/private direct URLs, query/path credentials, website discovery, system share-in with editable confirmation, Nostr `npub`/`nprofile`, malformed feeds, redirects, UTF-8/UTF-16 OPML import, reader-category OPML folder round-trips, one OPML scope chooser for podcasts, feeds, or all compatible subscriptions, versioned local backup/restore with duplicate-picker protection and actionable picker/read failures, and unsubscribe cleanup with retained saved or in-progress items

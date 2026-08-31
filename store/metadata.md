@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.2.0
-- Build: 50
+- Version: 1.2.1
+- Build: 51
 
 ## Name
 
@@ -99,17 +99,9 @@ The checked-in 1320×2868 iPhone images were regenerated and visually verified a
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.2.0 release notes
+## Version 1.2.1 release notes
 
-Feed categories are quicker to use:
-
-• Pick or create a category while adding a feed
-• Change a source’s category from its page
-• Move several sources at once
-• See unread counts by category
-• Confirm before merging categories
-
-This update also fixes small layout and category-management issues.
+Podcast playback is more reliable when switching apps, locking your phone, or returning after an interruption. Picture in Picture failures also return to usable video controls instead of leaving the player stuck.
 
 ## Privacy declarations
 

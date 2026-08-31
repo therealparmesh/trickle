@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Pick a category while adding a feed, change it from the source page, move several sources at once, see unread counts by category, and confirm category merges. This build also fixes small layout and category-management issues.
+Requires iOS 17 or later. Podcast playback now reapplies the native audio session before playing and makes one recovery attempt after an unexpected stop. Video playback now handles unavailable Picture in Picture without entering a false background-playing state.
 
 ## What to test
 
@@ -23,6 +23,7 @@ Please test the combined podcast and feed flow:
 - Partially play an episode; verify lists change from New to In Progress, show saved progress and Resume, then change to Played after completion
 - Compare explicit episodes with one-line and wrapped titles; the E marker should remain immediately before the first title line
 - Verify a failed audio source shows a clear message and Retry action; retry after restoring the network
+- Play a podcast, leave trickle, lock the phone for at least 30 seconds, and confirm playback and its saved position continue. Return to trickle and verify the controls still match the native player
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
 - Download an episode, use it offline, and test automatic cleanup after playback
 - Open Downloads and verify its item count and storage total, Remove played downloads keeps items marked Keep, and Remove all downloads cancels active work before clearing the list

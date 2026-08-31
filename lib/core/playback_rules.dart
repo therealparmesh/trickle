@@ -42,6 +42,25 @@ bool shouldResumeAfterInterruption({
   required bool? playRequested,
 }) => playRequested ?? playing;
 
+/// Allows one recovery attempt only when requested playback stopped before the
+/// episode finished. Explicit pauses, source changes, and completion handling
+/// must never restart audio.
+bool shouldRecoverUnexpectedPlaybackStop({
+  required bool playRequested,
+  required bool playerPlaying,
+  required bool loadingMedia,
+  required bool handlingCompletion,
+  required bool terminalState,
+  required Duration position,
+  required Duration duration,
+}) =>
+    playRequested &&
+    !playerPlaying &&
+    !loadingMedia &&
+    !handlingCompletion &&
+    !terminalState &&
+    (duration <= Duration.zero || position < duration);
+
 /// Filters the player's initial/transition `completed` events.
 ///
 /// Some native backends report `completed` while they still have no source or

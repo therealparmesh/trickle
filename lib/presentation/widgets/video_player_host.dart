@@ -37,6 +37,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   Uri? _loadedUri;
   Uri? _activeRequestUri;
   Timer? _loadTimeout;
+  Timer? _playerMessageTimer;
   int _sessionGeneration = 0;
   int _controllerToken = 0;
   int _videoObserverToken = 0;
@@ -57,6 +58,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
   VideoPlaybackSource _source = VideoPlaybackSource.privacyWrapper;
   String? _error;
+  String? _playerMessage;
 
   bool get _usingOfficialFallback =>
       _source == VideoPlaybackSource.officialYouTube;
@@ -78,6 +80,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       _platformChannel.setMethodCallHandler(null);
     }
     _loadTimeout?.cancel();
+    _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
     unawaited(
       ref
@@ -329,6 +332,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                           _expandedToolbar(context, session, toolbarHeight)
                         else
                           _miniControls(context, session, previewSize.width),
+                        if (expanded && !systemPresentation)
+                          if (_playerMessage case final message?)
+                            _PlayerMessage(message),
                       ],
                     );
                   },
@@ -701,6 +707,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
     _loadTimeout?.cancel();
+    _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
     _pictureInPictureRequestTimeout = null;
     if (mounted) {
@@ -806,6 +813,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     _loadTimeout?.cancel();
+    _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
     _pictureInPictureRequestTimeout = null;
     setState(() {
@@ -825,6 +833,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _controllerToken++;
     ref.read(videoSessionProvider.notifier).close();
     _loadTimeout?.cancel();
+    _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
     _pictureInPictureRequestTimeout = null;
     _loadedArticleId = null;
@@ -880,7 +889,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       opened = false;
     }
     if (!opened && mounted) {
-      showMessageSnackBar(context, 'Couldn’t open this video in your browser.');
+      _showPlayerMessage('Couldn’t open this video in your browser.');
     }
   }
 
@@ -899,7 +908,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
     final active = arguments['active'] == true;
     if (active) {
-      await _markPictureInPictureActive();
+      _markPictureInPictureActive();
     } else {
       await _handlePictureInPictureExit(VideoPictureInPictureExit.restored);
     }
@@ -927,14 +936,14 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     switch (event.state) {
       case 'pip-start':
         _completePictureInPictureRequest();
-        unawaited(_markPictureInPictureActive());
+        _markPictureInPictureActive();
       case 'pip-active':
         _completePictureInPictureRequest();
         _pictureInPictureBackgrounded = false;
-        unawaited(_markPictureInPictureActive());
+        _markPictureInPictureActive();
       case 'pip-request-succeeded':
         _completePictureInPictureRequest();
-        unawaited(_markPictureInPictureActive());
+        _markPictureInPictureActive();
       case 'pip-request-failed':
         _completePictureInPictureRequest(showUnavailable: true);
       case 'pip-restored':
@@ -1125,6 +1134,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     final generation = _sessionGeneration;
     _pictureInPictureBackgrounded = false;
     _awaitingPictureInPictureResume = false;
+    _clearPlayerMessage();
     setState(() => _requestingPictureInPicture = true);
     var awaitingWebResult = false;
     try {
@@ -1148,12 +1158,11 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             ) ??
             false;
         if (!entered && mounted) {
-          showMessageSnackBar(
-            context,
+          _showPlayerMessage(
             'Picture in Picture isn’t available on this device.',
           );
         } else if (entered && mounted && generation == _sessionGeneration) {
-          await _markPictureInPictureActive();
+          _markPictureInPictureActive();
         }
         return;
       }
@@ -1176,8 +1185,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       _pictureInPictureRequestTimeout?.cancel();
       _pictureInPictureRequestTimeout = null;
       if (mounted) {
-        showMessageSnackBar(
-          context,
+        _showPlayerMessage(
           'Picture in Picture isn’t available on this device.',
         );
       }
@@ -1186,8 +1194,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       _pictureInPictureRequestTimeout?.cancel();
       _pictureInPictureRequestTimeout = null;
       if (mounted) {
-        showMessageSnackBar(
-          context,
+        _showPlayerMessage(
           'Picture in Picture isn’t available on this device.',
         );
       }
@@ -1198,10 +1205,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       if (mounted &&
           generation == _sessionGeneration &&
           ref.read(videoSessionProvider) != null) {
-        showMessageSnackBar(
-          context,
-          'Picture in Picture isn’t available right now.',
-        );
+        _showPlayerMessage('Picture in Picture isn’t available right now.');
       }
     } finally {
       if (mounted && generation == _sessionGeneration && !awaitingWebResult) {
@@ -1222,20 +1226,36 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       setState(() => _requestingPictureInPicture = false);
     }
     if (showUnavailable && wasRequesting && !alreadyActive) {
-      showMessageSnackBar(
-        context,
-        'Picture in Picture isn’t available for this video.',
-      );
+      _showPlayerMessage('Picture in Picture isn’t available for this video.');
     }
   }
 
-  Future<void> _markPictureInPictureActive() async {
+  void _showPlayerMessage(String message) {
+    if (!mounted) return;
+    _playerMessageTimer?.cancel();
+    setState(() => _playerMessage = message);
+    _playerMessageTimer = Timer(const Duration(seconds: 4), () {
+      _playerMessageTimer = null;
+      if (mounted && _playerMessage == message) {
+        setState(() => _playerMessage = null);
+      }
+    });
+  }
+
+  void _clearPlayerMessage() {
+    _playerMessageTimer?.cancel();
+    _playerMessageTimer = null;
+    _playerMessage = null;
+  }
+
+  void _markPictureInPictureActive() {
     if (!mounted) return;
     final session = ref.read(videoSessionProvider);
     if (session == null ||
         session.presentation == VideoPresentation.pictureInPicture) {
       return;
     }
+    _clearPlayerMessage();
     _completePictureInPictureRequest();
     ref.read(videoSessionProvider.notifier).enterPictureInPicture();
   }
@@ -1491,21 +1511,41 @@ String _videoPresentationObserver(int observerToken) =>
     }
     if (action === 'pause') video.pause();
     if (action === 'picture-in-picture') {
-      if (video.webkitSupportsPresentationMode &&
-          video.webkitSetPresentationMode) {
+      let webKitSupport = null;
+      if (typeof video.webkitSupportsPresentationMode === 'function') {
+        try {
+          webKitSupport = video.webkitSupportsPresentationMode(
+            'picture-in-picture'
+          );
+        } catch (_) {
+          webKitSupport = false;
+        }
+      }
+      if (webKitSupport === true &&
+          typeof video.webkitSetPresentationMode === 'function') {
         try {
           video.webkitSetPresentationMode('picture-in-picture');
         } catch (_) {
           send('pip-request-failed');
         }
-      } else if (video.requestPictureInPicture) {
-        video.requestPictureInPicture().then(
-          () => send('pip-request-succeeded'),
-          () => send('pip-request-failed'),
-        );
-      } else {
-        send('pip-request-failed');
+        return;
       }
+      if (webKitSupport === false) {
+        send('pip-request-failed');
+        return;
+      }
+      if (typeof video.requestPictureInPicture === 'function') {
+        try {
+          video.requestPictureInPicture().then(
+            () => send('pip-request-succeeded'),
+            () => send('pip-request-failed'),
+          );
+        } catch (_) {
+          send('pip-request-failed');
+        }
+        return;
+      }
+      send('pip-request-failed');
     }
   };
   const dispatchCommand = (action) => {
@@ -1607,6 +1647,47 @@ final class _VideoThumbnail extends ConsumerWidget {
     radius: 0,
     icon: Icons.ondemand_video_rounded,
   );
+}
+
+final class _PlayerMessage extends StatelessWidget {
+  const _PlayerMessage(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 16,
+      child: IgnorePointer(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Semantics(
+              container: true,
+              liveRegion: true,
+              child: Material(
+                color: AppConstants.elevated.withValues(alpha: 0.98),
+                shape: const CutCornerBorder(
+                  cut: 10,
+                  side: BorderSide(color: AppConstants.hairline),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Text(message, textAlign: TextAlign.center),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 final class _VideoError extends StatelessWidget {

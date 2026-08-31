@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../presentation/pages/podcasts_page.dart';
 import '../services/incoming_share_service.dart';
 import '../services/sync_coordinator.dart';
+import 'app_providers.dart';
 import 'router.dart';
 import 'theme.dart';
 
@@ -44,6 +45,12 @@ class _TrickleAppState extends ConsumerState<TrickleApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(
+        ref
+            .read(audioHandlerProvider)
+            .recoverPlaybackIfNeeded()
+            .catchError((Object _) {}),
+      );
       unawaited(widget.sync.resumeMaintenance().catchError((Object _) {}));
       unawaited(_refreshIfNeeded(notify: true));
       unawaited(_openPendingShare());

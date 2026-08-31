@@ -21,7 +21,7 @@ Network access is required for catalog search, feed refresh, initial article ext
 
 ## Background audio and downloads
 
-Background audio is active for podcast playback. Web-video background audio is enabled only after the user starts system Picture in Picture, including while the screen is locked, and remains subject to the active player and device settings. App-private episode downloads may continue through the operating system's download scheduler. trickle does not access the user's Photos or media library.
+Background audio is active for podcast playback. Before playing, trickle reapplies the native spoken-audio session; if requested playback then stops unexpectedly, it makes one bounded recovery attempt and otherwise exposes Retry. Web-video background audio is enabled only after the user starts system Picture in Picture, including while the screen is locked, and remains subject to the active player and device settings. App-private episode downloads may continue through the operating system's download scheduler. trickle does not access the user's Photos or media library.
 
 ## Private feeds
 
