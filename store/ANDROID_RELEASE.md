@@ -241,7 +241,7 @@ Save Play assets in Fastlane's standard layout:
 fastlane/metadata/android/en-US/title.txt
 fastlane/metadata/android/en-US/short_description.txt
 fastlane/metadata/android/en-US/full_description.txt
-fastlane/metadata/android/en-US/changelogs/51.txt
+fastlane/metadata/android/en-US/changelogs/52.txt
 fastlane/metadata/android/en-US/images/icon.png
 fastlane/metadata/android/en-US/images/featureGraphic.png
 fastlane/metadata/android/en-US/images/phoneScreenshots/01-home.png
