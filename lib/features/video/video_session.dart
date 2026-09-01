@@ -63,6 +63,7 @@ extension VideoPlaybackSourceFallback on VideoPlaybackSource {
 
 final class VideoSession {
   const VideoSession({
+    required this.intentRevision,
     required this.articleId,
     required this.title,
     required this.sourceUri,
@@ -70,6 +71,7 @@ final class VideoSession {
     required this.presentation,
   });
 
+  final int intentRevision;
   final String articleId;
   final String title;
   final Uri sourceUri;
@@ -91,6 +93,7 @@ final class VideoSession {
   };
 
   VideoSession copyWith({VideoPresentation? presentation}) => VideoSession(
+    intentRevision: intentRevision,
     articleId: articleId,
     title: title,
     sourceUri: sourceUri,
@@ -109,12 +112,14 @@ final class VideoSessionNotifier extends Notifier<VideoSession?> {
   VideoSession? build() => null;
 
   void open({
+    required int intentRevision,
     required String articleId,
     required String title,
     required Uri sourceUri,
     required Uri playbackUri,
   }) {
     state = VideoSession(
+      intentRevision: intentRevision,
       articleId: articleId,
       title: title,
       sourceUri: sourceUri,

@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Podcast playback now reapplies the native audio session before playing and makes one recovery attempt after an unexpected stop. Video playback now handles unavailable Picture in Picture without entering a false background-playing state.
+Requires iOS 17 or later. Playback now switches cleanly between podcasts and video, stays in sync with Picture in Picture, and keeps Up Next consistent during background refresh.
 
 ## What to test
 
@@ -25,9 +25,12 @@ Please test the combined podcast and feed flow:
 - Verify a failed audio source shows a clear message and Retry action; retry after restoring the network
 - Play a podcast, leave trickle, lock the phone for at least 30 seconds, and confirm playback and its saved position continue. Return to trickle and verify the controls still match the native player
 - Add episodes to Up Next, reorder the queue, and verify it survives relaunch
+- Let an episode finish while pressing Pause or selecting another episode; the completed item must not restart playback or replace the newer selection
+- Start one video, immediately choose another, then start a podcast; only the latest selection may remain visible or audible
 - Download an episode, use it offline, and test automatic cleanup after playback
 - Open Downloads and verify its item count and storage total, Remove played downloads keeps items marked Keep, and Remove all downloads cancels active work before clearing the list
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds
+- With automatic queueing enabled, let a background refresh add episodes while Up Next is open or playing; each episode should appear once after the existing queue
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, change text size, close and reopen it, share it, and open it in the browser. Save the article, go offline, and verify its readable text remains available while remote media is clearly network-dependent
 - Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add Feed appears with an editable address and canceling makes no subscription change

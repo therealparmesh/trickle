@@ -389,20 +389,27 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     _presentedVideoArticleId = article.id;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      final handler = ref.read(audioHandlerProvider);
+      final intent = handler.beginWebVideoPlayback();
       try {
-        await ref.read(audioHandlerProvider).pause();
-      } on Object {
-        // Video can still start if there was no active audio session to pause.
+        final prepared = await handler.prepareWebVideoPlayback(intent);
+        if (!prepared || !mounted || widget.articleId != article.id) {
+          await handler.endWebVideoPlayback(intent).catchError((Object _) {});
+          return;
+        }
+        ref
+            .read(videoSessionProvider.notifier)
+            .open(
+              intentRevision: intent,
+              articleId: article.id,
+              title: article.title,
+              sourceUri: sourceUri,
+              playbackUri: playbackUri,
+            );
+      } on Object catch (error) {
+        await handler.endWebVideoPlayback(intent).catchError((Object _) {});
+        if (mounted) showErrorSnackBar(context, error);
       }
-      if (!mounted || widget.articleId != article.id) return;
-      ref
-          .read(videoSessionProvider.notifier)
-          .open(
-            articleId: article.id,
-            title: article.title,
-            sourceUri: sourceUri,
-            playbackUri: playbackUri,
-          );
     });
   }
 

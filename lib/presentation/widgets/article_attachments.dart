@@ -152,7 +152,6 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
         }
         return;
       }
-      ref.read(videoSessionProvider.notifier).close();
       final media = await _resolveMedia();
       final episode = await ref
           .read(nostrRepositoryProvider)
@@ -174,19 +173,29 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
       return;
     }
     setState(() => _busy = true);
+    final handler = ref.read(audioHandlerProvider);
+    final intent = handler.beginWebVideoPlayback();
     try {
       final media = await _resolveMedia();
-      await ref.read(audioHandlerProvider).pause();
-      if (!mounted) return;
+      if (!handler.isWebVideoPlaybackCurrent(intent) ||
+          !await handler.prepareWebVideoPlayback(intent)) {
+        return;
+      }
+      if (!mounted) {
+        await handler.endWebVideoPlayback(intent);
+        return;
+      }
       ref
           .read(videoSessionProvider.notifier)
           .open(
+            intentRevision: intent,
             articleId: widget.article.id,
             title: widget.article.title,
             sourceUri: media,
             playbackUri: media,
           );
     } on Object catch (error) {
+      await handler.endWebVideoPlayback(intent).catchError((Object _) {});
       if (mounted) showErrorSnackBar(context, error);
     } finally {
       if (mounted) setState(() => _busy = false);

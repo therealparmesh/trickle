@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.2.1
-- Build: 51
+- Version: 1.2.2
+- Build: 52
 
 ## Name
 
@@ -99,9 +99,9 @@ The checked-in 1320×2868 iPhone images were regenerated and visually verified a
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.2.1 release notes
+## Version 1.2.2 release notes
 
-Podcast playback is more reliable when switching apps, locking your phone, or returning after an interruption. Picture in Picture failures also return to usable video controls instead of leaving the player stuck.
+Playback now switches cleanly between podcasts and video, stays in sync with Picture in Picture, and keeps Up Next consistent during background refresh.
 
 ## Privacy declarations
 

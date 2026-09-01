@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/widgets.dart';
-import 'package:uuid/uuid.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../core/constants.dart';
@@ -55,8 +54,7 @@ void backgroundCallbackDispatcher() {
       await downloads.initialize();
       await applyPodcastAutomation(
         database: database,
-        queueEpisodes: (episodeIds) =>
-            _addEpisodesToQueue(database, episodeIds),
+        queueEpisodes: database.stageQueueAdditions,
         downloadEpisode: (episodeId) =>
             downloads!.startDownload(episodeId, automatic: true),
       );
@@ -105,40 +103,6 @@ void backgroundCallbackDispatcher() {
       network?.close();
       await database.close();
     }
-  });
-}
-
-Future<void> _addEpisodesToQueue(
-  AppDatabase database,
-  Iterable<String> episodeIds,
-) async {
-  final requestedIds = episodeIds.toSet();
-  if (requestedIds.isEmpty) return;
-  await database.transaction(() async {
-    final existing = await database.select(database.queueEntries).get();
-    requestedIds.removeAll(existing.map((entry) => entry.episodeId));
-    if (requestedIds.isEmpty) return;
-    var sortKey = existing.fold(
-      -1024,
-      (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
-    );
-    final now = DateTime.now().toUtc();
-    const uuid = Uuid();
-    await database.batch((batch) {
-      for (final episodeId in requestedIds) {
-        sortKey += 1024;
-        batch.insert(
-          database.queueEntries,
-          QueueEntriesCompanion.insert(
-            id: uuid.v4(),
-            episodeId: episodeId,
-            sortKey: sortKey,
-            addedAt: now,
-          ),
-          mode: InsertMode.insertOrIgnore,
-        );
-      }
-    });
   });
 }
 

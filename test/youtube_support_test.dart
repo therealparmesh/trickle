@@ -175,6 +175,7 @@ void main() {
   test('video playback falls back once, to official YouTube', () {
     final source = Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     final session = VideoSession(
+      intentRevision: 1,
       articleId: 'video',
       title: 'Video',
       sourceUri: source,
@@ -201,6 +202,7 @@ void main() {
 
     final directMedia = Uri.parse('https://media.example.com/video.mp4');
     final directSession = VideoSession(
+      intentRevision: 2,
       articleId: 'attachment',
       title: 'Attachment',
       sourceUri: directMedia,
@@ -224,6 +226,7 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(videoSessionProvider.notifier);
       notifier.open(
+        intentRevision: 1,
         articleId: 'video',
         title: 'Video',
         sourceUri: Uri.parse('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),
@@ -261,6 +264,7 @@ void main() {
         container.read(videoSessionProvider)?.presentation,
         VideoPresentation.minimized,
       );
+      expect(container.read(videoSessionProvider)?.intentRevision, 1);
       notifier.close();
       expect(container.read(videoSessionProvider), isNull);
     },

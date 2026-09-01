@@ -32,9 +32,11 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
 
   WebViewController? _controller;
   Future<WebViewController>? _controllerInitialization;
+  StreamSubscription<int>? _mediaPlaybackIntentSubscription;
   Future<void> _navigationTail = Future<void>.value();
   String? _loadedArticleId;
   Uri? _loadedUri;
+  int? _loadedIntentRevision;
   Uri? _activeRequestUri;
   Timer? _loadTimeout;
   Timer? _playerMessageTimer;
@@ -71,6 +73,15 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (defaultTargetPlatform == TargetPlatform.android) {
       _platformChannel.setMethodCallHandler(_handlePlatformCall);
     }
+    _mediaPlaybackIntentSubscription = ref
+        .read(audioHandlerProvider)
+        .mediaPlaybackIntentStream
+        .listen((intent) {
+          final session = ref.read(videoSessionProvider);
+          if (mounted && session != null && session.intentRevision != intent) {
+            unawaited(_close());
+          }
+        });
   }
 
   @override
@@ -79,15 +90,19 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (defaultTargetPlatform == TargetPlatform.android) {
       _platformChannel.setMethodCallHandler(null);
     }
+    unawaited(_mediaPlaybackIntentSubscription?.cancel());
     _loadTimeout?.cancel();
     _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
-    unawaited(
-      ref
-          .read(audioHandlerProvider)
-          .deactivateWebVideoAudioSession()
-          .catchError((Object _) {}),
-    );
+    final session = ref.read(videoSessionProvider);
+    if (session != null) {
+      unawaited(
+        ref
+            .read(audioHandlerProvider)
+            .endWebVideoPlayback(session.intentRevision)
+            .catchError((Object _) {}),
+      );
+    }
     super.dispose();
   }
 
@@ -130,24 +145,16 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(videoSessionProvider);
-    ref.listen(
-      playbackUiSnapshotProvider.select((playback) => playback.playing),
-      (previous, playing) {
-        if (playing &&
-            previous != true &&
-            ref.read(videoSessionProvider) != null) {
-          unawaited(_close());
-        }
-      },
-    );
     if (session != null &&
         (session.articleId != _loadedArticleId ||
-            session.playbackUri != _loadedUri)) {
+            session.playbackUri != _loadedUri ||
+            session.intentRevision != _loadedIntentRevision)) {
       // Reserve this session before scheduling the load. A controller startup
       // failure must leave a stable retry state instead of scheduling itself
       // again on every rebuild.
       _loadedArticleId = session.articleId;
       _loadedUri = session.playbackUri;
+      _loadedIntentRevision = session.intentRevision;
       final generation = ++_sessionGeneration;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_load(session, generation: generation));
@@ -828,6 +835,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
 
   Future<void> _close() async {
     if (!mounted) return;
+    final session = ref.read(videoSessionProvider);
+    if (session == null) return;
     final audioHandler = ref.read(audioHandlerProvider);
     _sessionGeneration++;
     _controllerToken++;
@@ -838,6 +847,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _pictureInPictureRequestTimeout = null;
     _loadedArticleId = null;
     _loadedUri = null;
+    _loadedIntentRevision = null;
     _activeRequestUri = null;
     _pageLoaded = false;
     _ready = false;
@@ -876,7 +886,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             }
           });
     await Future.wait([
-      audioHandler.deactivateWebVideoAudioSession().catchError((Object _) {}),
+      audioHandler
+          .endWebVideoPlayback(session.intentRevision)
+          .catchError((Object _) {}),
       stopPlayback,
     ]);
   }
@@ -994,6 +1006,20 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       if (!_pausedForBackground) unawaited(_pauseForBackground());
       return;
     }
+    final audioHandler = ref.read(audioHandlerProvider);
+    if (event.playing) {
+      unawaited(
+        audioHandler
+            .activateWebVideoAudioSession(session.intentRevision)
+            .catchError((Object _) => false),
+      );
+    } else if (!event.buffering) {
+      unawaited(
+        audioHandler
+            .suspendWebVideoAudioSession(session.intentRevision)
+            .catchError((Object _) {}),
+      );
+    }
     _updateVideoPlayback(playing: event.playing, buffering: event.buffering);
   }
 
@@ -1101,6 +1127,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   }
 
   Future<void> _pauseForBackground() async {
+    final session = ref.read(videoSessionProvider);
+    if (session == null) return;
     final generation = _sessionGeneration;
     final audioHandler = ref.read(audioHandlerProvider);
     _videoControlRevision++;
@@ -1117,8 +1145,17 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     } on Object {
       // The platform also suspends a detached WebView.
     }
+    final currentSession = ref.read(videoSessionProvider);
+    if (!_isCurrentSession(session, generation) ||
+        currentSession == null ||
+        !shouldPauseVideoForLifecycle(
+          _lifecycleState,
+          currentSession.presentation,
+        )) {
+      return;
+    }
     try {
-      await audioHandler.deactivateWebVideoAudioSession();
+      await audioHandler.suspendWebVideoAudioSession(session.intentRevision);
     } on Object {
       // Paused media cannot produce background audio without focus.
     }
@@ -1131,6 +1168,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         ref.read(videoSessionProvider) == null) {
       return;
     }
+    final session = ref.read(videoSessionProvider)!;
     final generation = _sessionGeneration;
     _pictureInPictureBackgrounded = false;
     _awaitingPictureInPictureResume = false;
@@ -1139,7 +1177,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     var awaitingWebResult = false;
     try {
       try {
-        await ref.read(audioHandlerProvider).activateWebVideoAudioSession();
+        await ref
+            .read(audioHandlerProvider)
+            .activateWebVideoAudioSession(session.intentRevision);
       } on Object {
         // The system can still enter Picture in Picture without explicit focus.
       }
@@ -1276,12 +1316,10 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     try {
       await _sendVideoCommand(play ? 'play' : 'pause');
     } on Object catch (error) {
-      if (mounted &&
-          generation == _sessionGeneration &&
-          controlRevision == _videoControlRevision &&
-          ref.read(videoSessionProvider)?.articleId == session.articleId &&
-          ref.read(videoSessionProvider)?.playbackUri == session.playbackUri) {
+      if (_isCurrentSession(session, generation) &&
+          controlRevision == _videoControlRevision) {
         _updateVideoPlayback(playing: wasPlaying, buffering: wasBuffering);
+        if (!mounted) return;
         showErrorSnackBar(context, error);
       }
     }
@@ -1316,6 +1354,8 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   bool _isCurrentSession(VideoSession session, int generation) =>
       mounted &&
       generation == _sessionGeneration &&
+      ref.read(videoSessionProvider)?.intentRevision ==
+          session.intentRevision &&
       ref.read(videoSessionProvider)?.articleId == session.articleId &&
       ref.read(videoSessionProvider)?.playbackUri == session.playbackUri;
 

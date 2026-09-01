@@ -190,20 +190,9 @@ void main() {
   });
 
   test('stale scrub cannot seek the newly selected episode', () async {
-    final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final network = SafeNetworkClient.forTesting(
-      Dio(),
-      addressValidator: (_) async {},
-    );
-    final handler = TrickleAudioHandler(
-      database: database,
-      settings: SettingsRepository(database),
-      sourceResolver: PlaybackSourceResolver(
-        database,
-        PrivateFeedStore(),
-        network,
-      ),
-    );
+    final harness = _createPlaybackHarness();
+    final handler = harness.handler;
+    addTearDown(() => _disposePlaybackHarness(harness));
     const current = MediaItem(id: 'new-episode', title: 'New episode');
     handler.mediaItem.add(current);
 
@@ -213,26 +202,12 @@ void main() {
     expect(handler.playbackState.value.updatePosition, Duration.zero);
 
     handler.mediaItem.add(null);
-    await handler.disposeHandler();
-    network.close();
-    await database.close();
   });
 
   test('expired sleep timer clears when no player was initialized', () async {
-    final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final network = SafeNetworkClient.forTesting(
-      Dio(),
-      addressValidator: (_) async {},
-    );
-    final handler = TrickleAudioHandler(
-      database: database,
-      settings: SettingsRepository(database),
-      sourceResolver: PlaybackSourceResolver(
-        database,
-        PrivateFeedStore(),
-        network,
-      ),
-    );
+    final harness = _createPlaybackHarness();
+    final handler = harness.handler;
+    addTearDown(() => _disposePlaybackHarness(harness));
 
     await handler.setSleepTimer(Duration.zero);
     await Future<void>.delayed(Duration.zero);
@@ -241,32 +216,34 @@ void main() {
       (await handler.sleepTimerStatusStream.first).mode,
       SleepTimerMode.off,
     );
+  });
 
-    await handler.disposeHandler();
-    network.close();
-    await database.close();
+  test('a newer audio request supersedes a pending video request', () async {
+    final harness = _createPlaybackHarness();
+    final handler = harness.handler;
+    final mediaIntents = <int>[];
+    final subscription = handler.mediaPlaybackIntentStream.listen(
+      mediaIntents.add,
+    );
+    addTearDown(() async {
+      await subscription.cancel();
+      await _disposePlaybackHarness(harness);
+    });
+
+    final videoIntent = handler.beginWebVideoPlayback();
+    expect(handler.isWebVideoPlaybackCurrent(videoIntent), isTrue);
+
+    await handler.play();
+
+    expect(handler.isWebVideoPlaybackCurrent(videoIntent), isFalse);
+    expect(mediaIntents, [videoIntent, isNot(videoIntent)]);
   });
 
   test('native queue publishes valid artwork and current controls', () async {
-    final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final network = SafeNetworkClient.forTesting(
-      Dio(),
-      addressValidator: (_) async {},
-    );
-    final handler = TrickleAudioHandler(
-      database: database,
-      settings: SettingsRepository(database),
-      sourceResolver: PlaybackSourceResolver(
-        database,
-        PrivateFeedStore(),
-        network,
-      ),
-    );
-    addTearDown(() async {
-      await handler.disposeHandler();
-      network.close();
-      await database.close();
-    });
+    final harness = _createPlaybackHarness();
+    final database = harness.database;
+    final handler = harness.handler;
+    addTearDown(() => _disposePlaybackHarness(harness));
     final now = DateTime.utc(2026, 7, 22);
     for (final feed in [
       FeedsCompanion.insert(
@@ -361,25 +338,10 @@ void main() {
   });
 
   test('queue reload cannot replace a newer in-memory edit', () async {
-    final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final network = SafeNetworkClient.forTesting(
-      Dio(),
-      addressValidator: (_) async {},
-    );
-    final handler = TrickleAudioHandler(
-      database: database,
-      settings: SettingsRepository(database),
-      sourceResolver: PlaybackSourceResolver(
-        database,
-        PrivateFeedStore(),
-        network,
-      ),
-    );
-    addTearDown(() async {
-      await handler.disposeHandler();
-      network.close();
-      await database.close();
-    });
+    final harness = _createPlaybackHarness();
+    final database = harness.database;
+    final handler = harness.handler;
+    addTearDown(() => _disposePlaybackHarness(harness));
     final now = DateTime.utc(2026, 8, 23);
     await database
         .into(database.feeds)
@@ -427,6 +389,80 @@ void main() {
       (await database.select(database.queueEntries).get()).single.episodeId,
       'newer',
     );
+  });
+
+  test('background queue additions survive handoff and merge once', () async {
+    final harness = _createPlaybackHarness();
+    final database = harness.database;
+    final handler = harness.handler;
+    addTearDown(() => _disposePlaybackHarness(harness));
+    final now = DateTime.utc(2026, 9, 1);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'feed',
+            title: 'Feed',
+            feedUrl: 'https://example.test/feed',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    for (final id in const ['current', 'first-pending', 'second-pending']) {
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: id,
+              feedId: 'feed',
+              title: id,
+              enclosureUrl: 'https://example.test/$id.mp3',
+              discoveredAt: now,
+            ),
+          );
+    }
+    await database
+        .into(database.queueEntries)
+        .insert(
+          QueueEntriesCompanion.insert(
+            id: 'current-entry',
+            episodeId: 'current',
+            sortKey: 0,
+            addedAt: now,
+          ),
+        );
+    await database.stageQueueAdditions(const [
+      'first-pending',
+      'second-pending',
+      'first-pending',
+    ]);
+
+    // Simulate a foreground queue snapshot winning after the background
+    // additions were merged but before the active handler acknowledged them.
+    await database.mergePendingQueueAdditions();
+    await database.batch((batch) {
+      batch.deleteAll(database.queueEntries);
+      batch.insert(
+        database.queueEntries,
+        QueueEntriesCompanion.insert(
+          id: 'replacement-current-entry',
+          episodeId: 'current',
+          sortKey: 0,
+          addedAt: now,
+        ),
+      );
+    });
+
+    await handler.reloadQueueFromDatabase();
+    await handler.reloadQueueFromDatabase();
+
+    expect(handler.queue.value.map((item) => item.id), [
+      'current',
+      'first-pending',
+      'second-pending',
+    ]);
+    expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
+    expect(await database.select(database.queueEntries).get(), hasLength(3));
   });
 
   test('only a usable completed audio file bypasses streaming', () async {
@@ -498,6 +534,39 @@ void main() {
     expect(localSource.resource, emptyFile.path);
     expect(adapter.requests, 2);
   });
+}
+
+typedef _PlaybackHarness = ({
+  AppDatabase database,
+  SafeNetworkClient network,
+  TrickleAudioHandler handler,
+});
+
+_PlaybackHarness _createPlaybackHarness() {
+  final database = AppDatabase.forTesting(NativeDatabase.memory());
+  final network = SafeNetworkClient.forTesting(
+    Dio(),
+    addressValidator: (_) async {},
+  );
+  return (
+    database: database,
+    network: network,
+    handler: TrickleAudioHandler(
+      database: database,
+      settings: SettingsRepository(database),
+      sourceResolver: PlaybackSourceResolver(
+        database,
+        PrivateFeedStore(),
+        network,
+      ),
+    ),
+  );
+}
+
+Future<void> _disposePlaybackHarness(_PlaybackHarness harness) async {
+  await harness.handler.disposeHandler();
+  harness.network.close();
+  await harness.database.close();
 }
 
 final class _MediaAdapter implements HttpClientAdapter {

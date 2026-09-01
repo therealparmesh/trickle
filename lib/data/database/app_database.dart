@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -8,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/content_filters.dart';
+import '../../core/feed_identity.dart';
 
 part 'app_database.g.dart';
 
@@ -179,6 +181,16 @@ class QueueEntries extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class PendingQueueAdds extends Table {
+  TextColumn get episodeId =>
+      text().references(Episodes, #id, onDelete: KeyAction.cascade)();
+  IntColumn get sortKey => integer()();
+  DateTimeColumn get addedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {episodeId};
+}
+
 class MediaDownloads extends Table {
   TextColumn get episodeId =>
       text().references(Episodes, #id, onDelete: KeyAction.cascade)();
@@ -258,6 +270,7 @@ class SearchCaches extends Table {
     ArticleAttachments,
     PlaybackProgresses,
     QueueEntries,
+    PendingQueueAdds,
     MediaDownloads,
     Chapters,
     Transcripts,
@@ -274,7 +287,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -284,7 +297,7 @@ class AppDatabase extends _$AppDatabase {
       await _createSearchIndex();
     },
     onUpgrade: (migrator, from, to) async {
-      if (from < 1 || from > 3 || to != 4) {
+      if (from < 1 || from > 4 || to != 5) {
         throw StateError('Unsupported database migration from $from to $to.');
       }
       if (from < 3) {
@@ -302,7 +315,8 @@ class AppDatabase extends _$AppDatabase {
         await migrator.createTable(nostrRelays);
         await migrator.createTable(articleAttachments);
       }
-      await migrator.addColumn(feeds, feeds.category);
+      if (from < 4) await migrator.addColumn(feeds, feeds.category);
+      await migrator.createTable(pendingQueueAdds);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -630,6 +644,84 @@ class AppDatabase extends _$AppDatabase {
     return query.watch().map(
       (rows) => rows.map((row) => row.readTable(episodes)).toList(),
     );
+  }
+
+  Future<void> stageQueueAdditions(Iterable<String> episodeIds) async {
+    final requested = episodeIds.toSet().toList(growable: false);
+    if (requested.isEmpty) return;
+    await transaction(() async {
+      final queued = await select(queueEntries).get();
+      final pending = await select(pendingQueueAdds).get();
+      final excluded = {
+        ...queued.map((entry) => entry.episodeId),
+        ...pending.map((entry) => entry.episodeId),
+      };
+      var sortKey = pending.fold(
+        -1024,
+        (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
+      );
+      final now = DateTime.now().toUtc();
+      await batch((batch) {
+        for (final episodeId in requested) {
+          if (excluded.contains(episodeId)) continue;
+          sortKey += 1024;
+          batch.insert(
+            pendingQueueAdds,
+            PendingQueueAddsCompanion.insert(
+              episodeId: episodeId,
+              sortKey: sortKey,
+              addedAt: now,
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+        }
+      });
+    });
+  }
+
+  Future<List<String>> mergePendingQueueAdditions() {
+    return transaction(() async {
+      final pending = await (select(
+        pendingQueueAdds,
+      )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
+      if (pending.isEmpty) return const <String>[];
+      final queued = await select(queueEntries).get();
+      final queuedIds = queued.map((entry) => entry.episodeId).toSet();
+      var sortKey = queued.fold(
+        -1024,
+        (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
+      );
+      await batch((batch) {
+        for (final entry in pending) {
+          if (queuedIds.add(entry.episodeId)) {
+            sortKey += 1024;
+            batch.insert(
+              queueEntries,
+              QueueEntriesCompanion.insert(
+                id: stableContentId('queue', entry.episodeId),
+                episodeId: entry.episodeId,
+                sortKey: sortKey,
+                addedAt: entry.addedAt,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+          }
+        }
+      });
+      return pending.map((entry) => entry.episodeId).toList(growable: false);
+    });
+  }
+
+  Future<void> acknowledgePendingQueueAdditions(
+    Iterable<String> episodeIds,
+  ) async {
+    final ids = episodeIds.toSet().toList(growable: false);
+    for (var start = 0; start < ids.length; start += safeVariableBatchSize) {
+      final end = math.min(start + safeVariableBatchSize, ids.length);
+      await (delete(
+        pendingQueueAdds,
+      )..where((row) => row.episodeId.isIn(ids.sublist(start, end)))).go();
+    }
   }
 
   Stream<List<Bookmark>> watchBookmarksForEpisode(String episodeId) {

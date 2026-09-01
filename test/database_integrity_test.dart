@@ -239,6 +239,15 @@ void main() {
           ),
         );
     await database
+        .into(database.pendingQueueAdds)
+        .insert(
+          PendingQueueAddsCompanion.insert(
+            episodeId: 'episode',
+            sortKey: 0,
+            addedAt: now,
+          ),
+        );
+    await database
         .into(database.bookmarks)
         .insert(
           BookmarksCompanion.insert(
@@ -256,6 +265,7 @@ void main() {
     expect(await database.select(database.episodes).get(), isEmpty);
     expect(await database.select(database.playbackProgresses).get(), isEmpty);
     expect(await database.select(database.queueEntries).get(), isEmpty);
+    expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
     expect(await database.select(database.bookmarks).get(), isEmpty);
   });
 
@@ -488,6 +498,62 @@ void main() {
       contains('idx_episodes_pending_automation'),
     );
   });
+
+  test(
+    'version 4 migration preserves Up Next and adds queue staging',
+    () async {
+      await database.close();
+      final underlying = sqlite3.openInMemory();
+      addTearDown(underlying.close);
+      database = AppDatabase.forTesting(
+        NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+      );
+      final now = DateTime.utc(2026, 9, 1);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'podcast',
+              title: 'Podcast',
+              feedUrl: 'https://example.test/podcast.xml',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: 'episode',
+              feedId: 'podcast',
+              title: 'Episode',
+              enclosureUrl: 'https://example.test/episode.mp3',
+              discoveredAt: now,
+            ),
+          );
+      await database
+          .into(database.queueEntries)
+          .insert(
+            QueueEntriesCompanion.insert(
+              id: 'queue-entry',
+              episodeId: 'episode',
+              sortKey: 0,
+              addedAt: now,
+            ),
+          );
+      await database.customStatement('DROP TABLE pending_queue_adds');
+      await database.close();
+      underlying.userVersion = 4;
+
+      database = AppDatabase.forTesting(
+        NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+      );
+      await database.stageQueueAdditions(const ['episode']);
+
+      expect(await database.select(database.queueEntries).get(), hasLength(1));
+      expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
+    },
+  );
 
   test('version 3 migration adds categories without losing feeds', () async {
     await database.close();

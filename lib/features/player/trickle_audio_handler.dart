@@ -67,6 +67,8 @@ final class TrickleAudioHandler extends BaseAudioHandler
       StreamController<Duration>.broadcast(sync: true);
   final StreamController<SleepTimerStatus> _sleepStatusEvents =
       StreamController<SleepTimerStatus>.broadcast(sync: true);
+  final StreamController<int> _mediaPlaybackIntentEvents =
+      StreamController<int>.broadcast(sync: true);
 
   AudioSession? _session;
   Future<void>? _initialization;
@@ -82,8 +84,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
   int? _pendingInterruptionResumeGeneration;
   Future<void> _interruptionPause = Future<void>.value();
   bool _duckedForInterruption = false;
-  bool _handlingCompletion = false;
+  final Set<String> _completionsInFlight = {};
+  Future<void> _completionTail = Future<void>.value();
   bool _loadingMedia = false;
+  bool _changingPlayerSource = false;
   bool _repeatOne = false;
   int _speedPercent = AppConstants.defaultSpeed;
   Duration _position = Duration.zero;
@@ -92,12 +96,13 @@ final class TrickleAudioHandler extends BaseAudioHandler
   AudioProcessingState _processingState = AudioProcessingState.idle;
   int _currentOutroSkipMs = 0;
   bool _disposed = false;
-  Future<void> _loadTail = Future<void>.value();
+  Future<void> _playerOperationTail = Future<void>.value();
   Future<void> _queueOperationTail = Future<void>.value();
   Future<void> _progressOperationTail = Future<void>.value();
   Future<void> _sessionOperationTail = Future<void>.value();
   ({int generation, Future<void> future})? _playbackRecovery;
   int _queueRevision = 0;
+  Map<String, int> _queueIndexes = const {};
   int _structuralQueueRevision = 0;
   int _persistedStructuralQueueRevision = 0;
   int _episodeSelectionGeneration = 0;
@@ -109,6 +114,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
   bool _playRequested = false;
   bool _playbackRecoveryAvailable = false;
   bool _currentItemStarted = false;
+  int _mediaIntentRevision = 0;
+  int _transportRevision = 0;
+  int? _webVideoIntentRevision;
 
   Stream<Duration> get positionStream async* {
     yield _position;
@@ -129,6 +137,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
     yield _sleepStatus;
     yield* _sleepStatusEvents.stream;
   }
+
+  Stream<int> get mediaPlaybackIntentStream =>
+      _mediaPlaybackIntentEvents.stream;
 
   Future<void> initialize() async {
     final active = _initialization;
@@ -194,14 +205,13 @@ final class TrickleAudioHandler extends BaseAudioHandler
         player.positionStream.listen((position) {
           _position = position;
           _positionEvents.add(position);
-          if (!_handlingCompletion &&
-              shouldHandleOutroSkip(
-                loadingMedia: _loadingMedia,
-                playbackStarted: _currentItemStarted,
-                position: position,
-                duration: _effectiveDuration,
-                outro: Duration(milliseconds: _currentOutroSkipMs),
-              )) {
+          if (shouldHandleOutroSkip(
+            loadingMedia: _loadingMedia,
+            playbackStarted: _currentItemStarted,
+            position: position,
+            duration: _effectiveDuration,
+            outro: Duration(milliseconds: _currentOutroSkipMs),
+          )) {
             _runDetached(_handleCompletion());
           }
         }),
@@ -256,14 +266,22 @@ final class TrickleAudioHandler extends BaseAudioHandler
           // setUrl/setFilePath reports load failures through its returned
           // future. Ignore the matching stream event so an outgoing source
           // cannot put a newer in-flight selection into an error state.
-          if (!_loadingMedia) _setPlaybackError();
+          if (!_loadingMedia &&
+              !_changingPlayerSource &&
+              _webVideoIntentRevision == null) {
+            _setPlaybackError();
+          }
         }),
         session.interruptionEventStream.listen((event) {
           if (event.begin) {
             switch (event.type) {
               case AudioInterruptionType.duck:
                 _duckedForInterruption = true;
-                _runDetached(player.setVolume(0.3));
+                _runDetached(
+                  _serializePlayerOperation(() async {
+                    if (!_disposed) await player.setVolume(0.3);
+                  }),
+                );
               case AudioInterruptionType.pause:
                 if (shouldResumeAfterInterruption(
                   playing: playbackState.value.playing,
@@ -289,7 +307,11 @@ final class TrickleAudioHandler extends BaseAudioHandler
           } else {
             if (_duckedForInterruption) {
               _duckedForInterruption = false;
-              _runDetached(player.setVolume(1));
+              _runDetached(
+                _serializePlayerOperation(() async {
+                  if (!_disposed) await player.setVolume(1);
+                }),
+              );
             }
             final resumeGeneration = event.type == AudioInterruptionType.pause
                 ? _pendingInterruptionResumeGeneration
@@ -313,27 +335,92 @@ final class TrickleAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// Activates the app's playback session before WebKit starts video audio.
-  Future<void> activateWebVideoAudioSession() async {
-    await initialize();
-    await _configureSession(_videoAudioSessionConfiguration, activate: true);
+  int beginWebVideoPlayback() {
+    _cancelPendingInterruptionResume();
+    _episodeSelectionGeneration++;
+    _pendingEpisodeSelectionId = null;
+    _clearLoadPlaybackIntent();
+    _disarmPlaybackRecovery();
+    _loadGeneration++;
+    _transportRevision++;
+    final intent = ++_mediaIntentRevision;
+    _webVideoIntentRevision = intent;
+    if (!_disposed && !_mediaPlaybackIntentEvents.isClosed) {
+      _mediaPlaybackIntentEvents.add(intent);
+    }
+    return intent;
   }
 
-  Future<void> deactivateWebVideoAudioSession() async {
-    final nativePlaybackActive = _player?.playing == true || _playRequested;
-    await _configureSession(
-      _podcastAudioSessionConfiguration,
-      activate: nativePlaybackActive,
-    );
+  bool isWebVideoPlaybackCurrent(int intent) =>
+      !_disposed &&
+      _webVideoIntentRevision == intent &&
+      _mediaIntentRevision == intent;
+
+  Future<bool> prepareWebVideoPlayback(int intent) async {
+    if (!isWebVideoPlaybackCurrent(intent)) return false;
+    await _serializePlayerOperation(() async {
+      if (isWebVideoPlaybackCurrent(intent)) await _player?.pause();
+    });
+    if (!isWebVideoPlaybackCurrent(intent)) return false;
+    try {
+      await _persistProgress();
+    } on Object {
+      // Playback ownership must still switch if a checkpoint cannot be saved.
+    }
+    if (!isWebVideoPlaybackCurrent(intent)) return false;
+    try {
+      await initialize();
+      if (isWebVideoPlaybackCurrent(intent)) {
+        await _configureWebVideoSession(intent, activate: true);
+      }
+    } on Object {
+      // Foreground WebView playback can still start without explicit focus.
+    }
+    return isWebVideoPlaybackCurrent(intent);
+  }
+
+  Future<bool> activateWebVideoAudioSession(int intent) async {
+    if (!isWebVideoPlaybackCurrent(intent)) return false;
+    await initialize();
+    return _configureWebVideoSession(intent, activate: true);
+  }
+
+  Future<void> suspendWebVideoAudioSession(int intent) async {
+    final session = _session;
+    if (session == null || !isWebVideoPlaybackCurrent(intent)) return;
+    await _queueSessionOperation(() async {
+      if (!isWebVideoPlaybackCurrent(intent)) return false;
+      return session.setActive(false);
+    });
+  }
+
+  Future<void> endWebVideoPlayback(int intent) async {
+    if (!isWebVideoPlaybackCurrent(intent)) return;
+    _webVideoIntentRevision = null;
+    final session = _session;
+    if (session == null) return;
+    await _queueSessionOperation(() async {
+      if (_mediaIntentRevision != intent || _webVideoIntentRevision != null) {
+        return false;
+      }
+      await session.configure(_podcastAudioSessionConfiguration);
+      final nativePlaybackActive = _player?.playing == true || _playRequested;
+      return session.setActive(nativePlaybackActive);
+    });
   }
 
   Future<void> playEpisode(String episodeId) async {
+    final intent = _beginAudioPlaybackIntent();
     final generation = ++_episodeSelectionGeneration;
     _pendingEpisodeSelectionId = episodeId;
     try {
       await _persistProgress();
       final item = await _mediaItemForEpisode(episodeId);
-      if (item == null || generation != _episodeSelectionGeneration) return;
+      if (item == null ||
+          generation != _episodeSelectionGeneration ||
+          !_isAudioPlaybackIntentCurrent(intent)) {
+        return;
+      }
       var items = [...queue.value];
       items.removeWhere((candidate) => candidate.id == episodeId);
       final currentIndex = _currentQueueIndex(items);
@@ -343,7 +430,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
       items.insert(insertAt, item);
       _publishQueue(items);
       await _persistQueue();
-      if (generation != _episodeSelectionGeneration) return;
+      if (generation != _episodeSelectionGeneration ||
+          !_isAudioPlaybackIntentCurrent(intent)) {
+        return;
+      }
       await _load(item, autoPlay: true);
     } finally {
       if (generation == _episodeSelectionGeneration) {
@@ -353,13 +443,22 @@ final class TrickleAudioHandler extends BaseAudioHandler
   }
 
   Future<void> playStandaloneEpisode(String episodeId) async {
+    final intent = _beginAudioPlaybackIntent();
     final generation = ++_episodeSelectionGeneration;
     _pendingEpisodeSelectionId = episodeId;
     try {
       await _persistProgress();
       final episode = await _database.episodeById(episodeId);
-      if (episode == null || generation != _episodeSelectionGeneration) return;
+      if (episode == null ||
+          generation != _episodeSelectionGeneration ||
+          !_isAudioPlaybackIntentCurrent(intent)) {
+        return;
+      }
       final feed = await _database.feedById(episode.feedId);
+      if (generation != _episodeSelectionGeneration ||
+          !_isAudioPlaybackIntentCurrent(intent)) {
+        return;
+      }
       await _load(_mediaItem(episode, feed, standalone: true), autoPlay: true);
     } finally {
       if (generation == _episodeSelectionGeneration) {
@@ -432,19 +531,29 @@ final class TrickleAudioHandler extends BaseAudioHandler
   @override
   Future<void> play() async {
     _cancelPendingInterruptionResume();
+    final intent = _beginAudioPlaybackIntent();
+    if (mediaItem.value == null && queue.value.isEmpty) {
+      await reloadQueueFromDatabase();
+      if (!_isAudioPlaybackIntentCurrent(intent)) return;
+    }
     final generation = _loadGeneration;
     _armPlaybackRecovery();
     _setPlayIntent(generation, requested: true);
     if (_isLoadPending(generation)) return;
-    await _playCurrent(expectedLoadGeneration: generation);
+    await _playCurrent(
+      expectedLoadGeneration: generation,
+      expectedTransportRevision: intent.transport,
+    );
   }
 
   Future<void> _playCurrent({
     int? interruptionResumeGeneration,
     required int expectedLoadGeneration,
+    required int expectedTransportRevision,
   }) async {
     if (!_canActivatePlayback(
       expectedLoadGeneration,
+      expectedTransportRevision,
       interruptionResumeGeneration,
     )) {
       return;
@@ -464,15 +573,16 @@ final class TrickleAudioHandler extends BaseAudioHandler
     await initialize();
     if (!_canActivatePlayback(
       expectedLoadGeneration,
+      expectedTransportRevision,
       interruptionResumeGeneration,
     )) {
       return;
     }
     var activated = false;
     try {
-      activated = await _configureSession(
-        _podcastAudioSessionConfiguration,
+      activated = await _configurePodcastSession(
         activate: true,
+        expectedTransportRevision: expectedTransportRevision,
       );
     } on Object {
       // The bounded recovery below reconfigures the podcast session once.
@@ -483,14 +593,22 @@ final class TrickleAudioHandler extends BaseAudioHandler
     }
     if (!_canActivatePlayback(
       expectedLoadGeneration,
+      expectedTransportRevision,
       interruptionResumeGeneration,
     )) {
       return;
     }
-    final player = _player!;
-    // just_audio's play future completes when playback later pauses or ends.
-    // Do not hold the load queue or UI action open for the entire episode.
-    _startPlayer(player, expectedLoadGeneration);
+    await _serializePlayerOperation(() async {
+      if (_canActivatePlayback(
+        expectedLoadGeneration,
+        expectedTransportRevision,
+        interruptionResumeGeneration,
+      )) {
+        // just_audio's play future completes when playback later pauses or
+        // ends, so only starting it belongs in the serialized operation.
+        _startPlayer(_player!, expectedLoadGeneration);
+      }
+    });
   }
 
   @override
@@ -500,25 +618,34 @@ final class TrickleAudioHandler extends BaseAudioHandler
   }
 
   Future<void> _pauseCurrent() async {
+    if (_disposed) return;
+    _transportRevision++;
     _disarmPlaybackRecovery();
     _setPlayIntent(_loadGeneration, requested: false);
     final player = _player;
     if (player == null) return;
-    await player.pause();
+    await _serializePlayerOperation(player.pause);
     await _persistProgress();
   }
 
   @override
   Future<void> stop() async {
     _cancelPendingInterruptionResume();
+    final transport = ++_transportRevision;
     _episodeSelectionGeneration++;
     _pendingEpisodeSelectionId = null;
     _clearLoadPlaybackIntent();
     _disarmPlaybackRecovery();
     _loadGeneration++;
     _currentItemStarted = false;
-    await _persistProgress();
-    await _player?.stop();
+    final progress = _persistProgress();
+    await _serializePlayerOperation(() async => _player?.stop());
+    try {
+      await progress;
+    } on Object {
+      // Stopping playback must not depend on a successful checkpoint.
+    }
+    if (transport != _transportRevision) return;
     _checkpointTimer?.cancel();
     _sleepTimer?.cancel();
     _sleepAtEnd = false;
@@ -526,7 +653,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _setSleepStatus(const SleepTimerStatus.off());
     _processingState = AudioProcessingState.idle;
     _broadcastState(playing: false);
-    await _setSessionActive(false);
+    await _setPodcastSessionActive(false, expectedTransportRevision: transport);
   }
 
   @override
@@ -552,7 +679,14 @@ final class TrickleAudioHandler extends BaseAudioHandler
         : duration > Duration.zero && position > duration
         ? duration
         : position;
-    await _player!.seek(safe);
+    await _serializePlayerOperation(() async {
+      if (generation != _loadGeneration ||
+          _isLoadPending(generation) ||
+          mediaItem.value?.id != episodeId) {
+        return;
+      }
+      await _player!.seek(safe);
+    });
     if (generation != _loadGeneration || mediaItem.value?.id != episodeId) {
       return;
     }
@@ -569,6 +703,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToPrevious() async {
+    final intent = _beginAudioPlaybackIntent();
     _episodeSelectionGeneration++;
     if (_position > AppConstants.playbackPositionThreshold) {
       await seek(Duration.zero);
@@ -577,6 +712,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     final index = _currentQueueIndex(queue.value);
     if (index > 0) {
       await _persistProgress();
+      if (!_isAudioPlaybackIntentCurrent(intent)) return;
       await _load(queue.value[index - 1], autoPlay: true);
       return;
     }
@@ -585,8 +721,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToNext() async {
+    final intent = _beginAudioPlaybackIntent();
     _episodeSelectionGeneration++;
     await _persistProgress(markPlayedIfNearEnd: true);
+    if (!_isAudioPlaybackIntentCurrent(intent)) return;
     final items = [...queue.value];
     final index = _currentQueueIndex(items);
     if (index < 0 || index + 1 >= items.length) {
@@ -597,10 +735,12 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToQueueItem(int index) async {
+    final intent = _beginAudioPlaybackIntent();
     _episodeSelectionGeneration++;
     if (index < 0 || index >= queue.value.length) return;
     if (queue.value[index].id == mediaItem.value?.id) return;
     await _persistProgress(markPlayedIfNearEnd: true);
+    if (!_isAudioPlaybackIntentCurrent(intent)) return;
     await _load(queue.value[index], autoPlay: true);
   }
 
@@ -657,8 +797,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
     if (!AppConstants.allowedSpeeds.contains(percent)) return;
     _speedPercent = percent;
     await _settings.setSpeed(percent);
-    final player = _player;
-    if (player != null) await player.setSpeed(percent / 100);
+    await _serializePlayerOperation(() async {
+      await _player?.setSpeed(percent / 100);
+    });
     _broadcastState();
   }
 
@@ -687,19 +828,20 @@ final class TrickleAudioHandler extends BaseAudioHandler
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
     _repeatOne = repeatMode == AudioServiceRepeatMode.one;
-    final player = _player;
-    if (player != null) {
-      await player.setLoopMode(_repeatOne ? LoopMode.one : LoopMode.off);
-    }
+    await _serializePlayerOperation(() async {
+      await _player?.setLoopMode(_repeatOne ? LoopMode.one : LoopMode.off);
+    });
     _broadcastState();
   }
 
-  Future<String?> _markCurrentPlayed() {
-    final id = mediaItem.value?.id;
-    if (id == null) return Future<String?>.value();
-    final duration = completedProgressDuration(
-      position: _position,
-      knownDuration: _effectiveDuration,
+  Future<void> _markEpisodePlayed(
+    String id, {
+    required Duration position,
+    required Duration duration,
+  }) {
+    final completedDuration = completedProgressDuration(
+      position: position,
+      knownDuration: duration,
     );
     return _serializeProgressOperation(() async {
       final now = DateTime.now().toUtc();
@@ -712,15 +854,14 @@ final class TrickleAudioHandler extends BaseAudioHandler
             .insertOnConflictUpdate(
               PlaybackProgressesCompanion.insert(
                 episodeId: id,
-                positionMs: Value(duration.inMilliseconds),
-                durationMs: Value(duration.inMilliseconds),
+                positionMs: Value(completedDuration.inMilliseconds),
+                durationMs: Value(completedDuration.inMilliseconds),
                 completed: const Value(true),
                 completedAt: Value(now),
                 updatedAt: now,
               ),
             );
       });
-      return id;
     });
   }
 
@@ -779,103 +920,92 @@ final class TrickleAudioHandler extends BaseAudioHandler
       _disarmPlaybackRecovery();
     }
     _setPlayIntent(generation, requested: autoPlay);
-    final completer = Completer<void>();
-    final previous = _loadTail;
-    _loadTail = () async {
-      try {
-        await previous;
-      } on Object {
-        // A later user selection must still load after an earlier failure.
-      }
-      try {
-        if (generation == _loadGeneration) {
-          await _performLoad(item, generation: generation);
-        }
-        completer.complete();
-      } on Object catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      } finally {
-        if (_pendingLoadGeneration == generation) {
-          _pendingLoadGeneration = null;
-          _pendingLoadEpisodeId = null;
-        }
-      }
-    }();
-    return completer.future;
+    return _prepareLoad(item, generation: generation);
   }
 
-  Future<void> _performLoad(MediaItem item, {required int generation}) async {
+  Future<void> _prepareLoad(MediaItem item, {required int generation}) async {
     _throwIfDisposed();
     _playbackRecoveryTimer?.cancel();
     _loadingMedia = true;
     _currentItemStarted = false;
     _currentOutroSkipMs = 0;
     final replacingItem = mediaItem.value?.id != item.id;
-    _processingState = AudioProcessingState.loading;
-    mediaItem.add(item);
-    if (replacingItem) {
-      _position = Duration.zero;
-      _duration = item.duration ?? Duration.zero;
-      _buffered = Duration.zero;
-      _positionEvents.add(_position);
-      _durationEvents.add(_duration);
-    }
-    _broadcastState(playing: false);
     try {
-      if (replacingItem) await _player?.pause();
+      await _serializePlayerOperation(() async {
+        if (generation == _loadGeneration) await _player?.pause();
+      });
       if (generation != _loadGeneration) return;
+      _processingState = AudioProcessingState.loading;
+      mediaItem.add(item);
+      if (replacingItem) {
+        _position = Duration.zero;
+        _duration = item.duration ?? Duration.zero;
+        _buffered = Duration.zero;
+        _positionEvents.add(_position);
+        _durationEvents.add(_duration);
+      }
+      _broadcastState(playing: false);
       final episode = await _database.episodeById(item.id);
       if (episode == null) {
         throw StateError('The selected episode is no longer available.');
       }
       if (generation != _loadGeneration) return;
-      final source = await _sourceResolver.resolve(episode);
+      final resolved = await Future.wait<Object?>([
+        _sourceResolver.resolve(episode),
+        _database.feedById(episode.feedId),
+        (_database.select(
+          _database.playbackProgresses,
+        )..where((row) => row.episodeId.equals(item.id))).getSingleOrNull(),
+      ]);
       if (generation != _loadGeneration) return;
-      final feed = await _database.feedById(episode.feedId);
-      if (generation != _loadGeneration) return;
+      final source = resolved[0] as PlaybackSource;
+      final feed = resolved[1] as Feed?;
+      final progress = resolved[2] as PlaybackProgressesData?;
       _currentOutroSkipMs = feed?.outroSkipMs ?? 0;
       await initialize();
       if (generation != _loadGeneration || _disposed) return;
-      final player = _player!;
-      if (source.isLocal) {
-        await player.setFilePath(source.resource);
-      } else {
-        await player.setUrl(
-          source.resource,
-          headers: source.headers.isEmpty ? null : source.headers,
-        );
-      }
-      if (generation != _loadGeneration) {
-        await player.stop();
-        return;
-      }
-      await player.setSpeed(_speedPercent / 100);
-      final progress = await (_database.select(
-        _database.playbackProgresses,
-      )..where((row) => row.episodeId.equals(item.id))).getSingleOrNull();
-      if (generation != _loadGeneration) {
-        await player.stop();
-        return;
-      }
-      final effectiveDuration = _effectiveDuration > Duration.zero
-          ? _effectiveDuration
-          : Duration(milliseconds: progress?.durationMs ?? 0);
-      if (progress != null &&
-          progress.positionMs >=
-              AppConstants.playbackPositionThreshold.inMilliseconds &&
-          !progress.completed &&
-          !isPlaybackComplete(
-            Duration(milliseconds: progress.positionMs),
-            effectiveDuration,
-          )) {
-        await player.seek(Duration(milliseconds: progress.positionMs));
-      } else {
-        final intro = Duration(milliseconds: feed?.introSkipMs ?? 0);
-        if (intro > Duration.zero &&
-            (effectiveDuration <= Duration.zero || intro < effectiveDuration)) {
-          await player.seek(intro);
+      await _serializePlayerOperation(() async {
+        if (generation != _loadGeneration || _disposed) return;
+        final player = _player!;
+        _changingPlayerSource = true;
+        try {
+          if (source.isLocal) {
+            await player.setFilePath(source.resource);
+          } else {
+            await player.setUrl(
+              source.resource,
+              headers: source.headers.isEmpty ? null : source.headers,
+            );
+          }
+        } finally {
+          _changingPlayerSource = false;
         }
-      }
+        if (generation != _loadGeneration) {
+          await player.stop();
+          return;
+        }
+        await player.setSpeed(_speedPercent / 100);
+        final effectiveDuration = _effectiveDuration > Duration.zero
+            ? _effectiveDuration
+            : Duration(milliseconds: progress?.durationMs ?? 0);
+        if (progress != null &&
+            progress.positionMs >=
+                AppConstants.playbackPositionThreshold.inMilliseconds &&
+            !progress.completed &&
+            !isPlaybackComplete(
+              Duration(milliseconds: progress.positionMs),
+              effectiveDuration,
+            )) {
+          await player.seek(Duration(milliseconds: progress.positionMs));
+        } else {
+          final intro = Duration(milliseconds: feed?.introSkipMs ?? 0);
+          if (intro > Duration.zero &&
+              (effectiveDuration <= Duration.zero ||
+                  intro < effectiveDuration)) {
+            await player.seek(intro);
+          }
+        }
+      });
       if (generation != _loadGeneration) return;
       _loadingMedia = false;
       if (_pendingLoadGeneration == generation) {
@@ -884,90 +1014,144 @@ final class TrickleAudioHandler extends BaseAudioHandler
       }
       _processingState = AudioProcessingState.ready;
       if (_isPlayRequested(generation)) {
-        await _playCurrent(expectedLoadGeneration: generation);
+        await _playCurrent(
+          expectedLoadGeneration: generation,
+          expectedTransportRevision: _transportRevision,
+        );
       }
       _broadcastState();
     } on Object {
-      if (!_disposed && generation == _loadGeneration) {
-        _setPlaybackError();
-      }
+      if (_disposed || generation != _loadGeneration) return;
+      _setPlaybackError();
       rethrow;
     } finally {
-      _loadingMedia = false;
-      if (_pendingLoadGeneration == generation) {
+      if (generation == _loadGeneration) _loadingMedia = false;
+      if (_pendingLoadGeneration == generation &&
+          generation == _loadGeneration) {
         _pendingLoadGeneration = null;
         _pendingLoadEpisodeId = null;
       }
     }
   }
 
-  Future<void> _handleCompletion() async {
-    if (_handlingCompletion) return;
-    _handlingCompletion = true;
-    try {
-      final completedId = await _markCurrentPlayed();
-      if (completedId != null) {
-        customEvent.add({'type': 'completed', 'episodeId': completedId});
-      }
-      if (completedId == null) return;
-      if (mediaItem.value?.extras?['standalone'] == true) {
-        await pause();
-        mediaItem.add(null);
-        _processingState = AudioProcessingState.completed;
-        _broadcastState(playing: false);
-        await _setSessionActive(false);
-        return;
-      }
-      if (mediaItem.value?.id != completedId) {
-        final items = [...queue.value]
-          ..removeWhere((item) => item.id == completedId);
-        _publishQueue(items);
-        await _persistQueue();
-        return;
-      }
-      if (_sleepAtEnd) {
-        _sleepAtEnd = false;
-        _setSleepStatus(const SleepTimerStatus.off());
-        final items = [...queue.value];
-        final index = _currentQueueIndex(items);
-        if (index >= 0) {
-          items.removeAt(index);
-          _publishQueue(items);
-          await _persistQueue();
-        }
-        await pause();
-        mediaItem.add(null);
-        _processingState = AudioProcessingState.completed;
-        _broadcastState(playing: false);
-        await _setSessionActive(false);
-        return;
-      }
-      if (_repeatOne) {
-        await seek(Duration.zero);
-        await play();
-        return;
-      }
-      final items = [...queue.value];
-      final index = _currentQueueIndex(items);
-      if (index >= 0) {
-        items.removeAt(index);
-        _publishQueue(items);
-        await _persistQueue();
-      }
-      if (index >= 0 && index < items.length) {
-        await _load(items[index], autoPlay: true);
-      } else if (items.isNotEmpty) {
-        await _load(items.first, autoPlay: true);
-      } else {
-        await pause();
-        mediaItem.add(null);
-        _processingState = AudioProcessingState.completed;
-        _broadcastState(playing: false);
-        await _setSessionActive(false);
-      }
-    } finally {
-      _handlingCompletion = false;
+  Future<void> _handleCompletion() {
+    final item = mediaItem.value;
+    if (item == null || !_completionsInFlight.add(item.id)) {
+      return Future<void>.value();
     }
+    final intent = (media: _mediaIntentRevision, transport: _transportRevision);
+    final position = _position;
+    final duration = _effectiveDuration;
+    final previous = _completionTail;
+    final operation = () async {
+      try {
+        await previous;
+      } on Object {
+        // A failed completion must not block a later episode from finishing.
+      }
+      await _completeEpisode(
+        item,
+        intent: intent,
+        position: position,
+        duration: duration,
+      );
+    }();
+    _completionTail = operation.catchError((Object _) {});
+    return operation.whenComplete(() => _completionsInFlight.remove(item.id));
+  }
+
+  Future<void> _completeEpisode(
+    MediaItem completed, {
+    required ({int media, int transport}) intent,
+    required Duration position,
+    required Duration duration,
+  }) async {
+    await _markEpisodePlayed(
+      completed.id,
+      position: position,
+      duration: duration,
+    );
+    customEvent.add({'type': 'completed', 'episodeId': completed.id});
+
+    if (mediaItem.value?.id != completed.id) {
+      await _removeCompletedQueueItem(completed.id);
+      return;
+    }
+    if (!_completionIntentIsCurrent(completed.id, intent)) {
+      await _removeCompletedQueueItem(completed.id);
+      return;
+    }
+    if (completed.extras?['standalone'] == true) {
+      await _finishCompletedEpisode(completed.id, intent);
+      return;
+    }
+    if (_sleepAtEnd) {
+      _sleepAtEnd = false;
+      _setSleepStatus(const SleepTimerStatus.off());
+      await _removeCompletedQueueItem(completed.id);
+      if (_completionIntentIsCurrent(completed.id, intent)) {
+        await _finishCompletedEpisode(completed.id, intent);
+      }
+      return;
+    }
+    if (_repeatOne) {
+      await seek(Duration.zero);
+      if (_completionIntentIsCurrent(completed.id, intent)) await play();
+      return;
+    }
+
+    final completedIndex = await _removeCompletedQueueItem(completed.id);
+    if (!_completionIntentIsCurrent(completed.id, intent)) return;
+    final items = queue.value;
+    if (items.isEmpty) {
+      await _finishCompletedEpisode(completed.id, intent);
+      return;
+    }
+    final nextIndex = completedIndex == null || completedIndex >= items.length
+        ? 0
+        : completedIndex;
+    await _load(items[nextIndex], autoPlay: true);
+  }
+
+  Future<int?> _removeCompletedQueueItem(String episodeId) async {
+    final items = [...queue.value];
+    final index = items.indexWhere((item) => item.id == episodeId);
+    if (index >= 0) {
+      items.removeAt(index);
+      _publishQueue(items);
+      await _persistQueue();
+    }
+    await reloadQueueFromDatabase();
+    return index < 0 ? null : index;
+  }
+
+  bool _completionIntentIsCurrent(
+    String episodeId,
+    ({int media, int transport}) intent,
+  ) =>
+      mediaItem.value?.id == episodeId &&
+      _mediaIntentRevision == intent.media &&
+      _transportRevision == intent.transport &&
+      _webVideoIntentRevision == null;
+
+  Future<void> _finishCompletedEpisode(
+    String episodeId,
+    ({int media, int transport}) intent,
+  ) async {
+    if (!_completionIntentIsCurrent(episodeId, intent)) return;
+    _disarmPlaybackRecovery();
+    _setPlayIntent(_loadGeneration, requested: false);
+    await _serializePlayerOperation(() async {
+      if (_completionIntentIsCurrent(episodeId, intent)) {
+        await _player?.pause();
+      }
+    });
+    if (!_completionIntentIsCurrent(episodeId, intent)) return;
+    _currentItemStarted = false;
+    mediaItem.add(null);
+    _processingState = AudioProcessingState.completed;
+    _broadcastState(playing: false);
+    await _setPodcastSessionActive(false, expectedMediaIntent: intent.media);
   }
 
   Future<void> _fadeAndPause(int generation) async {
@@ -982,17 +1166,23 @@ final class TrickleAudioHandler extends BaseAudioHandler
     try {
       for (var step = AppConstants.sleepFadeSteps; step >= 0; step--) {
         if (generation != _sleepGeneration) return;
-        await player.setVolume(step / AppConstants.sleepFadeSteps);
+        await _serializePlayerOperation(() async {
+          if (!_disposed && generation == _sleepGeneration) {
+            await player.setVolume(step / AppConstants.sleepFadeSteps);
+          }
+        });
         if (step > 0) {
           await Future<void>.delayed(AppConstants.sleepFadeStepInterval);
         }
       }
       await pause();
     } finally {
-      try {
-        await player.setVolume(1);
-      } on Object {
-        // The timer state must still settle if the native player is gone.
+      if (!_disposed) {
+        try {
+          await _serializePlayerOperation(() => player.setVolume(1));
+        } on Object {
+          // The timer state must still settle if the native player is gone.
+        }
       }
       if (generation == _sleepGeneration) {
         _sleepAtEnd = false;
@@ -1133,6 +1323,11 @@ final class TrickleAudioHandler extends BaseAudioHandler
   Future<void> _restoreQueue() async {
     if (_structuralQueueRevision != _persistedStructuralQueueRevision) return;
     final revision = _queueRevision;
+    final pendingAdditions = await _database.mergePendingQueueAdditions();
+    if (revision != _queueRevision ||
+        _structuralQueueRevision != _persistedStructuralQueueRevision) {
+      return;
+    }
     final query = _database.select(_database.queueEntries).join([
       innerJoin(
         _database.episodes,
@@ -1151,13 +1346,17 @@ final class TrickleAudioHandler extends BaseAudioHandler
           row.readTableOrNull(_database.feeds),
         ),
     ];
-    // A user or automation action may have changed Up Next while the database
-    // query was in flight. Its later persisted snapshot must remain visible.
+    // A foreground action may have changed Up Next while the database query was
+    // in flight. Its later persisted snapshot must remain visible.
     if (revision != _queueRevision ||
         _structuralQueueRevision != _persistedStructuralQueueRevision) {
       return;
     }
+    _queueIndexes = {
+      for (var index = 0; index < items.length; index++) items[index].id: index,
+    };
     queue.add(items);
+    await _database.acknowledgePendingQueueAdditions(pendingAdditions);
   }
 
   Future<void> reloadQueueFromDatabase() {
@@ -1169,10 +1368,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
 
   Future<void> reloadSettingsFromDatabase() async {
     _speedPercent = await _settings.speed();
-    final player = _player;
-    if (player != null) {
-      await player.setSpeed(_speedPercent / 100);
-    }
+    await _serializePlayerOperation(() async {
+      await _player?.setSpeed(_speedPercent / 100);
+    });
     _broadcastState();
   }
 
@@ -1236,6 +1434,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
   void _publishQueue(List<MediaItem> items, {bool structural = true}) {
     _queueRevision++;
     if (structural) _structuralQueueRevision++;
+    _queueIndexes = {
+      for (var index = 0; index < items.length; index++) items[index].id: index,
+    };
     queue.add(items);
   }
 
@@ -1267,6 +1468,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     await _playCurrent(
       interruptionResumeGeneration: generation,
       expectedLoadGeneration: loadGeneration,
+      expectedTransportRevision: _transportRevision,
     );
   }
 
@@ -1276,9 +1478,15 @@ final class TrickleAudioHandler extends BaseAudioHandler
   bool _isPlayRequested(int generation) =>
       _playIntentGeneration == generation && _playRequested;
 
-  bool _canActivatePlayback(int generation, int? interruptionResumeGeneration) {
+  bool _canActivatePlayback(
+    int generation,
+    int transportRevision,
+    int? interruptionResumeGeneration,
+  ) {
     return !_disposed &&
         generation == _loadGeneration &&
+        transportRevision == _transportRevision &&
+        _webVideoIntentRevision == null &&
         !_isLoadPending(generation) &&
         _isPlayRequested(generation) &&
         _resumeIsStillAllowed(interruptionResumeGeneration);
@@ -1295,7 +1503,25 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _pendingLoadEpisodeId = null;
     _playIntentGeneration = null;
     _playRequested = false;
+    _loadingMedia = false;
   }
+
+  ({int media, int transport}) _beginAudioPlaybackIntent() {
+    _cancelPendingInterruptionResume();
+    final media = ++_mediaIntentRevision;
+    _webVideoIntentRevision = null;
+    final transport = ++_transportRevision;
+    if (!_disposed && !_mediaPlaybackIntentEvents.isClosed) {
+      _mediaPlaybackIntentEvents.add(media);
+    }
+    return (media: media, transport: transport);
+  }
+
+  bool _isAudioPlaybackIntentCurrent(({int media, int transport}) intent) =>
+      !_disposed &&
+      _mediaIntentRevision == intent.media &&
+      _transportRevision == intent.transport &&
+      _webVideoIntentRevision == null;
 
   void _armPlaybackRecovery() {
     _playbackRecoveryTimer?.cancel();
@@ -1359,7 +1585,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       playRequested: _isPlayRequested(generation),
       playerPlaying: player.playing,
       loadingMedia: _loadingMedia,
-      handlingCompletion: _handlingCompletion,
+      handlingCompletion: _completionsInFlight.contains(episodeId),
       terminalState:
           _processingState == AudioProcessingState.completed ||
           _processingState == AudioProcessingState.error,
@@ -1376,6 +1602,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _playbackRecoveryAvailable = false;
     _playbackRecoveryTimer?.cancel();
     final player = _player!;
+    final transport = _transportRevision;
     try {
       if (player.processingState == ProcessingState.idle) {
         final current = mediaItem.value;
@@ -1384,16 +1611,24 @@ final class TrickleAudioHandler extends BaseAudioHandler
         }
         return;
       }
-      final activated = await _configureSession(
-        _podcastAudioSessionConfiguration,
+      final activated = await _configurePodcastSession(
         activate: true,
+        expectedTransportRevision: transport,
       );
-      if (!_needsPlaybackRecovery(generation, episodeId)) return;
+      if (transport != _transportRevision ||
+          !_needsPlaybackRecovery(generation, episodeId)) {
+        return;
+      }
       if (!activated) {
         if (!_playbackRecoveryAvailable) _setPlaybackError();
         return;
       }
-      _startPlayer(player, generation);
+      await _serializePlayerOperation(() async {
+        if (transport == _transportRevision &&
+            _needsPlaybackRecovery(generation, episodeId)) {
+          _startPlayer(player, generation);
+        }
+      });
     } on Object {
       if (!_playbackRecoveryAvailable &&
           _needsPlaybackRecovery(generation, episodeId)) {
@@ -1435,25 +1670,96 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _checkpointTimer?.cancel();
     _processingState = AudioProcessingState.error;
     _broadcastState(playing: false);
-    _runDetached(_setSessionActive(false));
+    _runDetached(
+      _setPodcastSessionActive(
+        false,
+        expectedMediaIntent: _mediaIntentRevision,
+        expectedTransportRevision: _transportRevision,
+      ),
+    );
   }
 
-  Future<bool> _setSessionActive(bool active) {
+  Future<bool> _setPodcastSessionActive(
+    bool active, {
+    int? expectedMediaIntent,
+    int? expectedTransportRevision,
+  }) {
     final session = _session;
     if (session == null) return Future<bool>.value(true);
-    return _queueSessionOperation(() => session.setActive(active));
+    return _queueSessionOperation(() {
+      if (!_podcastSessionIntentIsCurrent(
+        expectedMediaIntent: expectedMediaIntent,
+        expectedTransportRevision: expectedTransportRevision,
+      )) {
+        return Future<bool>.value(false);
+      }
+      return session.setActive(active);
+    });
   }
 
-  Future<bool> _configureSession(
-    AudioSessionConfiguration configuration, {
+  Future<bool> _configurePodcastSession({
     required bool activate,
+    required int expectedTransportRevision,
   }) {
     final session = _session;
     if (session == null) return Future<bool>.value(true);
     return _queueSessionOperation(() async {
-      await session.configure(configuration);
+      if (!_podcastSessionIntentIsCurrent(
+        expectedTransportRevision: expectedTransportRevision,
+      )) {
+        return false;
+      }
+      await session.configure(_podcastAudioSessionConfiguration);
+      if (!_podcastSessionIntentIsCurrent(
+        expectedTransportRevision: expectedTransportRevision,
+      )) {
+        return false;
+      }
       return session.setActive(activate);
     });
+  }
+
+  Future<bool> _configureWebVideoSession(int intent, {required bool activate}) {
+    final session = _session;
+    if (session == null) return Future<bool>.value(true);
+    return _queueSessionOperation(() async {
+      if (!isWebVideoPlaybackCurrent(intent)) return false;
+      await session.configure(_videoAudioSessionConfiguration);
+      if (!isWebVideoPlaybackCurrent(intent)) return false;
+      return session.setActive(activate);
+    });
+  }
+
+  bool _podcastSessionIntentIsCurrent({
+    int? expectedMediaIntent,
+    int? expectedTransportRevision,
+  }) {
+    if (expectedMediaIntent == null && expectedTransportRevision == null) {
+      return true;
+    }
+    return _webVideoIntentRevision == null &&
+        (expectedMediaIntent == null ||
+            expectedMediaIntent == _mediaIntentRevision) &&
+        (expectedTransportRevision == null ||
+            expectedTransportRevision == _transportRevision);
+  }
+
+  Future<T> _serializePlayerOperation<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    final previous = _playerOperationTail;
+    _playerOperationTail = () async {
+      try {
+        await previous;
+      } on Object {
+        // A failed player call must not block the next transport command.
+      }
+      try {
+        completer.complete(await operation());
+      } on Object catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }();
+    return completer.future;
   }
 
   Future<T> _queueSessionOperation<T>(Future<T> Function() operation) {
@@ -1483,7 +1789,10 @@ final class TrickleAudioHandler extends BaseAudioHandler
     final isPlaying = _processingState == AudioProcessingState.error
         ? false
         : playing ?? _player?.playing ?? false;
-    final currentIndex = _currentQueueIndex(queue.value);
+    final currentId = mediaItem.value?.id;
+    final currentIndex = currentId == null
+        ? -1
+        : _queueIndexes[currentId] ?? -1;
     final hasNext = currentIndex >= 0 && currentIndex + 1 < queue.value.length;
     final controls = <MediaControl>[
       MediaControl.rewind,
@@ -1531,6 +1840,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _episodeSelectionGeneration++;
     _clearLoadPlaybackIntent();
     _loadGeneration++;
+    _mediaIntentRevision++;
+    _transportRevision++;
+    _webVideoIntentRevision = null;
     try {
       await _persistProgress();
     } on Object {
@@ -1540,6 +1852,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
     _playbackRecoveryTimer?.cancel();
     _sleepTimer?.cancel();
     _sleepStatusTicker?.cancel();
+    _sleepGeneration++;
     final initialization = _initialization;
     if (initialization != null) {
       try {
@@ -1549,9 +1862,9 @@ final class TrickleAudioHandler extends BaseAudioHandler
       }
     }
     try {
-      await _loadTail;
+      await _playerOperationTail;
     } on Object {
-      // A failed load does not prevent its player resources being released.
+      // A failed player call does not prevent its resources being released.
     }
     try {
       await _interruptionPause;
@@ -1566,12 +1879,17 @@ final class TrickleAudioHandler extends BaseAudioHandler
       }
     }
     try {
+      await _completionTail;
+    } on Object {
+      // Completion persistence cannot prevent disposal.
+    }
+    try {
       await _queueOperationTail;
     } on Object {
       // The handler can still finish disposal if the final queue write failed.
     }
     try {
-      await _setSessionActive(false);
+      await _setPodcastSessionActive(false);
       await _sessionOperationTail;
     } on Object {
       // Native session failures must not prevent player disposal.
@@ -1586,6 +1904,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
       await _positionEvents.close();
       await _durationEvents.close();
       await _sleepStatusEvents.close();
+      await _mediaPlaybackIntentEvents.close();
     }
   }
 }

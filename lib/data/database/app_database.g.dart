@@ -5248,6 +5248,278 @@ class QueueEntriesCompanion extends UpdateCompanion<QueueEntry> {
   }
 }
 
+class $PendingQueueAddsTable extends PendingQueueAdds
+    with TableInfo<$PendingQueueAddsTable, PendingQueueAdd> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingQueueAddsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _episodeIdMeta = const VerificationMeta(
+    'episodeId',
+  );
+  @override
+  late final GeneratedColumn<String> episodeId = GeneratedColumn<String>(
+    'episode_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES episodes (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _sortKeyMeta = const VerificationMeta(
+    'sortKey',
+  );
+  @override
+  late final GeneratedColumn<int> sortKey = GeneratedColumn<int>(
+    'sort_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [episodeId, sortKey, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_queue_adds';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PendingQueueAdd> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('episode_id')) {
+      context.handle(
+        _episodeIdMeta,
+        episodeId.isAcceptableOrUnknown(data['episode_id']!, _episodeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_episodeIdMeta);
+    }
+    if (data.containsKey('sort_key')) {
+      context.handle(
+        _sortKeyMeta,
+        sortKey.isAcceptableOrUnknown(data['sort_key']!, _sortKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sortKeyMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {episodeId};
+  @override
+  PendingQueueAdd map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingQueueAdd(
+      episodeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}episode_id'],
+      )!,
+      sortKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_key'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PendingQueueAddsTable createAlias(String alias) {
+    return $PendingQueueAddsTable(attachedDatabase, alias);
+  }
+}
+
+class PendingQueueAdd extends DataClass implements Insertable<PendingQueueAdd> {
+  final String episodeId;
+  final int sortKey;
+  final DateTime addedAt;
+  const PendingQueueAdd({
+    required this.episodeId,
+    required this.sortKey,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['episode_id'] = Variable<String>(episodeId);
+    map['sort_key'] = Variable<int>(sortKey);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  PendingQueueAddsCompanion toCompanion(bool nullToAbsent) {
+    return PendingQueueAddsCompanion(
+      episodeId: Value(episodeId),
+      sortKey: Value(sortKey),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory PendingQueueAdd.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingQueueAdd(
+      episodeId: serializer.fromJson<String>(json['episodeId']),
+      sortKey: serializer.fromJson<int>(json['sortKey']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'episodeId': serializer.toJson<String>(episodeId),
+      'sortKey': serializer.toJson<int>(sortKey),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  PendingQueueAdd copyWith({
+    String? episodeId,
+    int? sortKey,
+    DateTime? addedAt,
+  }) => PendingQueueAdd(
+    episodeId: episodeId ?? this.episodeId,
+    sortKey: sortKey ?? this.sortKey,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  PendingQueueAdd copyWithCompanion(PendingQueueAddsCompanion data) {
+    return PendingQueueAdd(
+      episodeId: data.episodeId.present ? data.episodeId.value : this.episodeId,
+      sortKey: data.sortKey.present ? data.sortKey.value : this.sortKey,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingQueueAdd(')
+          ..write('episodeId: $episodeId, ')
+          ..write('sortKey: $sortKey, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(episodeId, sortKey, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingQueueAdd &&
+          other.episodeId == this.episodeId &&
+          other.sortKey == this.sortKey &&
+          other.addedAt == this.addedAt);
+}
+
+class PendingQueueAddsCompanion extends UpdateCompanion<PendingQueueAdd> {
+  final Value<String> episodeId;
+  final Value<int> sortKey;
+  final Value<DateTime> addedAt;
+  final Value<int> rowid;
+  const PendingQueueAddsCompanion({
+    this.episodeId = const Value.absent(),
+    this.sortKey = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PendingQueueAddsCompanion.insert({
+    required String episodeId,
+    required int sortKey,
+    required DateTime addedAt,
+    this.rowid = const Value.absent(),
+  }) : episodeId = Value(episodeId),
+       sortKey = Value(sortKey),
+       addedAt = Value(addedAt);
+  static Insertable<PendingQueueAdd> custom({
+    Expression<String>? episodeId,
+    Expression<int>? sortKey,
+    Expression<DateTime>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (episodeId != null) 'episode_id': episodeId,
+      if (sortKey != null) 'sort_key': sortKey,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PendingQueueAddsCompanion copyWith({
+    Value<String>? episodeId,
+    Value<int>? sortKey,
+    Value<DateTime>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return PendingQueueAddsCompanion(
+      episodeId: episodeId ?? this.episodeId,
+      sortKey: sortKey ?? this.sortKey,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (episodeId.present) {
+      map['episode_id'] = Variable<String>(episodeId.value);
+    }
+    if (sortKey.present) {
+      map['sort_key'] = Variable<int>(sortKey.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingQueueAddsCompanion(')
+          ..write('episodeId: $episodeId, ')
+          ..write('sortKey: $sortKey, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MediaDownloadsTable extends MediaDownloads
     with TableInfo<$MediaDownloadsTable, MediaDownload> {
   @override
@@ -7396,6 +7668,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PlaybackProgressesTable playbackProgresses =
       $PlaybackProgressesTable(this);
   late final $QueueEntriesTable queueEntries = $QueueEntriesTable(this);
+  late final $PendingQueueAddsTable pendingQueueAdds = $PendingQueueAddsTable(
+    this,
+  );
   late final $MediaDownloadsTable mediaDownloads = $MediaDownloadsTable(this);
   late final $ChaptersTable chapters = $ChaptersTable(this);
   late final $TranscriptsTable transcripts = $TranscriptsTable(this);
@@ -7415,6 +7690,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     articleAttachments,
     playbackProgresses,
     queueEntries,
+    pendingQueueAdds,
     mediaDownloads,
     chapters,
     transcripts,
@@ -7472,6 +7748,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('queue_entries', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'episodes',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('pending_queue_adds', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -8594,6 +8877,26 @@ final class $$EpisodesTableReferences
     );
   }
 
+  static MultiTypedResultKey<$PendingQueueAddsTable, List<PendingQueueAdd>>
+  _pendingQueueAddsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.pendingQueueAdds,
+    aliasName: 'episodes__id__pending_queue_adds__episode_id',
+  );
+
+  $$PendingQueueAddsTableProcessedTableManager get pendingQueueAddsRefs {
+    final manager = $$PendingQueueAddsTableTableManager(
+      $_db,
+      $_db.pendingQueueAdds,
+    ).filter((f) => f.episodeId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _pendingQueueAddsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$MediaDownloadsTable, List<MediaDownload>>
   _mediaDownloadsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.mediaDownloads,
@@ -8821,6 +9124,31 @@ class $$EpisodesTableFilterComposer
           }) => $$QueueEntriesTableFilterComposer(
             $db: $db,
             $table: $db.queueEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> pendingQueueAddsRefs(
+    Expression<bool> Function($$PendingQueueAddsTableFilterComposer f) f,
+  ) {
+    final $$PendingQueueAddsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pendingQueueAdds,
+      getReferencedColumn: (t) => t.episodeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PendingQueueAddsTableFilterComposer(
+            $db: $db,
+            $table: $db.pendingQueueAdds,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9189,6 +9517,31 @@ class $$EpisodesTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> pendingQueueAddsRefs<T extends Object>(
+    Expression<T> Function($$PendingQueueAddsTableAnnotationComposer a) f,
+  ) {
+    final $$PendingQueueAddsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pendingQueueAdds,
+      getReferencedColumn: (t) => t.episodeId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PendingQueueAddsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.pendingQueueAdds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> mediaDownloadsRefs<T extends Object>(
     Expression<T> Function($$MediaDownloadsTableAnnotationComposer a) f,
   ) {
@@ -9307,6 +9660,7 @@ class $$EpisodesTableTableManager
             bool feedId,
             bool playbackProgressesRefs,
             bool queueEntriesRefs,
+            bool pendingQueueAddsRefs,
             bool mediaDownloadsRefs,
             bool chaptersRefs,
             bool transcriptsRefs,
@@ -9417,6 +9771,7 @@ class $$EpisodesTableTableManager
                 feedId = false,
                 playbackProgressesRefs = false,
                 queueEntriesRefs = false,
+                pendingQueueAddsRefs = false,
                 mediaDownloadsRefs = false,
                 chaptersRefs = false,
                 transcriptsRefs = false,
@@ -9427,6 +9782,7 @@ class $$EpisodesTableTableManager
                   explicitlyWatchedTables: [
                     if (playbackProgressesRefs) db.playbackProgresses,
                     if (queueEntriesRefs) db.queueEntries,
+                    if (pendingQueueAddsRefs) db.pendingQueueAdds,
                     if (mediaDownloadsRefs) db.mediaDownloads,
                     if (chaptersRefs) db.chapters,
                     if (transcriptsRefs) db.transcripts,
@@ -9502,6 +9858,27 @@ class $$EpisodesTableTableManager
                                 table,
                                 p0,
                               ).queueEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.episodeId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (pendingQueueAddsRefs)
+                        await $_getPrefetchedData<
+                          Episode,
+                          $EpisodesTable,
+                          PendingQueueAdd
+                        >(
+                          currentTable: table,
+                          referencedTable: $$EpisodesTableReferences
+                              ._pendingQueueAddsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$EpisodesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).pendingQueueAddsRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.episodeId == item.id,
@@ -9616,6 +9993,7 @@ typedef $$EpisodesTableProcessedTableManager =
         bool feedId,
         bool playbackProgressesRefs,
         bool queueEntriesRefs,
+        bool pendingQueueAddsRefs,
         bool mediaDownloadsRefs,
         bool chaptersRefs,
         bool transcriptsRefs,
@@ -11929,6 +12307,294 @@ typedef $$QueueEntriesTableProcessedTableManager =
       QueueEntry,
       PrefetchHooks Function({bool episodeId})
     >;
+typedef $$PendingQueueAddsTableCreateCompanionBuilder =
+    PendingQueueAddsCompanion Function({
+      required String episodeId,
+      required int sortKey,
+      required DateTime addedAt,
+      Value<int> rowid,
+    });
+typedef $$PendingQueueAddsTableUpdateCompanionBuilder =
+    PendingQueueAddsCompanion Function({
+      Value<String> episodeId,
+      Value<int> sortKey,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+
+final class $$PendingQueueAddsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $PendingQueueAddsTable, PendingQueueAdd> {
+  $$PendingQueueAddsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $EpisodesTable _episodeIdTable(_$AppDatabase db) =>
+      db.episodes.createAlias('pending_queue_adds__episode_id__episodes__id');
+
+  $$EpisodesTableProcessedTableManager get episodeId {
+    final $_column = $_itemColumn<String>('episode_id')!;
+
+    final manager = $$EpisodesTableTableManager(
+      $_db,
+      $_db.episodes,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_episodeIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PendingQueueAddsTableFilterComposer
+    extends Composer<_$AppDatabase, $PendingQueueAddsTable> {
+  $$PendingQueueAddsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get sortKey => $composableBuilder(
+    column: $table.sortKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$EpisodesTableFilterComposer get episodeId {
+    final $$EpisodesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.episodeId,
+      referencedTable: $db.episodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EpisodesTableFilterComposer(
+            $db: $db,
+            $table: $db.episodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PendingQueueAddsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PendingQueueAddsTable> {
+  $$PendingQueueAddsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get sortKey => $composableBuilder(
+    column: $table.sortKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$EpisodesTableOrderingComposer get episodeId {
+    final $$EpisodesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.episodeId,
+      referencedTable: $db.episodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EpisodesTableOrderingComposer(
+            $db: $db,
+            $table: $db.episodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PendingQueueAddsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PendingQueueAddsTable> {
+  $$PendingQueueAddsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get sortKey =>
+      $composableBuilder(column: $table.sortKey, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  $$EpisodesTableAnnotationComposer get episodeId {
+    final $$EpisodesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.episodeId,
+      referencedTable: $db.episodes,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EpisodesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.episodes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PendingQueueAddsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PendingQueueAddsTable,
+          PendingQueueAdd,
+          $$PendingQueueAddsTableFilterComposer,
+          $$PendingQueueAddsTableOrderingComposer,
+          $$PendingQueueAddsTableAnnotationComposer,
+          $$PendingQueueAddsTableCreateCompanionBuilder,
+          $$PendingQueueAddsTableUpdateCompanionBuilder,
+          (PendingQueueAdd, $$PendingQueueAddsTableReferences),
+          PendingQueueAdd,
+          PrefetchHooks Function({bool episodeId})
+        > {
+  $$PendingQueueAddsTableTableManager(
+    _$AppDatabase db,
+    $PendingQueueAddsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingQueueAddsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingQueueAddsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingQueueAddsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> episodeId = const Value.absent(),
+                Value<int> sortKey = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PendingQueueAddsCompanion(
+                episodeId: episodeId,
+                sortKey: sortKey,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String episodeId,
+                required int sortKey,
+                required DateTime addedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => PendingQueueAddsCompanion.insert(
+                episodeId: episodeId,
+                sortKey: sortKey,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PendingQueueAddsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({episodeId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (episodeId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.episodeId,
+                                referencedTable:
+                                    $$PendingQueueAddsTableReferences
+                                        ._episodeIdTable(db),
+                                referencedColumn:
+                                    $$PendingQueueAddsTableReferences
+                                        ._episodeIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PendingQueueAddsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PendingQueueAddsTable,
+      PendingQueueAdd,
+      $$PendingQueueAddsTableFilterComposer,
+      $$PendingQueueAddsTableOrderingComposer,
+      $$PendingQueueAddsTableAnnotationComposer,
+      $$PendingQueueAddsTableCreateCompanionBuilder,
+      $$PendingQueueAddsTableUpdateCompanionBuilder,
+      (PendingQueueAdd, $$PendingQueueAddsTableReferences),
+      PendingQueueAdd,
+      PrefetchHooks Function({bool episodeId})
+    >;
 typedef $$MediaDownloadsTableCreateCompanionBuilder =
     MediaDownloadsCompanion Function({
       required String episodeId,
@@ -13611,6 +14277,8 @@ class $AppDatabaseManager {
       $$PlaybackProgressesTableTableManager(_db, _db.playbackProgresses);
   $$QueueEntriesTableTableManager get queueEntries =>
       $$QueueEntriesTableTableManager(_db, _db.queueEntries);
+  $$PendingQueueAddsTableTableManager get pendingQueueAdds =>
+      $$PendingQueueAddsTableTableManager(_db, _db.pendingQueueAdds);
   $$MediaDownloadsTableTableManager get mediaDownloads =>
       $$MediaDownloadsTableTableManager(_db, _db.mediaDownloads);
   $$ChaptersTableTableManager get chapters =>

@@ -79,7 +79,17 @@ The unsigned build commands verify compilation without requiring publisher crede
 - `lib/services`: refresh scheduling, incoming shares, feed automation, notifications, OPML, and local backup
 - `lib/presentation`: Riverpod-driven screens, the shared visual system, reusable content components, and the persistent player shell
 
-The SQLite database uses schema version 4, WAL mode, indexed timeline queries, foreign keys, and FTS5. Feed refreshes and restores preload identity maps, update search data in bounded batches, and preserve mutable item state with one transactional snapshot instead of per-item queries. Shared library snapshots prevent each visible row from opening its own database stream. Playback surfaces observe only the current item and engine status they display, so buffer updates and unrelated items do not rebuild list rows. Native podcast playback reapplies its spoken-audio session before playing and makes one bounded recovery attempt after an unexpected stop. Unchanged feed settings skip database writes. Potentially expensive feed, article, and Nostr signature parsing runs away from the UI isolate, and reader extraction and fragmentation use linear passes over the document. Nostr refreshes use a finite set of secure relay connections that close after an end-of-stored-events response or the shared deadline. Duplicate refreshes of one subscription share a single request, and an older refresh response cannot replace newer content or settings. Network work uses consistent deadlines: 10 seconds for connections and each video source, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Lists are lazy, reader content is revealed in bounded fragments, artwork is decoded into bounded, aspect-preserving thumbnails, playback progress is checkpointed every 15 seconds, and download progress writes are throttled to once every 2 seconds.
+### Data and refresh
+
+The SQLite database uses schema version 5, WAL mode, foreign keys, indexed timeline queries, and FTS5 search. Feed refreshes and restores update state in bounded batches. Older refresh results cannot replace newer content or settings. Background automation stages Up Next additions, and the audio handler acknowledges them only after merging them into the active queue.
+
+### Playback
+
+The latest audio or video selection owns playback. Native player commands are ordered, and a slow media lookup cannot block a newer selection. Podcast playback reapplies its spoken-audio session before starting and makes one bounded recovery attempt after an unexpected stop.
+
+### Performance
+
+Shared library snapshots keep rows from opening duplicate database streams. Expensive feed, article, and Nostr verification work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Network deadlines are 10 seconds for connections and video sources, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
 
 ## Project layout
 
