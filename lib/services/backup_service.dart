@@ -3,10 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
-import 'package:archive/archive.dart';
 import 'package:drift/drift.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -19,6 +17,7 @@ import '../core/feed_identity.dart';
 import '../core/formatters.dart';
 import '../core/nostr_identifier.dart';
 import '../data/security/private_feed_store.dart';
+import 'backup_archive.dart';
 
 final class BackupResult {
   const BackupResult({
@@ -47,79 +46,131 @@ final class BackupService {
   final Future<void> Function()? _onImported;
   Future<BackupResult?>? _activeImport;
 
-  Future<List<int>> exportBytes() async {
-    final portableFeeds = await _portableFeeds();
-    final feedIds = portableFeeds.map((feed) => feed.id).toSet();
-    final storedFeeds = {
-      for (final feed in await _database.select(_database.feeds).get())
-        feed.id: feed,
-    };
-    final episodes = <Episode>[];
-    for (final episode in await _database.select(_database.episodes).get()) {
-      if (!feedIds.contains(episode.feedId)) continue;
-      if (storedFeeds[episode.feedId]?.isPrivate != true) {
-        episodes.add(episode);
-        continue;
-      }
-      final mediaUrl = await _privateFeeds?.readMediaUrl(episode.id);
-      if (_https(mediaUrl?.toString()) case final url?) {
-        episodes.add(episode.copyWith(enclosureUrl: url));
+  Future<void> exportToFile(File destination) async {
+    final archive = await BackupArchive.create();
+    try {
+      await _database.transaction(() => _exportRecords(archive));
+      await archive.save(destination);
+    } finally {
+      await archive.dispose();
+    }
+  }
+
+  Stream<D> _rows<T extends Table, D extends DataClass>(
+    TableInfo<T, D> table,
+  ) async* {
+    var rowId = 0;
+    while (true) {
+      final rows = await _database
+          .customSelect(
+            'SELECT rowid AS backup_rowid, * FROM ${table.actualTableName} '
+            'WHERE rowid > ? ORDER BY rowid LIMIT 32',
+            variables: [Variable(rowId)],
+          )
+          .get();
+      if (rows.isEmpty) return;
+      for (final row in rows) {
+        rowId = row.read<int>('backup_rowid');
+        yield await table.mapFromRow(row);
       }
     }
-    final episodeIds = episodes.map((episode) => episode.id).toSet();
-    final articles = (await _database.select(_database.articles).get())
-        .where((article) => feedIds.contains(article.feedId))
-        .toList(growable: false);
-    final articleIds = articles.map((article) => article.id).toSet();
-    final progress =
-        (await _database.select(_database.playbackProgresses).get())
+  }
+
+  Future<void> _exportRecords(BackupArchive archive) async {
+    final portableFeeds = await _portableFeeds();
+    final feedIds = portableFeeds.map((feed) => feed.id).toSet();
+    final privateFeedIds =
+        (await (_database.selectOnly(_database.feeds)
+                  ..addColumns([_database.feeds.id])
+                  ..where(_database.feeds.isPrivate.equals(true)))
+                .get())
+            .map((row) => row.read(_database.feeds.id)!)
+            .toSet();
+    final episodeIds = <String>{};
+    final articleIds = <String>{};
+    Stream<Map<String, Object?>> episodes() async* {
+      await for (var episode in _rows(_database.episodes)) {
+        if (!feedIds.contains(episode.feedId)) continue;
+        if (privateFeedIds.contains(episode.feedId)) {
+          final mediaUrl = await _privateFeeds?.readMediaUrl(episode.id);
+          final url = _https(mediaUrl?.toString());
+          if (url == null) continue;
+          episode = episode.copyWith(enclosureUrl: url);
+        }
+        episodeIds.add(episode.id);
+        yield episode.toJson();
+      }
+    }
+
+    Stream<Map<String, Object?>> articles() async* {
+      await for (final article in _rows(_database.articles)) {
+        if (!feedIds.contains(article.feedId)) continue;
+        articleIds.add(article.id);
+        yield article.toJson();
+      }
+    }
+
+    await archive.write(
+      'feeds',
+      Stream.fromIterable(portableFeeds.map((row) => row.toJson())),
+    );
+    await archive.write('episodes', episodes());
+    await archive.write('articles', articles());
+    await archive.write(
+      'progress',
+      _rows(_database.playbackProgresses)
+          .where((item) => episodeIds.contains(item.episodeId))
+          .map((row) => row.toJson()),
+    );
+    // Queue order is independent of insertion order after a restore or reorder.
+    final queue = await (_database.select(
+      _database.queueEntries,
+    )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
+    await archive.write(
+      'queue',
+      Stream.fromIterable(
+        queue
             .where((item) => episodeIds.contains(item.episodeId))
-            .toList(growable: false);
-    final queue = (await _database.select(_database.queueEntries).get())
-        .where((item) => episodeIds.contains(item.episodeId))
-        .toList(growable: false);
-    final bookmarks = (await _database.select(_database.bookmarks).get())
-        .where((item) => episodeIds.contains(item.episodeId))
-        .toList(growable: false);
-    final attachments =
-        (await _database.select(_database.articleAttachments).get())
-            .where((item) => articleIds.contains(item.articleId))
-            .toList(growable: false);
-    final nostrProfiles =
-        (await _database.select(_database.nostrProfiles).get())
-            .where((item) => feedIds.contains(item.feedId))
-            .toList(growable: false);
-    final nostrRelays = (await _database.select(_database.nostrRelays).get())
-        .where((item) => feedIds.contains(item.feedId))
-        .toList(growable: false);
-    final settings = (await _database.select(_database.appSettings).get())
-        .where(_validSetting)
-        .toList(growable: false);
-    final payload = <String, Object?>{
-      'format': 'trickle-backup',
-      'version': 2,
-      'createdAt': DateTime.now().toUtc().toIso8601String(),
-      'feeds': portableFeeds.map((row) => row.toJson()).toList(),
-      'episodes': episodes.map((row) => row.toJson()).toList(),
-      'articles': articles.map((row) => row.toJson()).toList(),
-      'articleAttachments': attachments.map((row) => row.toJson()).toList(),
-      'nostrProfiles': nostrProfiles.map((row) => row.toJson()).toList(),
-      'nostrRelays': nostrRelays.map((row) => row.toJson()).toList(),
-      'progress': progress.map((row) => row.toJson()).toList(),
-      'queue': queue.map((row) => row.toJson()).toList(),
-      'bookmarks': bookmarks.map((row) => row.toJson()).toList(),
-      'settings': settings.map((row) => row.toJson()).toList(),
-    };
-    final bytes = await compute(_encodeBackup, payload);
-    return bytes;
+            .map((row) => row.toJson()),
+      ),
+    );
+    await archive.write(
+      'bookmarks',
+      _rows(_database.bookmarks)
+          .where((item) => episodeIds.contains(item.episodeId))
+          .map((row) => row.toJson()),
+    );
+    await archive.write(
+      'articleAttachments',
+      _rows(_database.articleAttachments)
+          .where((item) => articleIds.contains(item.articleId))
+          .map((row) => row.toJson()),
+    );
+    await archive.write(
+      'nostrProfiles',
+      _rows(_database.nostrProfiles)
+          .where((item) => feedIds.contains(item.feedId))
+          .map((row) => row.toJson()),
+    );
+    await archive.write(
+      'nostrRelays',
+      _rows(_database.nostrRelays)
+          .where((item) => feedIds.contains(item.feedId))
+          .map((row) => row.toJson()),
+    );
+    await archive.write(
+      'settings',
+      _rows(
+        _database.appSettings,
+      ).where(_validSetting).map((row) => row.toJson()),
+    );
   }
 
   Future<void> exportAndShare({Rect? sharePositionOrigin}) async {
-    final bytes = await exportBytes();
     final temp = await getTemporaryDirectory();
     final date = DateTime.now().toUtc().toIso8601String().split('T').first;
     final file = File(p.join(temp.path, 'trickle-$date.zip'));
-    await file.writeAsBytes(bytes, flush: true);
+    await exportToFile(file);
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path, mimeType: 'application/zip')],
@@ -155,18 +206,19 @@ final class BackupService {
       throw const BackupException('Couldn’t open the file picker.');
     }
     if (picked == null) return null;
-    late List<int> bytes;
+    final temporary = await Directory.systemTemp.createTemp('trickle-import-');
+    late BackupResult result;
     try {
-      if (await picked.length() > 50 * 1024 * 1024) {
-        throw const BackupException('Backup exceeds the 50 MiB import limit.');
+      final file = File(p.join(temporary.path, 'backup.zip'));
+      try {
+        await picked.saveTo(file.path);
+      } catch (_) {
+        throw const BackupException('Couldn’t read that backup file.');
       }
-      bytes = await picked.readAsBytes();
-    } on BackupException {
-      rethrow;
-    } on Object {
-      throw const BackupException('Couldn’t read that backup file.');
+      result = await importFile(file);
+    } finally {
+      await temporary.delete(recursive: true);
     }
-    final result = await importBytes(bytes);
     try {
       await _onImported?.call();
     } on Object {
@@ -177,45 +229,20 @@ final class BackupService {
     return result;
   }
 
-  Future<BackupResult> importBytes(List<int> bytes) async {
-    if (bytes.length > 50 * 1024 * 1024) {
-      throw const BackupException('Backup exceeds the 50 MiB import limit.');
-    }
-    late Map<String, Object?> data;
+  Future<BackupResult> importFile(File file) async {
+    final archive = await BackupArchive.open(file);
     try {
-      data = await compute(_decodeBackup, bytes);
-    } on Object {
+      return await _importRecords(archive);
+    } on FormatException {
       throw const BackupException('That file isn’t a valid trickle backup.');
+    } on TypeError {
+      throw const BackupException('That file isn’t a valid trickle backup.');
+    } finally {
+      await archive.dispose();
     }
-    final version = data['version'];
-    if (data['format'] != 'trickle-backup' ||
-        version is! int ||
-        version < 1 ||
-        version > 2) {
-      throw const BackupException('Unsupported trickle backup version.');
-    }
-    final feeds = _maps(data['feeds']);
-    final episodes = _maps(data['episodes']);
-    final articles = _maps(data['articles']);
-    final attachments = _maps(data['articleAttachments']);
-    final nostrProfiles = _maps(data['nostrProfiles']);
-    final nostrRelays = _maps(data['nostrRelays']);
-    final importedArticlesById = <String, Map<String, Object?>>{
-      for (final article in articles)
-        if (article['id'] case final String id) id: article,
-    };
-    final importedAttachmentsById = <String, Map<String, Object?>>{
-      for (final attachment in attachments)
-        if (attachment['id'] case final String id) id: attachment,
-    };
-    if (feeds.length > 5000 ||
-        episodes.length > 200000 ||
-        articles.length > 200000 ||
-        attachments.length > 500000 ||
-        nostrProfiles.length > 5000 ||
-        nostrRelays.length > 20000) {
-      throw const BackupException('Backup contains too many records.');
-    }
+  }
+
+  Future<BackupResult> _importRecords(BackupArchive archive) async {
     final acceptedFeeds = <String, String>{};
     final feedTitles = <String, String>{};
     final feedKinds = <String, FeedKind>{};
@@ -225,7 +252,7 @@ final class BackupService {
     final articleIdentities = <String, Map<String, String>>{};
     final acceptedArticles = <String, String>{};
     final importedNostrKeys = <String, String>{};
-    for (final json in nostrProfiles) {
+    await for (final json in archive.records('nostrProfiles')) {
       try {
         final profile = NostrProfile.fromJson(json);
         if (RegExp(r'^[0-9a-f]{64}$').hasMatch(profile.publicKey)) {
@@ -255,16 +282,52 @@ final class BackupService {
       final feed = existingFeedsById[profile.feedId];
       if (feed != null) existingNostrFeedsByKey[profile.publicKey] = feed;
     }
-    final backupFeedsWithEpisodes = {
-      for (final episode in episodes)
-        if (episode['feedId'] case final String feedId) feedId,
-    };
+    final backupFeedsWithEpisodes = <String>{};
+    final nostrAudioIds = <String>{};
+    await for (final episode in archive.records('episodes')) {
+      if (episode['feedId'] case final String feedId) {
+        backupFeedsWithEpisodes.add(feedId);
+        if (importedNostrKeys.containsKey(feedId) && episode['id'] is String) {
+          nostrAudioIds.add(episode['id']! as String);
+        }
+      }
+    }
+    final importedAttachmentsById = <String, Map<String, Object?>>{};
+    final linkedArticleIds = <String>{};
+    if (nostrAudioIds.isNotEmpty) {
+      await for (final attachment in archive.records('articleAttachments')) {
+        if (nostrAudioIds.contains(attachment['id'])) {
+          importedAttachmentsById[attachment['id']! as String] = attachment;
+          if (attachment['articleId'] case final String id) {
+            linkedArticleIds.add(id);
+          }
+        }
+      }
+    }
+    final importedArticlesById = <String, Map<String, Object?>>{};
+    if (linkedArticleIds.isNotEmpty) {
+      await for (final article in archive.records('articles')) {
+        if (linkedArticleIds.contains(article['id'])) {
+          importedArticlesById[article['id']! as String] = {...article}
+            ..remove('contentHtml')
+            ..remove('summary');
+        }
+      }
+    }
     var nextQueueSortKey = existingQueue.isEmpty
         ? 0
         : existingQueue.last.sortKey + 1024;
     await _database.transaction(() async {
       final searchItems = <SearchIndexEntry>[];
-      for (final json in feeds) {
+      Future<void> index(SearchIndexEntry item) async {
+        searchItems.add(item);
+        if (searchItems.length >= 100) {
+          await _database.indexSearchItems(searchItems);
+          searchItems.clear();
+        }
+      }
+
+      await for (final json in archive.records('feeds')) {
         final feed = Feed.fromJson({
           ...json,
           'protocol': json['protocol'] ?? FeedProtocol.syndication.index,
@@ -343,7 +406,7 @@ final class BackupService {
         feedTitles[actualFeedId] = feed.title;
         feedKinds[actualFeedId] = kind;
         feedProtocols[actualFeedId] = protocol;
-        searchItems.add(
+        await index(
           SearchIndexEntry(
             entityId: actualFeedId,
             kind: 'feed',
@@ -353,7 +416,7 @@ final class BackupService {
           ),
         );
       }
-      for (final json in episodes) {
+      await for (final json in archive.records('episodes')) {
         var episode = Episode.fromJson({
           ...json,
           'automationApplied': json['automationApplied'] ?? false,
@@ -388,12 +451,7 @@ final class BackupService {
             if (article.feedId == episode.feedId && mediaUrl != null) {
               var articleIds = articleIdentities[actualFeedId];
               if (articleIds == null) {
-                final existing = await (_database.select(
-                  _database.articles,
-                )..where((row) => row.feedId.equals(actualFeedId))).get();
-                articleIds = {
-                  for (final item in existing) _articleIdentity(item): item.id,
-                };
+                articleIds = await _existingArticleIdentities(actualFeedId);
                 articleIdentities[actualFeedId] = articleIds;
               }
               final articleIdentity = _articleIdentity(article);
@@ -413,9 +471,14 @@ final class BackupService {
         }
         var identities = episodeIdentities[actualFeedId];
         if (identities == null) {
-          final existing = await (_database.select(
-            _database.episodes,
-          )..where((row) => row.feedId.equals(actualFeedId))).get();
+          final existing = await _database
+              .customSelect(
+                'SELECT id,feed_id,guid,title,enclosure_url,published_at,discovered_at,'
+                'explicit,played,starred,automation_applied FROM episodes WHERE feed_id = ?',
+                variables: [Variable(actualFeedId)],
+              )
+              .asyncMap(_database.episodes.mapFromRow)
+              .get();
           identities = {
             for (final item in existing) _episodeIdentity(item): item.id,
           };
@@ -449,7 +512,7 @@ final class BackupService {
             .into(_database.episodes)
             .insertOnConflictUpdate(sanitized);
         acceptedEpisodes[episode.id] = actualEpisodeId;
-        searchItems.add(
+        await index(
           SearchIndexEntry(
             entityId: actualEpisodeId,
             kind: 'episode',
@@ -459,7 +522,7 @@ final class BackupService {
           ),
         );
       }
-      for (final json in articles) {
+      await for (final json in archive.records('articles')) {
         final article = Article.fromJson({
           ...json,
           'contentFormat':
@@ -473,12 +536,7 @@ final class BackupService {
         }
         var identities = articleIdentities[actualFeedId];
         if (identities == null) {
-          final existing = await (_database.select(
-            _database.articles,
-          )..where((row) => row.feedId.equals(actualFeedId))).get();
-          identities = {
-            for (final item in existing) _articleIdentity(item): item.id,
-          };
+          identities = await _existingArticleIdentities(actualFeedId);
           articleIdentities[actualFeedId] = identities;
         }
         final identity = _articleIdentity(article);
@@ -508,7 +566,7 @@ final class BackupService {
             .into(_database.articles)
             .insertOnConflictUpdate(sanitized);
         acceptedArticles[article.id] = actualArticleId;
-        searchItems.add(
+        await index(
           SearchIndexEntry(
             entityId: actualArticleId,
             kind: 'article',
@@ -520,7 +578,7 @@ final class BackupService {
         );
       }
       final clearedAttachmentArticles = <String>{};
-      for (final json in attachments) {
+      await for (final json in archive.records('articleAttachments')) {
         final attachment = ArticleAttachment.fromJson(json);
         final actualArticleId = acceptedArticles[attachment.articleId];
         final mediaUrl = _https(attachment.url);
@@ -551,7 +609,7 @@ final class BackupService {
               ),
             );
       }
-      for (final json in nostrProfiles) {
+      await for (final json in archive.records('nostrProfiles')) {
         NostrProfile profile;
         try {
           profile = NostrProfile.fromJson(json);
@@ -570,7 +628,7 @@ final class BackupService {
       }
       final relayCounts = <String, int>{};
       final clearedRelayFeeds = <String>{};
-      for (final json in nostrRelays) {
+      await for (final json in archive.records('nostrRelays')) {
         NostrRelay relay;
         try {
           relay = NostrRelay.fromJson(json);
@@ -598,7 +656,7 @@ final class BackupService {
             );
       }
       await _database.indexSearchItems(searchItems);
-      for (final json in _maps(data['progress'])) {
+      await for (final json in archive.records('progress')) {
         final progress = PlaybackProgressesData.fromJson({
           ...json,
           'completedAt': json['completedAt'],
@@ -617,7 +675,7 @@ final class BackupService {
               ),
             );
       }
-      for (final json in _maps(data['queue'])) {
+      await for (final json in archive.records('queue')) {
         final entry = QueueEntry.fromJson(json);
         final actualEpisodeId = acceptedEpisodes[entry.episodeId];
         if (actualEpisodeId == null) continue;
@@ -635,7 +693,7 @@ final class BackupService {
             );
         nextQueueSortKey += 1024;
       }
-      for (final json in _maps(data['bookmarks'])) {
+      await for (final json in archive.records('bookmarks')) {
         final bookmark = Bookmark.fromJson(json);
         final actualEpisodeId = acceptedEpisodes[bookmark.episodeId];
         if (actualEpisodeId == null ||
@@ -652,7 +710,7 @@ final class BackupService {
               ),
             );
       }
-      for (final json in _maps(data['settings'])) {
+      await for (final json in archive.records('settings')) {
         final setting = AppSetting.fromJson(json);
         if (!_validSetting(setting)) continue;
         await _database
@@ -667,18 +725,15 @@ final class BackupService {
     );
   }
 
-  List<Map<String, Object?>> _maps(Object? value) {
-    return (value as List? ?? const [])
-        .whereType<Map>()
-        .map((raw) => raw.cast<String, Object?>())
-        .toList(growable: false);
-  }
-
   bool _validSetting(AppSetting setting) => switch (setting.key) {
     'playback_speed' => AppConstants.allowedSpeeds.contains(
       int.tryParse(setting.value),
     ),
     'remote_images' => setting.value == 'true' || setting.value == 'false',
+    'reader_text_scale' => switch (int.tryParse(setting.value)) {
+      final value? => value >= 80 && value <= 150 && value % 10 == 0,
+      null => false,
+    },
     'auto_delete' => switch (int.tryParse(setting.value)) {
       final value? => value >= 0 && value < AutoDeletePolicy.values.length,
       null => false,
@@ -765,6 +820,18 @@ final class BackupService {
     );
   }
 
+  Future<Map<String, String>> _existingArticleIdentities(String feedId) async {
+    final rows = await _database
+        .customSelect(
+          'SELECT id,feed_id,guid,title,canonical_url,published_at,discovered_at,'
+          'content_format,media_kind,starred FROM articles WHERE feed_id = ?',
+          variables: [Variable(feedId)],
+        )
+        .asyncMap(_database.articles.mapFromRow)
+        .get();
+    return {for (final article in rows) _articleIdentity(article): article.id};
+  }
+
   String _articleIdentity(Article article) {
     final uri = Uri.tryParse(article.canonicalUrl ?? '');
     return publicArticleIdentity(
@@ -793,23 +860,3 @@ Future<XFile?> _pickBackupFile() => openFile(
 );
 
 const _maxMediaDurationMs = 365 * 24 * 60 * 60 * 1000;
-
-List<int> _encodeBackup(Map<String, Object?> payload) {
-  final archive = Archive()
-    ..addFile(ArchiveFile.string('trickle.json', jsonEncode(payload)));
-  return ZipEncoder().encode(archive);
-}
-
-Map<String, Object?> _decodeBackup(List<int> bytes) {
-  final archive = ZipDecoder().decodeBytes(bytes, verify: true);
-  final entry = archive.findFile('trickle.json');
-  if (entry == null) throw const FormatException('Not a trickle backup.');
-  if (entry.size > 50 * 1024 * 1024) {
-    throw const FormatException(
-      'Expanded backup exceeds the 50 MiB import limit.',
-    );
-  }
-  final content = entry.readBytes();
-  if (content == null) throw const FormatException('Backup is empty.');
-  return (jsonDecode(utf8.decode(content)) as Map).cast<String, Object?>();
-}

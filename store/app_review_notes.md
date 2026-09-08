@@ -29,6 +29,6 @@ Private-feed support is optional and is not required for review. Credentials ent
 
 ## Content
 
-trickle is a general-purpose app for user-selected content. Podcast search uses Apple's public catalog. Public YouTube URLs resolve to YouTube Atom feeds. Videos play in an embedded web player that falls back to the official feed URL if needed. Nostr profile feeds request signed public events and verify them on the device. trickle does not download, extract, host, sell, or modify third-party video, audio, articles, or posts.
+trickle is a general-purpose app for user-selected content. Podcast search uses Apple's public catalog. Public YouTube URLs resolve to YouTube Atom feeds. Videos play in an embedded web player that falls back to the official feed URL if needed. Nostr profile feeds request signed public events and verify them on the device. trickle does not host or sell third-party content. Episode downloads and saved article text stay on the user's device; videos play through the embedded player.
 
 The App Store screenshots contain only the fictional “Neon Dispatch” podcast and “Field Notes” feed. Their titles, descriptions, articles, and artwork were created specifically for trickle and are owned by the developer; no third-party content or branding appears in the screenshots.

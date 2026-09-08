@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:drift/drift.dart' hide isNull;
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,17 +42,117 @@ void main() {
   tearDown(() => database.close());
 
   test('invalid archives return a safe, actionable backup error', () async {
-    await expectLater(
-      backups.importBytes(const [0, 1, 2, 3]),
-      throwsA(
-        isA<BackupException>().having(
-          (error) => error.message,
-          'message',
-          'That file isn’t a valid trickle backup.',
+    final damaged = Uint8List.fromList(await backups.exportBytes());
+    final headers = ByteData.sublistView(damaged);
+    for (var offset = 0; offset <= damaged.length - 46; offset++) {
+      if (headers.getUint32(offset, Endian.little) == 0x02014b50) {
+        // Alter a central-directory CRC without changing its valid JSON body.
+        damaged[offset + 16] ^= 1;
+        break;
+      }
+    }
+    for (final bytes in [
+      const [0, 1, 2, 3],
+      damaged,
+    ]) {
+      await expectLater(
+        backups.importBytes(bytes),
+        throwsA(
+          isA<BackupException>().having(
+            (error) => error.message,
+            'message',
+            'That file isn’t a valid trickle backup.',
+          ),
         ),
-      ),
-    );
+      );
+      expect(
+        (await database.select(database.feeds).get()).single.title,
+        'Local title',
+      );
+    }
   });
+
+  test(
+    'large backups restore bodies, saved state, and reader settings beyond 50 MiB',
+    () async {
+      await database.customStatement(
+        "INSERT INTO feeds(id,title,feed_url,created_at,updated_at) VALUES ('reader','Reader','https://example.test/reader',1,1)",
+      );
+      await database.customStatement('''
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<9000)
+      INSERT INTO articles(id,feed_id,title,content_html,canonical_url,discovered_at,read_at,starred)
+      SELECT 'a'||x,'reader','Article '||x,replace(hex(zeroblob(3000)),'0','x'),
+        'https://example.test/article/'||x,x,CASE WHEN x=9000 THEN x ELSE NULL END,x=9000 FROM n
+    ''');
+      await database
+          .into(database.appSettings)
+          .insert(
+            AppSettingsCompanion.insert(
+              key: 'reader_text_scale',
+              value: '130',
+              updatedAt: DateTime.utc(2026, 9, 8),
+            ),
+          );
+      final directory = await Directory.systemTemp.createTemp(
+        'trickle-large-backup-test-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/backup.zip');
+      await backups.exportToFile(file);
+      final zip = ZipDecoder().decodeBytes(await file.readAsBytes());
+      expect(
+        zip.files.fold<int>(0, (sum, entry) => sum + entry.size),
+        greaterThan(50 * 1024 * 1024),
+      );
+      expect(
+        zip.files.where((entry) => entry.name.startsWith('articles-')).length,
+        greaterThan(1),
+      );
+      await database.close();
+      database = AppDatabase.forTesting(NativeDatabase.memory());
+      final result = await BackupService(database).importFile(file);
+      expect(result.articles, 9000);
+      final last =
+          await (database.select(database.articles)..where(
+                (row) => row.canonicalUrl.equals(
+                  'https://example.test/article/9000',
+                ),
+              ))
+              .getSingle();
+      expect(last.contentHtml, 'x' * 6000);
+      expect(last.starred, isTrue);
+      expect(last.readAt, isNotNull);
+      expect(
+        (await database.select(database.appSettings).get()).single.value,
+        '130',
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'a missing final backup chunk is rejected before changing the library',
+    () async {
+      final zip = ZipDecoder().decodeBytes(await backups.exportBytes());
+      final incomplete = Archive();
+      for (final entry in zip.files.where(
+        (entry) => !entry.name.startsWith('feeds-'),
+      )) {
+        incomplete.addFile(
+          ArchiveFile(entry.name, entry.size, entry.readBytes()!),
+        );
+      }
+      await expectLater(
+        backups.importBytes(ZipEncoder().encode(incomplete)),
+        throwsA(isA<BackupException>()),
+      );
+      expect(
+        (await database.select(database.feeds).get()).single.title,
+        'Local title',
+      );
+      expect(await database.select(database.episodes).get(), isEmpty);
+    },
+  );
 
   test('picker restore round-trips an exported backup', () async {
     final bytes = await backups.exportBytes();
@@ -419,7 +521,7 @@ void main() {
     expect(await database.select(database.articles).get(), isEmpty);
   });
 
-  test('version 2 backup round-trips Nostr media and playback state', () async {
+  test('backup round-trips Nostr media and playback state', () async {
     final now = DateTime.utc(2026, 7, 26);
     const publicKey =
         '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d';
@@ -621,4 +723,32 @@ void main() {
       );
     },
   );
+}
+
+extension on BackupService {
+  Future<List<int>> exportBytes() async {
+    final directory = await Directory.systemTemp.createTemp(
+      'trickle-backup-test-',
+    );
+    try {
+      final file = File('${directory.path}/backup.zip');
+      await exportToFile(file);
+      return await file.readAsBytes();
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  }
+
+  Future<BackupResult> importBytes(List<int> bytes) async {
+    final directory = await Directory.systemTemp.createTemp(
+      'trickle-backup-test-',
+    );
+    try {
+      final file = File('${directory.path}/backup.zip');
+      await file.writeAsBytes(bytes);
+      return await importFile(file);
+    } finally {
+      await directory.delete(recursive: true);
+    }
+  }
 }

@@ -89,6 +89,8 @@ Saving a normal article stores its readable text for offline use. Publisher-host
 
 The local ZIP backup includes subscriptions, Nostr profiles, articles, playback and reading state, queues, bookmarks, and settings. It does not include separate authorization headers, passwords, or downloaded media.
 
+New backups support up to 2 GiB of expanded data and are split into smaller chunks to keep large libraries manageable. Backups from older versions are still supported, with their original 50 MiB expanded-data limit. If an older backup exceeds that limit, export a new one from an updated copy of trickle. Keep the ZIP intact; removing a chunk makes it incomplete.
+
 Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data. Canceling the picker makes no changes. If a restore is already running, tapping Restore local backup again rejoins that operation instead of opening another picker or applying the backup twice.
 
 ## Project

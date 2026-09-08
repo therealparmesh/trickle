@@ -81,7 +81,9 @@ The unsigned build commands verify compilation without requiring publisher crede
 
 ### Data and refresh
 
-The SQLite database uses schema version 5, WAL mode, foreign keys, indexed timeline queries, and FTS5 search. Feed refreshes and restores update state in bounded batches. Older refresh results cannot replace newer content or settings. Background automation stages Up Next additions, and the audio handler acknowledges them only after merging them into the active queue.
+The SQLite database uses schema version 6, WAL mode, foreign keys, indexed timeline queries, and FTS5 search backed by stable document IDs. Upgrades preserve existing content and search text; legacy feed repairs run only during migration. Refresh reads are limited to incoming items and explicit Nostr deletion targets. Older refresh results cannot replace newer content or settings. Background automation stages Up Next additions, and the audio handler acknowledges them only after merging them into the active queue.
+
+New ZIP backups use version 3: a manifest and numbered JSON chunks. Export reads a consistent database snapshot in batches; restore validates every chunk before applying an atomic merge. The shared limits are 2 GiB of expanded records, 32 MiB per chunk, 5,000 feeds, 200,000 episodes and articles each, and 500,000 attachments. Version 1 and 2 backups remain readable within their original 50 MiB expanded-size limit. Sign-in headers and downloaded media are excluded.
 
 ### Playback
 
@@ -89,7 +91,7 @@ The latest audio or video selection owns playback. Native player commands are or
 
 ### Performance
 
-Shared library snapshots keep rows from opening duplicate database streams. Expensive feed, article, and Nostr verification work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Network deadlines are 10 seconds for connections and video sources, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
+Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit cached reader HTML. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Network deadlines are 10 seconds for connections and video sources, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
 
 ## Project layout
 

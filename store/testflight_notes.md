@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Playback now switches cleanly between podcasts and video, stays in sync with Picture in Picture, and keeps Up Next consistent during background refresh.
+Requires iOS 17 or later. Large libraries load and refresh faster. Backups now handle larger collections and include your reader text size.
 
 ## What to test
 
@@ -61,6 +61,7 @@ Please test the combined podcast and feed flow:
 - In a podcast and a feed, search with different capitalization, switch filters, change newest/oldest sorting, load another page, and verify the list and count stay consistent without a full-screen loading flash
 - Open a timed VTT, SRT, or JSON transcript, search it, tap a result, and verify playback seeks to that segment. A plain transcript should remain searchable and selectable without a seek affordance
 - Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and tokenized private feed URLs survive, while sign-in headers and downloaded files are absent. While a restore is active, leave and reopen Settings, tap Restore local backup again, and confirm it rejoins the same restore without another picker or duplicate data
+- Check a large library backup with more than 50 MiB of expanded data, reader text-size settings, and cached article bodies. Older version 1 and 2 backups should still restore. An incomplete or damaged ZIP must fail without changing the library
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views

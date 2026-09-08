@@ -35,7 +35,7 @@ The Android bundle and iOS build commands prove both release targets compile wit
 
 Use JDK 17 or 21 for Android builds and lint. JDK 26 is not supported by the current Android toolchain; GitHub Actions pins JDK 17, and local release verification uses JDK 21.
 
-Flutter reports forward-compatibility warnings because `disk_space_plus` and `workmanager_android` still apply the legacy Kotlin Gradle plugin, and part of the iOS plugin set still requires CocoaPods. The current compatible dependency versions build successfully with Flutter 3.44.4 through 3.47.1. Recheck those upstream migrations before a later Flutter upgrade; CocoaPods remains enabled until every required iOS plugin supports Swift Package Manager.
+Flutter reports forward-compatibility warnings because `disk_space_plus` and `workmanager_android` still apply the legacy Kotlin Gradle plugin, and part of the iOS plugin set still requires CocoaPods. The current compatible dependency versions build successfully with Flutter 3.44.4 through 3.47.2. Recheck those upstream migrations before a later Flutter upgrade; CocoaPods remains enabled until every required iOS plugin supports Swift Package Manager.
 
 ## Android signing and upload
 
@@ -96,7 +96,7 @@ In App Store Connect, use `store/metadata.md` and `store/app_review_notes.md`, a
 
 ## Acceptance checklist
 
-- Installation: fresh install, upgrade, relaunch, offline launch, low storage, and database migration
+- Installation: fresh install, upgrade, relaunch, offline launch, low storage, and database migration, including schema 5 libraries with cached reader content and enriched search text
 - Playback: stream, seek, pause, resume, previous/next, rapid audio/video switching where the latest choice wins, interruptions, unplugged headphones, lock screen, background audio, one bounded recovery after an unexpected native stop, and every global speed
 - Downloads: Wi-Fi/mobile policy, automatic/manual download, pause, retry, completion, keep, item and byte totals, played-only bulk removal, all-download removal, and every cleanup policy
 - Queue and extras: reorder, remove, persistence, background autoqueue additions merged once after the current queue, sleep timers, intro/outro skip, repeat-one, chapters, searchable timed and untimed transcripts, tap-to-seek, and bookmarks

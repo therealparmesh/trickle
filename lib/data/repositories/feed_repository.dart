@@ -536,11 +536,11 @@ final class FeedRepository {
       ..removeAll(retainedEpisodeIds);
     await _database.transaction(() async {
       await _database.customStatement(
-        "DELETE FROM search_index WHERE kind = 'feed' AND entity_id = ?",
+        "DELETE FROM search_documents WHERE kind = 'feed' AND entity_id = ?",
         [feedId],
       );
       await _database.customStatement(
-        "DELETE FROM search_index WHERE kind = 'article' AND entity_id IN "
+        "DELETE FROM search_documents WHERE kind = 'article' AND entity_id IN "
         '(SELECT id FROM articles WHERE feed_id = ? AND starred = 0)',
         [feedId],
       );
@@ -555,7 +555,7 @@ final class FeedRepository {
               .take(AppDatabase.safeVariableBatchSize)
               .toList(growable: false);
           await _database.customStatement(
-            "DELETE FROM search_index WHERE kind = 'episode' "
+            "DELETE FROM search_documents WHERE kind = 'episode' "
             'AND entity_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))',
             [jsonEncode(ids)],
           );
@@ -640,9 +640,9 @@ final class FeedRepository {
             .get();
     await _database.transaction(() async {
       await _database.customStatement(
-        'DELETE FROM search_index WHERE entity_id = ? '
-        'OR entity_id IN (SELECT id FROM episodes WHERE feed_id = ?) '
-        'OR entity_id IN (SELECT id FROM articles WHERE feed_id = ?)',
+        "DELETE FROM search_documents WHERE (kind = 'feed' AND entity_id = ?) "
+        "OR (kind = 'episode' AND entity_id IN (SELECT id FROM episodes WHERE feed_id = ?)) "
+        "OR (kind = 'article' AND entity_id IN (SELECT id FROM articles WHERE feed_id = ?))",
         [feedId, feedId, feedId],
       );
       // Child rows use ON DELETE CASCADE.
@@ -987,6 +987,20 @@ final class FeedRepository {
     final parsedArticles = kind == FeedKind.reader
         ? parsed.articles
         : const <ParsedArticle>[];
+    final episodeIds = [
+      for (final episode in parsedEpisodes)
+        stableContentId(
+          feedId,
+          _episodeIdentity(episode, isPrivate: isPrivate),
+        ),
+    ];
+    final articleIds = [
+      for (final article in parsedArticles)
+        stableContentId(
+          feedId,
+          _articleIdentity(article, isPrivate: isPrivate),
+        ),
+    ];
     final previousPrivateMedia = <String, Uri?>{};
 
     try {
@@ -1027,25 +1041,37 @@ final class FeedRepository {
         final updatedAt = effectiveFeed == null
             ? now
             : _nextFeedRevision(now, effectiveFeed.updatedAt);
-        // Re-read mutable item state inside the transaction. The earlier maps
-        // decide feed classification, while these snapshots preserve a play,
-        // save, read, or preview update that raced feed preparation.
-        final storedEpisodes = kind == FeedKind.podcast
-            ? {
-                for (final episode in await (_database.select(
-                  _database.episodes,
-                )..where((row) => row.feedId.equals(feedId))).get())
-                  episode.id: episode,
-              }
-            : const <String, Episode>{};
-        final storedArticles = kind == FeedKind.reader
-            ? {
-                for (final article in await (_database.select(
-                  _database.articles,
-                )..where((row) => row.feedId.equals(feedId))).get())
-                  article.id: article,
-              }
-            : const <String, Article>{};
+        // Read only incoming IDs, inside the transaction so a concurrent read,
+        // save, playback, or preview update is preserved.
+        final storedEpisodes = <String, Episode>{};
+        final storedArticles = <String, Article>{};
+        final incomingIds = kind == FeedKind.podcast ? episodeIds : articleIds;
+        for (
+          var start = 0;
+          start < incomingIds.length;
+          start += AppDatabase.safeVariableBatchSize
+        ) {
+          final ids = incomingIds.sublist(
+            start,
+            (start + AppDatabase.safeVariableBatchSize).clamp(
+              0,
+              incomingIds.length,
+            ),
+          );
+          if (kind == FeedKind.podcast) {
+            for (final item in await (_database.select(
+              _database.episodes,
+            )..where((row) => row.id.isIn(ids))).get()) {
+              storedEpisodes[item.id] = item;
+            }
+          } else {
+            for (final item in await (_database.select(
+              _database.articles,
+            )..where((row) => row.id.isIn(ids))).get()) {
+              storedArticles[item.id] = item;
+            }
+          }
+        }
         await _database
             .into(_database.feeds)
             .insertOnConflictUpdate(
@@ -1085,7 +1111,7 @@ final class FeedRepository {
             );
         if (kind == FeedKind.podcast) {
           await _database.customStatement(
-            "DELETE FROM search_index WHERE kind = 'article' AND entity_id "
+            "DELETE FROM search_documents WHERE kind = 'article' AND entity_id "
             'IN (SELECT id FROM articles WHERE feed_id = ?)',
             [feedId],
           );
@@ -1094,7 +1120,7 @@ final class FeedRepository {
           )..where((row) => row.feedId.equals(feedId))).go();
         } else {
           await _database.customStatement(
-            "DELETE FROM search_index WHERE kind = 'episode' AND entity_id "
+            "DELETE FROM search_documents WHERE kind = 'episode' AND entity_id "
             'IN (SELECT id FROM episodes WHERE feed_id = ?)',
             [feedId],
           );
@@ -1109,11 +1135,7 @@ final class FeedRepository {
           episodeIndex++
         ) {
           final parsedEpisode = parsedEpisodes[episodeIndex];
-          final identity = _episodeIdentity(
-            parsedEpisode,
-            isPrivate: isPrivate,
-          );
-          final id = stableContentId(feedId, identity);
+          final id = episodeIds[episodeIndex];
           final existing = storedEpisodes[id];
           if (existing != null &&
               existing.chaptersUrl != parsedEpisode.chaptersUrl?.toString()) {
@@ -1121,39 +1143,39 @@ final class FeedRepository {
               _database.chapters,
             )..where((row) => row.episodeId.equals(id))).go();
           }
-          await _database
-              .into(_database.episodes)
-              .insertOnConflictUpdate(
-                EpisodesCompanion.insert(
-                  id: id,
-                  feedId: feedId,
-                  guid: Value(parsedEpisode.guid),
-                  title: parsedEpisode.title,
-                  description: Value(parsedEpisode.description),
-                  enclosureUrl: isPrivate
-                      ? 'private-media://$id'
-                      : parsedEpisode.enclosureUrl.toString(),
-                  mimeType: Value(parsedEpisode.mimeType),
-                  imageUrl: Value(parsedEpisode.imageUrl?.toString()),
-                  chaptersUrl: Value(parsedEpisode.chaptersUrl?.toString()),
-                  publishedAt: Value(parsedEpisode.publishedAt),
-                  discoveredAt: existing?.discoveredAt ?? now,
-                  durationMs: Value(parsedEpisode.duration?.inMilliseconds),
-                  fileSize: Value(
-                    (parsedEpisode.fileSize ?? 0) > 0
-                        ? parsedEpisode.fileSize
-                        : null,
-                  ),
-                  explicit: Value(parsedEpisode.explicit),
-                  played: Value(existing?.played ?? false),
-                  starred: Value(existing?.starred ?? false),
-                  automationApplied: Value(
-                    existing?.automationApplied ??
-                        !((effectiveFeed?.autoDownload ?? false) ||
-                            (effectiveFeed?.autoQueue ?? false)),
-                  ),
-                ),
-              );
+          final episodeUpdate = EpisodesCompanion.insert(
+            id: id,
+            feedId: feedId,
+            guid: Value(parsedEpisode.guid),
+            title: parsedEpisode.title,
+            description: Value(parsedEpisode.description),
+            enclosureUrl: isPrivate
+                ? 'private-media://$id'
+                : parsedEpisode.enclosureUrl.toString(),
+            mimeType: Value(parsedEpisode.mimeType),
+            imageUrl: Value(parsedEpisode.imageUrl?.toString()),
+            chaptersUrl: Value(parsedEpisode.chaptersUrl?.toString()),
+            publishedAt: Value(parsedEpisode.publishedAt),
+            discoveredAt: existing?.discoveredAt ?? now,
+            durationMs: Value(parsedEpisode.duration?.inMilliseconds),
+            fileSize: Value(
+              (parsedEpisode.fileSize ?? 0) > 0 ? parsedEpisode.fileSize : null,
+            ),
+            explicit: Value(parsedEpisode.explicit),
+            played: Value(existing?.played ?? false),
+            starred: Value(existing?.starred ?? false),
+            automationApplied: Value(
+              existing?.automationApplied ??
+                  !((effectiveFeed?.autoDownload ?? false) ||
+                      (effectiveFeed?.autoQueue ?? false)),
+            ),
+          );
+          if (existing == null ||
+              existing.copyWithCompanion(episodeUpdate) != existing) {
+            await _database
+                .into(_database.episodes)
+                .insertOnConflictUpdate(episodeUpdate);
+          }
           final transcriptIds = <String>[];
           for (final transcript in parsedEpisode.transcripts) {
             final transcriptId = stableContentId(id, transcript.url.toString());
@@ -1195,44 +1217,42 @@ final class FeedRepository {
           articleIndex++
         ) {
           final parsedArticle = parsedArticles[articleIndex];
-          final identity = _articleIdentity(
-            parsedArticle,
-            isPrivate: isPrivate,
-          );
-          final id = stableContentId(feedId, identity);
+          final id = articleIds[articleIndex];
           final existing = storedArticles[id];
-          await _database
-              .into(_database.articles)
-              .insertOnConflictUpdate(
-                ArticlesCompanion.insert(
-                  id: id,
-                  feedId: feedId,
-                  guid: Value(parsedArticle.guid),
-                  title: parsedArticle.title,
-                  author: Value(parsedArticle.author),
-                  summary: Value(parsedArticle.summary),
-                  contentHtml: Value(
-                    existing?.canonicalUrl ==
-                                parsedArticle.canonicalUrl?.toString() &&
-                            (existing?.contentHtml?.length ?? 0) >
-                                (parsedArticle.contentHtml?.length ?? 0)
-                        ? existing?.contentHtml
-                        : parsedArticle.contentHtml,
-                  ),
-                  canonicalUrl: Value(parsedArticle.canonicalUrl?.toString()),
-                  imageUrl: Value(
-                    parsedArticle.imageUrl?.toString() ??
-                        (existing?.canonicalUrl ==
-                                parsedArticle.canonicalUrl?.toString()
-                            ? existing?.imageUrl
-                            : null),
-                  ),
-                  publishedAt: Value(parsedArticle.publishedAt),
-                  discoveredAt: existing?.discoveredAt ?? now,
-                  readAt: Value(existing?.readAt),
-                  starred: Value(existing?.starred ?? false),
-                ),
-              );
+          final articleUpdate = ArticlesCompanion.insert(
+            id: id,
+            feedId: feedId,
+            guid: Value(parsedArticle.guid),
+            title: parsedArticle.title,
+            author: Value(parsedArticle.author),
+            summary: Value(parsedArticle.summary),
+            contentHtml: Value(
+              existing?.canonicalUrl ==
+                          parsedArticle.canonicalUrl?.toString() &&
+                      (existing?.contentHtml?.length ?? 0) >
+                          (parsedArticle.contentHtml?.length ?? 0)
+                  ? existing?.contentHtml
+                  : parsedArticle.contentHtml,
+            ),
+            canonicalUrl: Value(parsedArticle.canonicalUrl?.toString()),
+            imageUrl: Value(
+              parsedArticle.imageUrl?.toString() ??
+                  (existing?.canonicalUrl ==
+                          parsedArticle.canonicalUrl?.toString()
+                      ? existing?.imageUrl
+                      : null),
+            ),
+            publishedAt: Value(parsedArticle.publishedAt),
+            discoveredAt: existing?.discoveredAt ?? now,
+            readAt: Value(existing?.readAt),
+            starred: Value(existing?.starred ?? false),
+          );
+          if (existing == null ||
+              existing.copyWithCompanion(articleUpdate) != existing) {
+            await _database
+                .into(_database.articles)
+                .insertOnConflictUpdate(articleUpdate);
+          }
           searchItems.add(
             SearchIndexEntry(
               entityId: id,
@@ -1240,6 +1260,8 @@ final class FeedRepository {
               title: parsedArticle.title,
               body: prepared.articleBodies[articleIndex],
               feedTitle: parsed.title,
+              preserveBody:
+                  articleUpdate.contentHtml.value != parsedArticle.contentHtml,
             ),
           );
         }

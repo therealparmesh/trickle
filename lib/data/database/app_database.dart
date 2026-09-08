@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -20,6 +19,7 @@ final class SearchIndexEntry {
     required this.title,
     required this.body,
     required this.feedTitle,
+    this.preserveBody = false,
   });
 
   final String entityId;
@@ -27,6 +27,7 @@ final class SearchIndexEntry {
   final String title;
   final String body;
   final String feedTitle;
+  final bool preserveBody;
 }
 
 class Feeds extends Table {
@@ -287,7 +288,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -297,7 +298,7 @@ class AppDatabase extends _$AppDatabase {
       await _createSearchIndex();
     },
     onUpgrade: (migrator, from, to) async {
-      if (from < 1 || from > 4 || to != 5) {
+      if (from < 1 || from > 5 || to != 6) {
         throw StateError('Unsupported database migration from $from to $to.');
       }
       if (from < 3) {
@@ -316,7 +317,31 @@ class AppDatabase extends _$AppDatabase {
         await migrator.createTable(articleAttachments);
       }
       if (from < 4) await migrator.addColumn(feeds, feeds.category);
-      await migrator.createTable(pendingQueueAdds);
+      if (from < 5) await migrator.createTable(pendingQueueAdds);
+      await _createSearchDocuments();
+      await customStatement(
+        'INSERT OR IGNORE INTO search_documents '
+        '(entity_id, kind, title, body, feed_title) '
+        'SELECT entity_id, kind, title, body, feed_title FROM search_index',
+      );
+      await customStatement('DROP TABLE search_index');
+      await _createSearchIndex();
+      await customStatement(
+        "INSERT INTO search_index(search_index) VALUES ('rebuild')",
+      );
+      await _repairLegacyMixedFeeds();
+      for (final name in const [
+        'idx_episodes_feed_date',
+        'idx_episodes_global_date',
+        'idx_articles_feed_date',
+        'idx_articles_global_date',
+        'idx_articles_unread_date',
+        'idx_episodes_starred',
+        'idx_articles_starred',
+      ]) {
+        await customStatement('DROP INDEX IF EXISTS $name');
+      }
+      await _createIndexes();
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -324,10 +349,6 @@ class AppDatabase extends _$AppDatabase {
         'PRAGMA busy_timeout = '
         '${AppConstants.databaseLockTimeout.inMilliseconds}',
       );
-      if (details.wasCreated) return;
-      await _createIndexes();
-      await _createSearchIndex();
-      await _repairLegacyMixedFeeds();
     },
   );
 
@@ -336,7 +357,7 @@ class AppDatabase extends _$AppDatabase {
     // libraries. Preserve their playable side, remove the accidental article
     // copies, and normalize the subscription to one library.
     await customStatement(
-      "DELETE FROM search_index WHERE kind = 'article' AND entity_id IN ("
+      "DELETE FROM search_documents WHERE kind = 'article' AND entity_id IN ("
       'SELECT articles.id FROM articles INNER JOIN feeds '
       'ON feeds.id = articles.feed_id WHERE feeds.kind = 2 '
       'AND EXISTS (SELECT 1 FROM episodes WHERE episodes.feed_id = feeds.id))',
@@ -364,35 +385,43 @@ class AppDatabase extends _$AppDatabase {
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_episodes_feed_date '
-      'ON episodes(feed_id, published_at DESC)',
+      'ON episodes(feed_id, published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_episodes_global_date '
-      'ON episodes(published_at DESC, discovered_at DESC)',
+      'ON episodes(published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_articles_feed_date '
-      'ON articles(feed_id, published_at DESC)',
+      'ON articles(feed_id, published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_articles_global_date '
-      'ON articles(published_at DESC, discovered_at DESC)',
+      'ON articles(published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_articles_unread_date '
-      'ON articles(read_at, published_at DESC, discovered_at DESC)',
+      'ON articles(read_at, published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_episodes_starred '
-      'ON episodes(starred, published_at DESC)',
+      'ON episodes(starred, published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_articles_starred '
-      'ON articles(starred, published_at DESC)',
+      'ON articles(starred, published_at DESC, discovered_at DESC, id)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_article_attachments '
       'ON article_attachments(article_id, position)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_articles_source_event '
+      'ON articles(source_event_id) WHERE source_event_id IS NOT NULL',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_articles_unread_feed '
+      'ON articles(read_at, feed_id) WHERE read_at IS NULL',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_nostr_relays_feed '
@@ -424,12 +453,41 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<void> _createSearchDocuments() => customStatement(
+    'CREATE TABLE IF NOT EXISTS search_documents ('
+    'rowid INTEGER PRIMARY KEY, entity_id TEXT NOT NULL, kind TEXT NOT NULL, '
+    'title TEXT NOT NULL, body TEXT NOT NULL, feed_title TEXT NOT NULL, '
+    'UNIQUE(kind, entity_id))',
+  );
+
   Future<void> _createSearchIndex() async {
+    await _createSearchDocuments();
     await customStatement(
       "CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5("
       "entity_id UNINDEXED, kind UNINDEXED, title, body, feed_title, "
+      "content='search_documents', content_rowid='rowid', "
       "tokenize='unicode61 remove_diacritics 2')",
     );
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS search_documents_insert AFTER INSERT ON search_documents BEGIN
+        INSERT INTO search_index(rowid, entity_id, kind, title, body, feed_title)
+        VALUES (new.rowid, new.entity_id, new.kind, new.title, new.body, new.feed_title);
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS search_documents_delete AFTER DELETE ON search_documents BEGIN
+        INSERT INTO search_index(search_index, rowid, entity_id, kind, title, body, feed_title)
+        VALUES ('delete', old.rowid, old.entity_id, old.kind, old.title, old.body, old.feed_title);
+      END
+    ''');
+    await customStatement('''
+      CREATE TRIGGER IF NOT EXISTS search_documents_update AFTER UPDATE ON search_documents BEGIN
+        INSERT INTO search_index(search_index, rowid, entity_id, kind, title, body, feed_title)
+        VALUES ('delete', old.rowid, old.entity_id, old.kind, old.title, old.body, old.feed_title);
+        INSERT INTO search_index(rowid, entity_id, kind, title, body, feed_title)
+        VALUES (new.rowid, new.entity_id, new.kind, new.title, new.body, new.feed_title);
+      END
+    ''');
   }
 
   Stream<List<Feed>> watchFeeds() {
@@ -451,37 +509,38 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<Episode>> watchRecentEpisodes({int limit = 50}) {
-    final query =
-        select(
-            episodes,
-          ).join([innerJoin(feeds, feeds.id.equalsExp(episodes.feedId))])
-          ..where(
-            feeds.subscribed.equals(true) &
-                feeds.kind.equals(FeedKind.podcast.index),
-          )
+    return (select(episodes)
+          ..where((_) => _subscribedPodcast())
           ..orderBy([
-            OrderingTerm.desc(episodes.publishedAt),
-            OrderingTerm.desc(episodes.discoveredAt),
-            OrderingTerm.asc(episodes.id),
+            (row) => OrderingTerm.desc(row.publishedAt),
+            (row) => OrderingTerm.desc(row.discoveredAt),
+            (row) => OrderingTerm.asc(row.id),
           ])
-          ..limit(limit);
-    return query.watch().map(
-      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
-    );
+          ..limit(limit))
+        .watch();
   }
+
+  Expression<bool> _subscribedPodcast() => existsQuery(
+    selectOnly(feeds)
+      ..addColumns([feeds.id])
+      ..where(
+        feeds.id.equalsExp(episodes.feedId) &
+            feeds.subscribed.equals(true) &
+            feeds.kind.equals(FeedKind.podcast.index),
+      ),
+  );
 
   Stream<List<Episode>> watchNewEpisodes({int limit = 50}) {
     final query =
         select(episodes).join([
-            innerJoin(feeds, feeds.id.equalsExp(episodes.feedId)),
             leftOuterJoin(
               playbackProgresses,
               playbackProgresses.episodeId.equalsExp(episodes.id),
+              useColumns: false,
             ),
           ])
           ..where(
-            feeds.subscribed.equals(true) &
-                feeds.kind.equals(FeedKind.podcast.index) &
+            _subscribedPodcast() &
                 episodes.played.equals(false) &
                 (playbackProgresses.episodeId.isNull() |
                     (playbackProgresses.completed.equals(false) &
@@ -503,15 +562,14 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<Episode>> watchInProgressEpisodes({int limit = 50}) {
     final query =
         select(episodes).join([
-            innerJoin(feeds, feeds.id.equalsExp(episodes.feedId)),
             innerJoin(
               playbackProgresses,
               playbackProgresses.episodeId.equalsExp(episodes.id),
+              useColumns: false,
             ),
           ])
           ..where(
-            feeds.subscribed.equals(true) &
-                feeds.kind.equals(FeedKind.podcast.index) &
+            _subscribedPodcast() &
                 episodes.played.equals(false) &
                 playbackProgresses.completed.equals(false) &
                 playbackProgresses.positionMs.isBiggerThanValue(0),
@@ -528,63 +586,41 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
-  Stream<List<Article>> watchUnreadArticles({int limit = 50}) {
-    final query =
-        select(
-            articles,
-          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
-          ..where(feeds.subscribed.equals(true) & articles.readAt.isNull())
-          ..orderBy([
-            OrderingTerm.desc(articles.publishedAt),
-            OrderingTerm.desc(articles.discoveredAt),
-            OrderingTerm.asc(articles.id),
-          ])
-          ..limit(limit);
-    return query.watch().map(
-      (rows) => rows.map((row) => row.readTable(articles)).toList(),
-    );
-  }
+  Stream<List<Article>> watchUnreadArticles({int limit = 50}) =>
+      watchFilteredArticles(
+        limit: limit,
+        sort: ContentSort.newest,
+        filter: ArticleFeedFilter.unread,
+      );
 
   Stream<List<Article>> watchStarredArticles({required int limit}) {
-    final query = select(articles)
-      ..where((row) => row.starred.equals(true))
-      ..orderBy([
-        (row) => OrderingTerm.desc(row.publishedAt),
-        (row) => OrderingTerm.desc(row.discoveredAt),
-        (row) => OrderingTerm.asc(row.id),
-      ]);
-    query.limit(limit);
-    return query.watch();
+    return customSelect(
+      'SELECT $_articleListColumns FROM articles WHERE starred = 1 '
+      'ORDER BY published_at DESC, discovered_at DESC, id ASC LIMIT ?',
+      variables: [Variable(limit)],
+      readsFrom: {articles},
+    ).asyncMap(articles.mapFromRow).watch();
   }
 
   Stream<int> watchUnreadArticleCount() {
-    final count = articles.id.count();
-    final query =
-        selectOnly(
-            articles,
-          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
-          ..addColumns([count])
-          ..where(feeds.subscribed.equals(true) & articles.readAt.isNull());
-    return query.watchSingle().map((row) => row.read(count) ?? 0);
+    return customSelect(
+      'SELECT COUNT(*) AS count FROM articles WHERE read_at IS NULL '
+      'AND feed_id IN (SELECT id FROM feeds WHERE subscribed = 1)',
+      readsFrom: {articles, feeds},
+    ).watchSingle().map((row) => row.read<int>('count'));
   }
 
   Stream<Map<String, int>> watchUnreadArticleCountsByFeed() {
-    final count = articles.id.count();
-    final query =
-        selectOnly(
-            articles,
-          ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))])
-          ..addColumns([articles.feedId, count])
-          ..where(feeds.subscribed.equals(true) & articles.readAt.isNull())
-          ..groupBy([articles.feedId]);
-    return query.watch().map((rows) {
-      final counts = <String, int>{};
-      for (final row in rows) {
-        final feedId = row.read(articles.feedId);
-        if (feedId != null) counts[feedId] = row.read(count) ?? 0;
-      }
-      return counts;
-    });
+    return customSelect(
+      'SELECT feed_id, COUNT(*) AS count FROM articles WHERE read_at IS NULL '
+      'AND feed_id IN (SELECT id FROM feeds WHERE subscribed = 1) GROUP BY feed_id',
+      readsFrom: {articles, feeds},
+    ).watch().map(
+      (rows) => {
+        for (final row in rows)
+          row.read<String>('feed_id'): row.read<int>('count'),
+      },
+    );
   }
 
   Stream<int> watchStarredArticleCount() {
@@ -921,46 +957,22 @@ class AppDatabase extends _$AppDatabase {
     required ArticleFeedFilter filter,
     String query = '',
   }) {
-    final statement = select(
-      articles,
-    ).join([innerJoin(feeds, feeds.id.equalsExp(articles.feedId))]);
-    if (feedId == null) {
-      statement.where(feeds.subscribed.equals(true));
-    } else {
-      statement.where(articles.feedId.equals(feedId));
-    }
-    final categoryIdentity = category?.trim().toLowerCase();
-    if (categoryIdentity?.isNotEmpty == true) {
-      statement.where(feeds.category.lower().equals(categoryIdentity!));
-    }
-    final normalizedQuery = query.trim().toLowerCase();
-    if (normalizedQuery.isNotEmpty) {
-      statement.where(
-        articles.title.lower().contains(normalizedQuery) |
-            articles.summary.lower().contains(normalizedQuery) |
-            articles.author.lower().contains(normalizedQuery),
-      );
-    }
-    statement.where(switch (filter) {
-      ArticleFeedFilter.all => const Constant(true),
-      ArticleFeedFilter.unread => articles.readAt.isNull(),
-      ArticleFeedFilter.saved => articles.starred.equals(true),
-    });
-    statement
-      ..orderBy([
-        sort == ContentSort.newest
-            ? OrderingTerm.desc(articles.publishedAt)
-            : OrderingTerm.asc(articles.publishedAt),
-        sort == ContentSort.newest
-            ? OrderingTerm.desc(articles.discoveredAt)
-            : OrderingTerm.asc(articles.discoveredAt),
-        OrderingTerm.asc(articles.id),
-      ])
-      ..limit(limit);
-    return statement.watch().map(
-      (rows) => rows.map((row) => row.readTable(articles)).toList(),
-    );
+    final selection = _articleFilter(feedId, category, filter, query);
+    final direction = sort == ContentSort.newest ? 'DESC' : 'ASC';
+    // List rows do not need cached reader HTML. EXISTS keeps SQLite on the
+    // ordered article index instead of joining and sorting every feed's items.
+    return customSelect(
+      'SELECT $_articleListColumns FROM articles WHERE ${selection.sql} '
+      'ORDER BY published_at $direction, discovered_at $direction, id ASC LIMIT ?',
+      variables: [...selection.variables, Variable(limit)],
+      readsFrom: {articles, feeds},
+    ).asyncMap(articles.mapFromRow).watch();
   }
+
+  String get _articleListColumns => articles.$columns
+      .where((column) => column != articles.contentHtml)
+      .map((column) => 'articles.${column.$name}')
+      .join(', ');
 
   Stream<int> watchFilteredArticleCount({
     String? feedId,
@@ -968,33 +980,47 @@ class AppDatabase extends _$AppDatabase {
     required ArticleFeedFilter filter,
     String query = '',
   }) {
-    final count = articles.id.count();
-    final statement = selectOnly(articles).join([
-      innerJoin(feeds, feeds.id.equalsExp(articles.feedId)),
-    ])..addColumns([count]);
+    final selection = _articleFilter(feedId, category, filter, query);
+    return customSelect(
+      'SELECT COUNT(*) AS count FROM articles WHERE ${selection.sql}',
+      variables: selection.variables,
+      readsFrom: {articles, feeds},
+    ).watchSingle().map((row) => row.read<int>('count'));
+  }
+
+  ({String sql, List<Variable> variables}) _articleFilter(
+    String? feedId,
+    String? category,
+    ArticleFeedFilter filter,
+    String query,
+  ) {
+    final clauses = <String>[];
+    final variables = <Variable>[];
+    final feedClauses = ['feeds.id = articles.feed_id'];
     if (feedId == null) {
-      statement.where(feeds.subscribed.equals(true));
+      feedClauses.add('feeds.subscribed = 1');
     } else {
-      statement.where(articles.feedId.equals(feedId));
+      clauses.add('articles.feed_id = ?');
+      variables.add(Variable(feedId));
     }
     final categoryIdentity = category?.trim().toLowerCase();
     if (categoryIdentity?.isNotEmpty == true) {
-      statement.where(feeds.category.lower().equals(categoryIdentity!));
+      feedClauses.add('LOWER(feeds.category) = ?');
+      variables.add(Variable(categoryIdentity!));
     }
-    final normalizedQuery = query.trim().toLowerCase();
-    if (normalizedQuery.isNotEmpty) {
-      statement.where(
-        articles.title.lower().contains(normalizedQuery) |
-            articles.summary.lower().contains(normalizedQuery) |
-            articles.author.lower().contains(normalizedQuery),
+    clauses.add(
+      'EXISTS (SELECT 1 FROM feeds WHERE ${feedClauses.join(' AND ')})',
+    );
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isNotEmpty) {
+      clauses.add(
+        '(LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(author) LIKE ?)',
       );
+      variables.addAll(List.generate(3, (_) => Variable('%$normalized%')));
     }
-    statement.where(switch (filter) {
-      ArticleFeedFilter.all => const Constant(true),
-      ArticleFeedFilter.unread => articles.readAt.isNull(),
-      ArticleFeedFilter.saved => articles.starred.equals(true),
-    });
-    return statement.watchSingle().map((row) => row.read(count) ?? 0);
+    if (filter == ArticleFeedFilter.unread) clauses.add('read_at IS NULL');
+    if (filter == ArticleFeedFilter.saved) clauses.add('starred = 1');
+    return (sql: clauses.join(' AND '), variables: variables);
   }
 
   Future<void> indexSearchItem({
@@ -1022,29 +1048,23 @@ class AppDatabase extends _$AppDatabase {
     }
     if (entries.isEmpty) return;
     final values = entries.values.toList(growable: false);
-    final entityIdsByKind = <String, Set<String>>{};
-    for (final item in values) {
-      entityIdsByKind.putIfAbsent(item.kind, () => {}).add(item.entityId);
-    }
-    // FTS5 cannot index its UNINDEXED identity column. Passing every identity
-    // through json_each removes old rows in one scan per content kind instead
-    // of scanning the virtual table once per refreshed feed item.
-    for (final entry in entityIdsByKind.entries) {
-      await customStatement(
-        'DELETE FROM search_index WHERE kind = ? AND entity_id IN '
-        '(SELECT CAST(value AS TEXT) FROM json_each(?))',
-        [entry.key, jsonEncode(entry.value.toList())],
-      );
-    }
     // Keep large backup imports from building one enormous platform message.
     for (var start = 0; start < values.length; start += 500) {
       final end = (start + 500).clamp(0, values.length);
       await batch((batch) {
         for (final item in values.sublist(start, end)) {
+          final bodyUpdate = item.preserveBody ? '' : 'body = excluded.body, ';
+          final bodyChanged = item.preserveBody
+              ? ''
+              : 'OR body IS NOT excluded.body ';
           batch.customStatement(
-            'INSERT INTO search_index'
+            'INSERT INTO search_documents'
             '(entity_id, kind, title, body, feed_title) '
-            'VALUES (?, ?, ?, ?, ?)',
+            'VALUES (?, ?, ?, ?, ?) '
+            'ON CONFLICT(kind, entity_id) DO UPDATE SET '
+            'title = excluded.title, ${bodyUpdate}feed_title = excluded.feed_title '
+            'WHERE title IS NOT excluded.title $bodyChanged'
+            'OR feed_title IS NOT excluded.feed_title',
             [item.entityId, item.kind, item.title, item.body, item.feedTitle],
           );
         }

@@ -37,6 +37,80 @@ void main() {
     await database.close();
   });
 
+  test(
+    'refresh reads only incoming articles and leaves unchanged history alone',
+    () async {
+      await database.close();
+      final reads = _RefreshReadSizes();
+      database = AppDatabase.forTesting(
+        NativeDatabase.memory().interceptWith(reads),
+      );
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _ReaderFeedAdapter(),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final feed = await repository.subscribe(
+        'https://example.test/reader.xml',
+      );
+      final article = (await database.select(database.articles).get()).single;
+      await (database.update(
+        database.articles,
+      )..where((row) => row.id.equals(article.id))).write(
+        ArticlesCompanion(
+          starred: const Value(true),
+          readAt: Value(DateTime.utc(2026, 9, 8)),
+          contentHtml: const Value('<p>Cached reader text</p>'),
+        ),
+      );
+      await database.customStatement(
+        '''
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
+      INSERT INTO articles(id,feed_id,title,content_html,discovered_at)
+      SELECT 'old-'||x,?,'Older article', '<p>Old content</p>',x FROM n
+    ''',
+        [feed.id],
+      );
+      await database.customStatement(
+        'CREATE TEMP TABLE changed_articles(id TEXT)',
+      );
+      await database.indexSearchItem(
+        entityId: article.id,
+        kind: 'article',
+        title: article.title,
+        body: 'Cached reader text',
+        feedTitle: feed.title,
+      );
+      await database.customStatement(
+        'CREATE TEMP TRIGGER record_article_update AFTER UPDATE ON articles BEGIN INSERT INTO changed_articles VALUES (new.id); END',
+      );
+      reads.largestResult = 0;
+      expect(await repository.refreshFeed(feed), isTrue);
+      expect(reads.largestResult, lessThanOrEqualTo(1));
+      final refreshed = await database.articleById(article.id);
+      expect(refreshed?.starred, isTrue);
+      expect(refreshed?.readAt, isNotNull);
+      expect(refreshed?.contentHtml, '<p>Cached reader text</p>');
+      expect(await database.search('cached reader'), hasLength(1));
+      expect(
+        await database.customSelect('SELECT * FROM changed_articles').get(),
+        isEmpty,
+      );
+      expect(
+        (await database
+                .customSelect('SELECT COUNT(*) AS count FROM articles')
+                .getSingle())
+            .read<int>('count'),
+        10001,
+      );
+    },
+  );
+
   test('podcast preview rejects a non-podcast feed', () async {
     network.close();
     network = SafeNetworkClient.forTesting(
@@ -1013,6 +1087,20 @@ final class _FeedAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+final class _RefreshReadSizes extends QueryInterceptor {
+  int largestResult = 0;
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) async {
+    final rows = await executor.runSelect(statement, args);
+    if (rows.length > largestResult) largestResult = rows.length;
+    return rows;
+  }
 }
 
 final class _ReaderFeedAdapter implements HttpClientAdapter {

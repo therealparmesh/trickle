@@ -355,25 +355,61 @@ final class NostrRepository {
       );
       await _replaceRelays(feed.id, relays);
 
-      final existing = {
-        for (final article in await (_database.select(
-          _database.articles,
-        )..where((row) => row.feedId.equals(feed.id))).get())
-          article.id: article,
-      };
+      final existing = <String, Article>{};
+      final ids = {
+        for (final post in data.posts)
+          stableContentId(feed.id, post.address ?? post.eventId),
+        for (final address in data.deletedAddresses.keys)
+          stableContentId(feed.id, address),
+      }.toList();
+      final deletedEvents = data.deletedEvents.keys.toList();
+      for (final (column, values) in [
+        (_database.articles.id, ids),
+        (_database.articles.sourceEventId, deletedEvents),
+      ]) {
+        for (
+          var start = 0;
+          start < values.length;
+          start += AppDatabase.safeVariableBatchSize
+        ) {
+          final chunk = values.sublist(
+            start,
+            (start + AppDatabase.safeVariableBatchSize).clamp(0, values.length),
+          );
+          final rows =
+              await (_database.select(_database.articles)..where(
+                    (row) => row.feedId.equals(feed.id) & column.isIn(chunk),
+                  ))
+                  .get();
+          for (final article in rows) {
+            existing[article.id] = article;
+          }
+        }
+      }
       final deletedArticleIds = {
         for (final article in existing.values)
           if (_deletionApplies(article, data)) article.id,
       };
       if (deletedArticleIds.isNotEmpty) {
         await _database.customStatement(
-          "DELETE FROM search_index WHERE kind = 'article' "
+          "DELETE FROM search_documents WHERE kind = 'article' "
           'AND entity_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))',
           [jsonEncode(deletedArticleIds.toList())],
         );
-        await (_database.delete(
-          _database.articles,
-        )..where((row) => row.id.isIn(deletedArticleIds))).go();
+        final ids = deletedArticleIds.toList();
+        for (
+          var start = 0;
+          start < ids.length;
+          start += AppDatabase.safeVariableBatchSize
+        ) {
+          final chunk = ids.sublist(
+            start,
+            (start + AppDatabase.safeVariableBatchSize).clamp(0, ids.length),
+          );
+          await (_database.delete(
+            _database.articles,
+          )..where((row) => row.id.isIn(chunk))).go();
+        }
         existing.removeWhere((id, _) => deletedArticleIds.contains(id));
       }
       final searchItems = <SearchIndexEntry>[

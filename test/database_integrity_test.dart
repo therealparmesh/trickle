@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -8,12 +8,115 @@ import 'package:trickle/data/database/app_database.dart';
 
 void main() {
   late AppDatabase database;
+  late _SelectLog queries;
 
   setUp(() {
-    database = AppDatabase.forTesting(NativeDatabase.memory());
+    queries = _SelectLog();
+    database = AppDatabase.forTesting(
+      NativeDatabase.memory().interceptWith(queries),
+    );
   });
 
   tearDown(() => database.close());
+
+  test(
+    'large timelines and unread counts use indexes without loading reader bodies',
+    () async {
+      await database.customStatement(
+        "INSERT INTO feeds(id,title,feed_url,created_at,updated_at) VALUES ('reader','Reader','https://example.test/feed',1,1)",
+      );
+      await database.customStatement('''
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
+      INSERT INTO articles(id,feed_id,title,content_html,published_at,discovered_at)
+      SELECT 'a'||x,'reader','Article '||x,'<p>Retained body</p>',x,x FROM n
+    ''');
+      queries.selects.clear();
+      final items = await database
+          .watchFilteredArticles(
+            limit: 100,
+            sort: ContentSort.newest,
+            filter: ArticleFeedFilter.all,
+          )
+          .first;
+      final statement = queries.selects.single;
+      final plan = await database.executor.runSelect(
+        'EXPLAIN QUERY PLAN ${statement.$1}',
+        statement.$2,
+      );
+      expect(items, hasLength(100));
+      expect(items.first.id, 'a10000');
+      expect(items.last.id, 'a9901');
+      expect(items.every((item) => item.contentHtml == null), isTrue);
+      expect(
+        (await database.articleById('a10000'))?.contentHtml,
+        '<p>Retained body</p>',
+      );
+      final details = plan.map((row) => row['detail']).join('\n');
+      expect(details, contains('idx_articles_global_date'));
+      expect(details, isNot(contains('TEMP B-TREE')));
+
+      queries.selects.clear();
+      expect(await database.watchUnreadArticleCountsByFeed().first, {
+        'reader': 10000,
+      });
+      final countStatement = queries.selects.single;
+      final countPlan = await database.executor.runSelect(
+        'EXPLAIN QUERY PLAN ${countStatement.$1}',
+        countStatement.$2,
+      );
+      final countDetails = countPlan.map((row) => row['detail']).join('\n');
+      expect(countDetails, contains('COVERING INDEX idx_articles_unread_feed'));
+      expect(countDetails, isNot(contains('TEMP B-TREE')));
+    },
+  );
+
+  test('version 5 migration preserves enriched search content and item state', () async {
+    await database.close();
+    final underlying = sqlite3.openInMemory();
+    addTearDown(underlying.close);
+    database = AppDatabase.forTesting(
+      NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+    );
+    await database.customStatement(
+      "INSERT INTO feeds(id,title,feed_url,created_at,updated_at) VALUES ('reader','Reader','https://example.test/feed',1,1)",
+    );
+    await database.customStatement(
+      "INSERT INTO articles(id,feed_id,title,content_html,discovered_at,read_at,starred) VALUES ('article','reader','Title','<p>Offline content</p>',1,2,1)",
+    );
+    await database.indexSearchItem(
+      entityId: 'article',
+      kind: 'article',
+      title: 'Title',
+      body: 'Enriched search content',
+      feedTitle: 'Reader',
+    );
+    for (final action in ['insert', 'update', 'delete']) {
+      await database.customStatement('DROP TRIGGER search_documents_$action');
+    }
+    await database.customStatement('DROP TABLE search_index');
+    await database.customStatement(
+      "CREATE VIRTUAL TABLE search_index USING fts5(entity_id UNINDEXED, kind UNINDEXED, title, body, feed_title, tokenize='unicode61 remove_diacritics 2')",
+    );
+    await database.customStatement(
+      'INSERT INTO search_index SELECT entity_id,kind,title,body,feed_title FROM search_documents',
+    );
+    await database.customStatement('DROP TABLE search_documents');
+    await database.close();
+    underlying.userVersion = 5;
+    database = AppDatabase.forTesting(
+      NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+    );
+    expect(await database.search('enriched'), hasLength(1));
+    final article = await database.articleById('article');
+    expect(article?.starred, isTrue);
+    expect(article?.readAt, isNotNull);
+    expect(article?.contentHtml, '<p>Offline content</p>');
+    await database.customStatement(
+      "DELETE FROM search_documents WHERE kind='article' AND entity_id='article'",
+    );
+    expect(await database.search('enriched'), isEmpty);
+    expect((await database.articleById('article'))?.starred, isTrue);
+  });
 
   test(
     'article queries combine category, state, search, and sorting',
@@ -315,7 +418,7 @@ void main() {
   });
 
   test(
-    'search replacement preserves a different kind with the same id',
+    'search updates preserve document identity and skip unchanged text',
     () async {
       await database.indexSearchItems(const [
         SearchIndexEntry(
@@ -334,6 +437,12 @@ void main() {
         ),
       ]);
 
+      final before = await database
+          .customSelect(
+            'SELECT rowid, kind FROM search_documents ORDER BY rowid',
+          )
+          .get();
+
       await database.indexSearchItem(
         entityId: 'shared',
         kind: 'article',
@@ -345,6 +454,26 @@ void main() {
       expect(await database.search('episode scaling marker'), hasLength(1));
       expect(await database.search('article scaling marker'), isEmpty);
       expect(await database.search('updated article marker'), hasLength(1));
+      final after = await database
+          .customSelect(
+            'SELECT rowid, kind FROM search_documents ORDER BY rowid',
+          )
+          .get();
+      expect(after.map((row) => row.data), before.map((row) => row.data));
+      final changesBefore = await database
+          .customSelect('SELECT total_changes() AS count')
+          .getSingle();
+      await database.indexSearchItem(
+        entityId: 'shared',
+        kind: 'article',
+        title: 'Updated article marker',
+        body: '',
+        feedTitle: 'Feed',
+      );
+      final changesAfter = await database
+          .customSelect('SELECT total_changes() AS count')
+          .getSingle();
+      expect(changesAfter.read<int>('count'), changesBefore.read<int>('count'));
     },
   );
 
@@ -647,6 +776,9 @@ void main() {
     );
     await database.customStatement('DROP INDEX IF EXISTS idx_feeds_protocol');
     await database.customStatement(
+      'DROP INDEX IF EXISTS idx_articles_source_event',
+    );
+    await database.customStatement(
       'DROP INDEX IF EXISTS idx_article_attachments',
     );
     await database.customStatement(
@@ -709,4 +841,18 @@ void main() {
     );
     expect(await database.search('podcast article'), isEmpty);
   });
+}
+
+final class _SelectLog extends QueryInterceptor {
+  final selects = <(String, List<Object?>)>[];
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    selects.add((statement, args));
+    return executor.runSelect(statement, args);
+  }
 }
