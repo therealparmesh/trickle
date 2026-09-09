@@ -10,6 +10,7 @@ import '../services/incoming_share_service.dart';
 import '../services/sync_coordinator.dart';
 import 'app_providers.dart';
 import 'router.dart';
+import 'startup.dart';
 import 'theme.dart';
 
 final class TrickleApp extends ConsumerStatefulWidget {
@@ -36,10 +37,6 @@ class _TrickleAppState extends ConsumerState<TrickleApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_refreshIfNeeded());
-      unawaited(_openPendingShare());
-    });
   }
 
   @override
@@ -87,8 +84,15 @@ class _TrickleAppState extends ConsumerState<TrickleApp>
       debugShowCheckedModeBanner: false,
       theme: TrickleTheme.dark,
       routerConfig: _router,
-      builder: (context, child) =>
-          AdaptiveAppChrome(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => AdaptiveAppChrome(
+        child: StartupGate(
+          onReady: () {
+            unawaited(_refreshIfNeeded());
+            unawaited(_openPendingShare());
+          },
+          child: child ?? const SizedBox.shrink(),
+        ),
+      ),
     );
   }
 

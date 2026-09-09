@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app/app_providers.dart';
+import 'app/startup.dart';
 import 'app/theme.dart';
 import 'app/trickle_app.dart';
 import 'data/database/app_database.dart';
@@ -22,7 +23,6 @@ import 'data/repositories/settings_repository.dart';
 import 'data/security/private_feed_store.dart';
 import 'features/downloads/download_coordinator.dart';
 import 'features/player/trickle_audio_handler.dart';
-import 'presentation/widgets/common.dart';
 import 'services/background_refresh_service.dart';
 import 'services/backup_service.dart';
 import 'services/notification_service.dart';
@@ -81,47 +81,12 @@ final class _TrickleBootstrapState extends State<_TrickleBootstrap> {
           title: 'trickle',
           debugShowCheckedModeBanner: false,
           theme: TrickleTheme.dark,
-          home: Scaffold(
-            body: AppBackdrop(
-              child: SafeArea(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const TrickleMark(size: 92),
-                        const SizedBox(height: 18),
-                        Text(
-                          'trickle',
-                          style: Theme.of(context).textTheme.displaySmall
-                              ?.copyWith(fontSize: 52, letterSpacing: 0.45),
-                        ),
-                        const SizedBox(height: 28),
-                        if (snapshot.hasError) ...[
-                          const Text(
-                            'Initialization failed. Your local data was not changed.',
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 20),
-                          FilledButton(
-                            onPressed: () {
-                              setState(
-                                () => _runtime = Future<_TrickleRuntime>(
-                                  _createRuntime,
-                                ),
-                              );
-                            },
-                            child: const Text('Try again'),
-                          ),
-                        ] else
-                          const SizedBox(height: 42, child: LoadingView()),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          home: LaunchView(
+            onRetry: snapshot.hasError
+                ? () => setState(
+                    () => _runtime = Future<_TrickleRuntime>(_createRuntime),
+                  )
+                : null,
           ),
         );
       },

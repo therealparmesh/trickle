@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.2.3
-- Build: 54
+- Version: 1.2.4
+- Build: 56
 
 ## Name
 
@@ -99,9 +99,9 @@ The checked-in 1320×2868 iPhone images were regenerated and visually verified a
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.2.3 release notes
+## Version 1.2.4 release notes
 
-Large libraries load and refresh faster. Backups now handle larger collections and include your reader text size.
+Smoother startup: the logo stays in place while your library loads, and navigation effects no longer flash an outdated layout. Effects are disabled when Reduce Motion is on.
 
 ## Privacy declarations
 

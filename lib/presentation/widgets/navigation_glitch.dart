@@ -22,7 +22,7 @@ final class NavigationGlitch extends StatefulWidget {
 }
 
 class _NavigationGlitchState extends State<NavigationGlitch>
-    with RouteAware, SingleTickerProviderStateMixin {
+    with RouteAware, SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // The shader intentionally distorts the snapshot, so more resolution only
   // increases transient texture memory without improving the visible effect.
   static const _maxCapturePixelRatio = 1.5;
@@ -41,11 +41,26 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   int _captureGeneration = 0;
   ModalRoute<dynamic>? _route;
 
+  bool get _reduceMotion =>
+      MediaQuery.disableAnimationsOf(context) ||
+      View.of(context).platformDispatcher.accessibilityFeatures.reduceMotion;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAccessibilityFeatures() {
+    if (_reduceMotion) _cancelEffect(rebuild: true);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _subscribeToRoute();
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (_reduceMotion) {
       _started = true;
       _cancelEffect();
       return;
@@ -80,8 +95,13 @@ class _NavigationGlitchState extends State<NavigationGlitch>
     _scheduleEffect();
   }
 
+  @override
+  void didPushNext() {
+    _cancelEffect(rebuild: true);
+  }
+
   void _scheduleEffect() {
-    if (!mounted || MediaQuery.disableAnimationsOf(context)) return;
+    if (!mounted || _reduceMotion) return;
     _cancelEffect(rebuild: true);
     final generation = _captureGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,13 +116,17 @@ class _NavigationGlitchState extends State<NavigationGlitch>
 
     ui.Image? capturedImage;
     try {
+      // Shader loading can outlast the first layout. Capture only afterward so
+      // the overlay never replays a frame from before the shader was ready.
+      final program = await _program;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || generation != _captureGeneration) return;
       capturedImage = await renderObject.toImage(
         pixelRatio: math.min(
           MediaQuery.devicePixelRatioOf(context),
           _maxCapturePixelRatio,
         ),
       );
-      final program = await _program;
       if (!mounted || generation != _captureGeneration) {
         capturedImage.dispose();
         return;
@@ -154,6 +178,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   @override
   void dispose() {
     _captureGeneration++;
+    WidgetsBinding.instance.removeObserver(this);
     widget.routeObserver?.unsubscribe(this);
     _animation.dispose();
     _shader?.dispose();
@@ -198,7 +223,7 @@ final class _GlitchPainter extends CustomPainter {
 
   static const _distortionLevel = 0.018;
   static const _colorChannelLevel = 0.006;
-  static const _glitchChance = 72.0;
+  static const _glitchChance = 100.0;
   static const _glitchSlices = 4.0;
 
   final ui.Image image;

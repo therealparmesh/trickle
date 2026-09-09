@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Large libraries load and refresh faster. Backups now handle larger collections and include your reader text size.
+Requires iOS 17 or later. Smoother startup: the logo stays in place while your library loads, and navigation effects no longer flash an outdated layout. Effects are disabled when Reduce Motion is on.
 
 ## What to test
 
@@ -65,6 +65,6 @@ Please test the combined podcast and feed flow:
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views
-- Cold-launch the app and confirm the logo appears directly on the dark background without a light square
+- Cold-launch the app with an empty library and an existing library, including a restored Now Playing item. The logo should stay centered on the dark background until Home appears, without jumping loading sections or a stale-layout glitch. Repeat offline and with Reduce Motion enabled
 
 Report the device model, OS version, network state, and affected feed or episode. Never include private-feed credentials or complete private-feed URLs.

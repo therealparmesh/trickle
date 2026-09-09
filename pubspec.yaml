@@ -1,7 +1,7 @@
 name: trickle
 description: "A fast podcast player and feed reader that does not collect user information."
 publish_to: none
-version: 1.2.3+54
+version: 1.2.4+56
 
 environment:
   sdk: ^3.12.2
@@ -64,6 +64,7 @@ flutter:
   shaders:
     - packages/animated_glitch/shader/glitch.frag
   assets:
+    - assets/brand/trickle-launch.png
     - assets/fonts/OFL-ChakraPetch.txt
     - assets/fonts/OFL-SpaceGrotesk.txt
   fonts:

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:trickle/app/app_providers.dart';
+import 'package:trickle/app/startup.dart';
 import 'package:trickle/app/theme.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/core/content_filters.dart';
@@ -328,6 +329,80 @@ void main() {
     expect(provider.policy, ResizeImagePolicy.fit);
     expect(image.fit, BoxFit.cover);
   });
+
+  testWidgets(
+    'startup reveals one settled layout and does not hide refreshes',
+    (tester) async {
+      final episodes = StreamController<List<Episode>>();
+      final feeds = StreamController<List<Feed>>();
+      final articles = StreamController<List<Article>>();
+      final counts = StreamController<int>();
+      final media = StreamController<MediaItem?>();
+      var readyCalls = 0;
+      addTearDown(episodes.close);
+      addTearDown(feeds.close);
+      addTearDown(articles.close);
+      addTearDown(counts.close);
+      addTearDown(media.close);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recentEpisodesProvider.overrideWith((_) => episodes.stream),
+            feedsProvider.overrideWith((_) => feeds.stream),
+            readerUnreadArticlesProvider(
+              5,
+            ).overrideWith((_) => articles.stream),
+            unreadArticleCountProvider.overrideWith((_) => counts.stream),
+            currentMediaProvider.overrideWith((_) => media.stream),
+          ],
+          child: MaterialApp(
+            theme: TrickleTheme.dark,
+            home: MediaQuery(
+              data: const MediaQueryData(
+                padding: EdgeInsets.only(top: 60, bottom: 34),
+              ),
+              child: StartupGate(
+                onReady: () {
+                  expect(find.text('Home content'), findsOneWidget);
+                  readyCalls++;
+                },
+                child: const Scaffold(body: Text('Home content')),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Home content'), findsNothing);
+      expect(tester.getCenter(find.byType(Image)), const Offset(400, 300));
+      episodes.add([]);
+      feeds.add([]);
+      counts.add(0);
+      media.add(null);
+      await tester.pump();
+      expect(find.byType(LaunchView), findsOneWidget);
+      expect(readyCalls, 0);
+
+      // A failed read must reveal the route's error UI, not strand the splash.
+      articles.addError(StateError('read unavailable'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('Home content'), findsOneWidget);
+      expect(find.byType(LaunchView), findsNothing);
+      expect(readyCalls, 1);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(StartupGate)),
+      );
+      container.invalidate(recentEpisodesProvider);
+      await tester.pump();
+      expect(find.text('Home content'), findsOneWidget);
+      expect(find.byType(LaunchView), findsNothing);
+      expect(tester.takeException(), isNull);
+      expect(readyCalls, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('home command flow stacks at accessibility text sizes', (
     tester,
@@ -1044,25 +1119,54 @@ void main() {
       expect(glitch, findsOneWidget);
       expect(pageKey.currentState, same(initialState));
 
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: TrickleTheme.dark,
-          home: MediaQuery(
-            data: const MediaQueryData(disableAnimations: true),
-            child: NavigationGlitch(
-              key: const ValueKey('reduced-motion'),
-              child: _NavigationTestPage(
-                key: GlobalKey<_NavigationTestPageState>(),
-                title: 'Search',
-              ),
-            ),
+      unawaited(
+        navigatorKey.currentState!.push(
+          PageRouteBuilder<void>(
+            transitionDuration: Duration.zero,
+            pageBuilder: (_, _, _) => const Scaffold(body: Text('Next')),
           ),
         ),
       );
       await tester.pump();
-
       expect(glitch, findsNothing);
-      expect(find.bySemanticsLabel('Search'), findsOneWidget);
+
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      for (final features in const [
+        FakeAccessibilityFeatures(reduceMotion: true),
+        FakeAccessibilityFeatures(disableAnimations: true),
+      ]) {
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: TrickleTheme.dark,
+            home: NavigationGlitch(
+              key: UniqueKey(),
+              child: _NavigationTestPage(title: 'Search'),
+            ),
+          ),
+        );
+        await _pumpUntilGlitch(tester, glitch);
+        expect(glitch, findsOneWidget);
+
+        tester.platformDispatcher.accessibilityFeaturesTestValue = features;
+        await tester.pump();
+        expect(glitch, findsNothing);
+        expect(find.bySemanticsLabel('Search'), findsOneWidget);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: TrickleTheme.dark,
+            home: NavigationGlitch(
+              key: UniqueKey(),
+              child: _NavigationTestPage(title: 'Search'),
+            ),
+          ),
+        );
+        await _pumpUntilGlitch(tester, glitch);
+        expect(glitch, findsNothing);
+      }
       expect(tester.takeException(), isNull);
       semantics.dispose();
     },

@@ -32,6 +32,8 @@ The home flow starts with a horizontally scrolling two-row shelf of recent episo
 
 The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Route changes use a brief full-surface signal glitch after an instantaneous handoff and skip the effect when reduced motion is enabled. Persistent audio and video hosts stay outside the effect so navigation cannot reset playback. Playback, Picture in Picture, article reading, and in-place controls remain stable through navigation. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 
+On launch, the centered mark stays in place until Home's initial local data and player state are available. Home then appears without intermediate loading sections. This does not wait for network refreshes or add a timed splash delay. The navigation effect captures the rendered page only after its shader is ready.
+
 ## Prerequisites
 
 - Flutter 3.44.4 or later with Dart 3.12.2 or later; the current release is verified with Flutter 3.47.2
