@@ -1054,12 +1054,47 @@ void main() {
   });
 
   testWidgets(
-    'navigation glitch preserves state, replays, and respects reduced motion',
+    'navigation glitch handles lifecycle, preserves state, and respects reduced motion',
     (tester) async {
+      final glitch = find.byKey(const ValueKey('navigation-glitch-overlay'));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      addTearDown(() {
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+      });
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: NavigationGlitch(child: Scaffold(body: Text('Home'))),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(glitch, findsNothing);
+      expect(find.text('Home'), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _pumpUntilGlitch(tester, glitch);
+      expect(glitch, findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(glitch, findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _pumpUntilGlitch(tester, glitch);
+      expect(glitch, findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(glitch, findsNothing);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(glitch, findsNothing);
+      expect(find.text('Home'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
       final semantics = tester.ensureSemantics();
       final observer = RouteObserver<ModalRoute<dynamic>>();
       final navigatorKey = GlobalKey<NavigatorState>();
-      final glitch = find.byKey(const ValueKey('navigation-glitch-overlay'));
       final pageKey = GlobalKey<_NavigationTestPageState>();
 
       await tester.pumpWidget(

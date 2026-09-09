@@ -38,6 +38,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   ui.Image? _snapshot;
   ui.FragmentShader? _shader;
   bool _started = false;
+  bool _pending = false;
   int _captureGeneration = 0;
   ModalRoute<dynamic>? _route;
 
@@ -54,6 +55,15 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   @override
   void didChangeAccessibilityFeatures() {
     if (_reduceMotion) _cancelEffect(rebuild: true);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_pending) _scheduleEffect();
+    } else {
+      _cancelEffect(rebuild: true, keepPending: true);
+    }
   }
 
   @override
@@ -103,16 +113,19 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   void _scheduleEffect() {
     if (!mounted || _reduceMotion) return;
     _cancelEffect(rebuild: true);
+    _pending = true;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
     final generation = _captureGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_captureRoute(generation));
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  Future<void> _captureRoute(int generation) async {
+  Future<void> _captureRoute(int generation, {bool retry = true}) async {
     if (!mounted || generation != _captureGeneration) return;
-    final renderObject = _captureBoundaryKey.currentContext?.findRenderObject();
-    if (renderObject is! RenderRepaintBoundary) return;
 
     ui.Image? capturedImage;
     try {
@@ -121,28 +134,37 @@ class _NavigationGlitchState extends State<NavigationGlitch>
       final program = await _program;
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || generation != _captureGeneration) return;
-      capturedImage = await renderObject.toImage(
+      final renderObject = _captureBoundaryKey.currentContext
+          ?.findRenderObject();
+      if (renderObject is! RenderRepaintBoundary) {
+        _pending = false;
+        return;
+      }
+      capturedImage = renderObject.toImageSync(
         pixelRatio: math.min(
           MediaQuery.devicePixelRatioOf(context),
           _maxCapturePixelRatio,
         ),
       );
-      if (!mounted || generation != _captureGeneration) {
-        capturedImage.dispose();
-        return;
-      }
       _shader ??= program.fragmentShader();
     } on Object {
       capturedImage?.dispose();
+      if (!mounted || generation != _captureGeneration) return;
+      if (retry) {
+        unawaited(_captureRoute(generation, retry: false));
+      } else {
+        _pending = false;
+      }
       return;
     }
 
-    if (!mounted || generation != _captureGeneration) {
-      capturedImage.dispose();
-      return;
-    }
     setState(() => _snapshot = capturedImage);
-    unawaited(_animation.forward(from: 0));
+    // Start the clock only after the overlay's first frame has been painted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && generation == _captureGeneration) {
+        unawaited(_animation.forward(from: 0));
+      }
+    });
   }
 
   void _handleAnimationStatus(AnimationStatus status) {
@@ -151,13 +173,15 @@ class _NavigationGlitchState extends State<NavigationGlitch>
 
   void _finishEffect() {
     if (!mounted) return;
+    _pending = false;
     _animation.reset();
     final image = _snapshot;
     setState(() => _snapshot = null);
     if (image != null) _disposeAfterFrame(image);
   }
 
-  void _cancelEffect({bool rebuild = false}) {
+  void _cancelEffect({bool rebuild = false, bool keepPending = false}) {
+    if (!keepPending) _pending = false;
     _captureGeneration++;
     _animation
       ..stop()
