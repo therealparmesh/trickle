@@ -612,6 +612,13 @@ void main() {
         autoQueue: true,
         category: null,
       );
+      await (database.update(
+        database.feeds,
+      )..where((row) => row.id.equals(subscribed.id))).write(
+        const FeedsCompanion(
+          imageUrl: Value('https://example.test/current-artwork.png'),
+        ),
+      );
       network.close();
       network = SafeNetworkClient.forTesting(
         Dio()..httpClientAdapter = _FeedTitleAdapter('Current response'),
@@ -627,6 +634,7 @@ void main() {
 
       final refreshed = await database.feedById(subscribed.id);
       expect(refreshed?.title, 'Current response');
+      expect(refreshed?.imageUrl, 'https://example.test/current-artwork.png');
       expect(refreshed?.autoDownload, isTrue);
       expect(refreshed?.autoDownloadLimit, 4);
       expect(refreshed?.notifications, isTrue);

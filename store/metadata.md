@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.2.5
-- Build: 57
+- Version: 1.2.6
+- Build: 58
 
 ## Name
 
@@ -84,7 +84,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-The checked-in 1320×2868 iPhone images were regenerated and visually verified against 1.2 on August 26, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
+The checked-in 1320×2868 iPhone images were recaptured and visually verified against 1.2.6 on September 12, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
 
 1. Home
 2. Podcast
@@ -99,9 +99,9 @@ The checked-in 1320×2868 iPhone images were regenerated and visually verified a
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.2.5 release notes
+## Version 1.2.6 release notes
 
-The Home screen's glitch effect now waits until the app is visible and ready. Reduce Motion still turns these effects off.
+Feed artwork now appears consistently in Sources and feed details, including YouTube channels and playlists. If an item image fails to load, trickle uses the source artwork instead. Refreshing a feed no longer clears its existing artwork when the feed omits an image.
 
 ## Privacy declarations
 

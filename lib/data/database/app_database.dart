@@ -508,6 +508,27 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  Stream<String?> watchRecentFeedImage(String feedId) {
+    // Bound work for text-only sources; the existing feed/date index serves
+    // this query without loading article bodies or scanning old history.
+    return customSelect(
+      '''
+      SELECT image_url FROM (
+        SELECT image_url, content_warning, published_at, discovered_at, id
+        FROM articles WHERE feed_id = ?
+        ORDER BY published_at DESC, discovered_at DESC, id
+        LIMIT 20
+      )
+      WHERE length(trim(coalesce(image_url, ''))) > 0
+        AND length(trim(coalesce(content_warning, ''))) = 0
+      ORDER BY published_at DESC, discovered_at DESC, id
+      LIMIT 1
+      ''',
+      variables: [Variable(feedId)],
+      readsFrom: {articles},
+    ).watch().map((rows) => rows.firstOrNull?.read<String>('image_url'));
+  }
+
   Stream<List<Episode>> watchRecentEpisodes({int limit = 50}) {
     return (select(episodes)
           ..where((_) => _subscribedPodcast())

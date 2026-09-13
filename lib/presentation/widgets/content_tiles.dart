@@ -228,6 +228,16 @@ final class _PodcastPreviewEpisodeTileState
                     ?.toString(),
                 size: 58,
                 radius: 5,
+                fallback:
+                    episode.imageUrl != null &&
+                        widget.fallbackArtworkUrl != null &&
+                        episode.imageUrl != widget.fallbackArtworkUrl
+                    ? Artwork(
+                        url: widget.fallbackArtworkUrl.toString(),
+                        size: 58,
+                        radius: 5,
+                      )
+                    : null,
               ),
               const SizedBox(width: 12),
               Expanded(

@@ -747,12 +747,6 @@ final class _FeedHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stackIdentity = MediaQuery.textScalerOf(context).scale(1) > 1.8;
-    final youtubeKind = youtubeFeedKind(Uri.tryParse(feed.feedUrl));
-    final artworkIcon = feed.protocol == FeedProtocol.nostr.index
-        ? Icons.person_outline_rounded
-        : youtubeKind == null
-        ? Icons.rss_feed_rounded
-        : Icons.ondemand_video_rounded;
     final kind =
         FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
     final accent = kind == FeedKind.podcast
@@ -769,7 +763,7 @@ final class _FeedHero extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (stackIdentity) ...[
-                FeedArtwork(feed: feed, size: 88, radius: 8, icon: artworkIcon),
+                FeedArtwork(feed: feed, size: 88, radius: 8),
                 if (subscriptionControl != null) ...[
                   const SizedBox(height: 12),
                   Align(
@@ -785,12 +779,7 @@ final class _FeedHero extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FeedArtwork(
-                      feed: feed,
-                      size: 88,
-                      radius: 8,
-                      icon: artworkIcon,
-                    ),
+                    FeedArtwork(feed: feed, size: 88, radius: 8),
                     const SizedBox(width: 14),
                     Expanded(child: _FeedIdentity(feed: feed)),
                   ],
@@ -801,12 +790,7 @@ final class _FeedHero extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    FeedArtwork(
-                      feed: feed,
-                      size: 124,
-                      radius: 10,
-                      icon: artworkIcon,
-                    ),
+                    FeedArtwork(feed: feed, size: 124, radius: 10),
                     const SizedBox(width: 20),
                     Expanded(
                       child: Column(

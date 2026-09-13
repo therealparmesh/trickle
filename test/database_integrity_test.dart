@@ -20,6 +20,53 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'source artwork is bounded, ordered, and excludes content warnings',
+    () async {
+      await database.customStatement(
+        "INSERT INTO feeds(id,title,feed_url,created_at,updated_at) VALUES ('reader','Reader','https://example.test/feed',1,1)",
+      );
+      await database.customStatement('''
+      WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
+      INSERT INTO articles(id,feed_id,title,image_url,published_at,discovered_at)
+      SELECT 'a'||x,'reader','Article '||x,
+        CASE WHEN x=1 THEN 'https://example.test/old.png' ELSE NULL END,x,x FROM n
+    ''');
+      queries.selects.clear();
+      expect(await database.watchRecentFeedImage('reader').first, isNull);
+      final statement = queries.selects.single;
+      final plan = await database.executor.runSelect(
+        'EXPLAIN QUERY PLAN ${statement.$1}',
+        statement.$2,
+      );
+      expect(
+        plan.map((row) => row['detail']).join('\n'),
+        contains('idx_articles_feed_date'),
+      );
+      await database.customUpdate(
+        '''
+      UPDATE articles SET image_url='https://example.test/'||id||'.png',
+        content_warning=CASE WHEN id='a10000' THEN 'Sensitive' ELSE NULL END
+      WHERE id IN ('a9999','a10000')
+    ''',
+        updates: {database.articles},
+      );
+      expect(
+        await database.watchRecentFeedImage('reader').first,
+        'https://example.test/a9999.png',
+      );
+      await database.customUpdate(
+        "UPDATE articles SET content_warning='' WHERE id='a10000'",
+        updates: {database.articles},
+      );
+      expect(
+        await database.watchRecentFeedImage('reader').first,
+        'https://example.test/a10000.png',
+      );
+      expect(await database.watchRecentFeedImage('missing').first, isNull);
+    },
+  );
+
+  test(
     'large timelines and unread counts use indexes without loading reader bodies',
     () async {
       await database.customStatement(

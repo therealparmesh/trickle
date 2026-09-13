@@ -93,6 +93,8 @@ The latest audio or video selection owns playback. Native player commands are or
 
 ### Performance
 
+Artwork uses the same fallback rules across lists and detail views. An unavailable item image falls back to source artwork. Sources without usable artwork can use an image from their 20 most recent items, excluding content warnings. This is a bounded local query using the existing feed/date index; it does not fetch publisher pages. Refresh preserves existing source artwork when a feed omits it. Remote images can be disabled in Settings, and private-feed headers are sent only to the matching origin.
+
 Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit cached reader HTML. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Network deadlines are 10 seconds for connections and video sources, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
 
 ## Project layout

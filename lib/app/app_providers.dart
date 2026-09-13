@@ -106,6 +106,10 @@ final _feedsByIdProvider = Provider<Map<String, Feed>>((ref) {
 final feedSnapshotProvider = Provider.autoDispose.family<Feed?, String>(
   (ref, id) => ref.watch(_feedsByIdProvider.select((feeds) => feeds[id])),
 );
+final recentFeedImageProvider = StreamProvider.autoDispose
+    .family<String?, String>(
+      (ref, id) => ref.watch(databaseProvider).watchRecentFeedImage(id),
+    );
 final recentEpisodesProvider = StreamProvider<List<Episode>>(
   (ref) => ref.watch(databaseProvider).watchRecentEpisodes(),
 );

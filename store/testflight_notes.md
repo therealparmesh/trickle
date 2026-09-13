@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. The Home screen's glitch effect now waits until the app is visible and ready. Reduce Motion still turns these effects off.
+Requires iOS 17 or later. Feed artwork now appears consistently in Sources and feed details, including YouTube channels and playlists. If an item image fails to load, trickle uses the source artwork instead. Refreshing a feed no longer clears its existing artwork when the feed omits an image.
 
 ## What to test
 
@@ -49,6 +49,7 @@ Please test the combined podcast and feed flow:
 - Close the in-app Now Playing bar with its X; it must discard the player so reopening starts fresh
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews; images should crop without stretching
+- Compare source artwork in Sources and source details, including YouTube channels and playlists without a source image. A recent item image should appear in both. Check item images in Home, Feed items, Saved, and source timelines; a failed item image should fall back to source artwork. Content-warning images must not appear as source artwork, and disabling Remote images must suppress image loading and previews
 - Fail the initial video page and verify the same player loads the official source URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists

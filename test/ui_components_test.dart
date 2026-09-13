@@ -330,6 +330,164 @@ void main() {
     expect(image.fit, BoxFit.cover);
   });
 
+  testWidgets('artwork falls back after fetch and decode failures', (
+    tester,
+  ) async {
+    for (final badPath in <String?>[null, 'README.md']) {
+      final requests = <String>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            remoteImagesProvider.overrideWith((_) => Stream.value(true)),
+            safeImageFileProvider.overrideWith((_, request) async {
+              requests.add(request.url);
+              if (request.url.endsWith('bad.png')) {
+                if (badPath == null) throw StateError('Image unavailable');
+                return badPath;
+              }
+              return 'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@2x.png';
+            }),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: Artwork(
+                url: 'https://example.test/bad.png',
+                fallback: Artwork(url: 'https://example.test/good.png'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 10 && requests.length < 2; i++) {
+          await tester.pump();
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      await tester.pumpAndSettle();
+      expect(requests, [
+        'https://example.test/bad.png',
+        'https://example.test/good.png',
+      ]);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets(
+    'source artwork shares recent thumbnails and honors remote images',
+    (tester) async {
+      final feed = _readerFeed(
+        id: 'videos',
+        title: 'Videos',
+        category: null,
+        now: DateTime.utc(2026, 9, 12),
+      );
+      var lookups = 0;
+      final requests = <SafeImageRequest>[];
+      final images = StreamController<bool>();
+      addTearDown(images.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            remoteImagesProvider.overrideWith((_) => images.stream),
+            recentFeedImageProvider.overrideWith((_, _) {
+              lookups++;
+              return Stream.value('https://example.test/video.png');
+            }),
+            safeImageFileProvider.overrideWith((_, request) async {
+              requests.add(request);
+              return 'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-76x76@2x.png';
+            }),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Column(
+                children: [
+                  FeedArtwork(feed: feed, size: 54),
+                  FeedArtwork(feed: feed, size: 88),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      images.add(false);
+      await tester.pumpAndSettle();
+      expect(lookups, 0);
+      expect(requests, isEmpty);
+      images.add(true);
+      await tester.pumpAndSettle();
+      expect(lookups, 1);
+      expect(requests.map((request) => request.url), [
+        'https://example.test/video.png',
+      ]);
+      expect(find.byType(Image), findsNWidgets(2));
+      images.add(false);
+      await tester.pumpAndSettle();
+      expect(find.byType(Image), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'private item artwork scopes headers separately for each fallback',
+    (tester) async {
+      final feed = _privateFeed().copyWith(
+        imageUrl: const Value('https://cdn.example.test/feed.png'),
+      );
+      final article = Article(
+        id: 'private-item',
+        feedId: feed.id,
+        title: 'Item',
+        imageUrl: 'https://example.test/item.png',
+        discoveredAt: DateTime.utc(2026),
+        contentFormat: 0,
+        mediaKind: 0,
+        starred: false,
+      );
+      for (final hasSecret in [false, true]) {
+        final requests = <SafeImageRequest>[];
+        await tester.pumpWidget(
+          ProviderScope(
+            key: ValueKey(hasSecret),
+            overrides: [
+              feedSnapshotProvider.overrideWith((_, _) => feed),
+              remoteImagesProvider.overrideWith((_) => Stream.value(true)),
+              privateFeedSecretProvider.overrideWith(
+                (_, _) async => hasSecret
+                    ? PrivateFeedSecret(
+                        url: Uri.parse('https://example.test/feed.xml'),
+                        headers: const {'Authorization': 'test-secret'},
+                      )
+                    : null,
+              ),
+              safeImageFileProvider.overrideWith((_, request) async {
+                requests.add(request);
+                return null;
+              }),
+            ],
+            child: MaterialApp(
+              home: Scaffold(body: ArticleArtwork(article: article)),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (!hasSecret) {
+          expect(requests, isEmpty);
+          continue;
+        }
+        expect(requests.map((request) => request.url), [
+          'https://example.test/item.png',
+          'https://cdn.example.test/feed.png',
+        ]);
+        expect(requests.first.headers, {'Authorization': 'test-secret'});
+        expect(requests.last.headers, isEmpty);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
   testWidgets(
     'startup reveals one settled layout and does not hide refreshes',
     (tester) async {

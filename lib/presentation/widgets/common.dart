@@ -8,6 +8,7 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../core/url_identity.dart';
+import '../../core/youtube_support.dart';
 import '../../data/database/app_database.dart';
 import 'design_system.dart';
 
@@ -917,6 +918,7 @@ final class Artwork extends ConsumerWidget {
     this.aspectRatio = 1,
     this.radius = 9,
     this.icon = Icons.graphic_eq_rounded,
+    this.fallback,
     super.key,
   }) : assert(aspectRatio > 0);
 
@@ -926,18 +928,22 @@ final class Artwork extends ConsumerWidget {
   final double aspectRatio;
   final double radius;
   final IconData icon;
+  final Widget? fallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final remoteImages = ref.watch(remoteImagesProvider).value ?? false;
     final normalizedUrl = url?.trim();
-    final localPath = remoteImages && normalizedUrl?.isNotEmpty == true
-        ? ref
-              .watch(
-                safeImageFileProvider((url: normalizedUrl!, headers: headers)),
-              )
-              .value
+    final imageFile = remoteImages && normalizedUrl?.isNotEmpty == true
+        ? ref.watch(
+            safeImageFileProvider((url: normalizedUrl!, headers: headers)),
+          )
         : null;
+    final localPath = imageFile?.value;
+    final failed =
+        normalizedUrl?.isNotEmpty != true ||
+        imageFile?.hasError == true ||
+        (imageFile?.hasValue == true && localPath == null);
     final height = size / aspectRatio;
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
     final pixelWidth = (size * pixelRatio).round();
@@ -950,7 +956,7 @@ final class Artwork extends ConsumerWidget {
           width: size,
           height: height,
           child: localPath == null
-              ? _placeholder()
+              ? (remoteImages && failed ? fallback : null) ?? _placeholder()
               : Image(
                   key: ValueKey(localPath),
                   image: ResizeImage(
@@ -961,7 +967,7 @@ final class Artwork extends ConsumerWidget {
                   ),
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
-                  errorBuilder: (_, _, _) => _placeholder(),
+                  errorBuilder: (_, _, _) => fallback ?? _placeholder(),
                 ),
         ),
       ),
@@ -998,35 +1004,12 @@ final class EpisodeArtwork extends ConsumerWidget {
     if (feed == null) {
       return Artwork(url: null, size: size, radius: radius);
     }
-    final episodeUrl = episode.imageUrl?.trim();
-    final feedUrl = feed.imageUrl?.trim();
-    final url = episodeUrl?.isNotEmpty == true
-        ? episodeUrl
-        : (feedUrl?.isNotEmpty == true ? feedUrl : null);
-    if (!feed.isPrivate || url == null) {
-      return Artwork(url: url, size: size, radius: radius);
-    }
-    return ref
-        .watch(privateFeedSecretProvider(feed.id))
-        .when(
-          data: (secret) {
-            if (secret == null) {
-              return Artwork(url: null, size: size, radius: radius);
-            }
-            final imageUri = Uri.tryParse(url);
-            final headers = imageUri != null && sameOrigin(imageUri, secret.url)
-                ? secret.headers
-                : const <String, String>{};
-            return Artwork(
-              url: url,
-              headers: headers,
-              size: size,
-              radius: radius,
-            );
-          },
-          loading: () => Artwork(url: null, size: size, radius: radius),
-          error: (_, _) => Artwork(url: null, size: size, radius: radius),
-        );
+    return _SourceArtwork(
+      feed: feed,
+      urls: [episode.imageUrl, feed.imageUrl],
+      size: size,
+      radius: radius,
+    );
   }
 }
 
@@ -1080,61 +1063,71 @@ final class ArticleArtwork extends ConsumerWidget {
     final preview = remoteImages && !hasArticleUrl
         ? ref.watch(articlePreviewImageProvider(article.id)).value
         : null;
-    Widget placeholder() => Artwork(
-      url: null,
-      size: size,
-      aspectRatio: aspectRatio,
-      radius: radius,
-      icon: Icons.article_outlined,
-    );
     final feed = ref.watch(feedSnapshotProvider(article.feedId));
-    if (feed == null) return placeholder();
-    final feedUrl = feed.imageUrl?.trim();
-    final url = hasArticleUrl
-        ? articleUrl
-        : (preview?.trim().isNotEmpty == true
-              ? preview!.trim()
-              : (feedUrl?.isNotEmpty == true ? feedUrl : null));
-    if (!feed.isPrivate || url == null) {
+    if (feed == null) {
       return Artwork(
-        url: url,
         size: size,
         aspectRatio: aspectRatio,
         radius: radius,
         icon: Icons.article_outlined,
       );
     }
-    return ref
-        .watch(privateFeedSecretProvider(feed.id))
-        .when(
-          data: (secret) {
-            if (secret == null) return placeholder();
-            final imageUri = Uri.tryParse(url);
-            final headers = imageUri != null && sameOrigin(imageUri, secret.url)
-                ? secret.headers
-                : const <String, String>{};
-            return Artwork(
-              url: url,
-              headers: headers,
-              size: size,
-              aspectRatio: aspectRatio,
-              radius: radius,
-              icon: Icons.article_outlined,
-            );
-          },
-          loading: placeholder,
-          error: (_, _) => placeholder(),
-        );
+    return _SourceArtwork(
+      feed: feed,
+      urls: [hasArticleUrl ? articleUrl : preview, feed.imageUrl],
+      size: size,
+      aspectRatio: aspectRatio,
+      radius: radius,
+      icon: Icons.article_outlined,
+    );
   }
 }
 
-final class FeedArtwork extends ConsumerWidget {
+final class FeedArtwork extends StatelessWidget {
   const FeedArtwork({
     required this.feed,
     this.size = 56,
     this.radius = 9,
-    this.icon = Icons.rss_feed_rounded,
     super.key,
+  });
+
+  final Feed feed;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = feed.protocol == FeedProtocol.nostr.index
+        ? Icons.person_outline_rounded
+        : feed.kind == FeedKind.podcast.index
+        ? Icons.graphic_eq_rounded
+        : youtubeFeedKind(Uri.tryParse(feed.feedUrl)) != null
+        ? Icons.ondemand_video_rounded
+        : Icons.article_outlined;
+    return _SourceArtwork(
+      feed: feed,
+      urls: [feed.imageUrl],
+      size: size,
+      radius: radius,
+      icon: icon,
+      fallback: feed.kind == FeedKind.reader.index
+          ? _RecentFeedArtwork(
+              feed: feed,
+              size: size,
+              radius: radius,
+              icon: icon,
+            )
+          : null,
+    );
+  }
+}
+
+final class _RecentFeedArtwork extends ConsumerWidget {
+  const _RecentFeedArtwork({
+    required this.feed,
+    required this.size,
+    required this.radius,
+    required this.icon,
   });
 
   final Feed feed;
@@ -1143,30 +1136,79 @@ final class FeedArtwork extends ConsumerWidget {
   final IconData icon;
 
   @override
+  Widget build(BuildContext context, WidgetRef ref) => _SourceArtwork(
+    feed: feed,
+    urls: [ref.watch(recentFeedImageProvider(feed.id)).value],
+    size: size,
+    radius: radius,
+    icon: icon,
+  );
+}
+
+/// Share fallback ordering and same-origin credentials across artwork views.
+final class _SourceArtwork extends ConsumerWidget {
+  const _SourceArtwork({
+    required this.feed,
+    required this.urls,
+    required this.size,
+    required this.radius,
+    this.aspectRatio = 1,
+    this.icon = Icons.graphic_eq_rounded,
+    this.fallback,
+  });
+
+  final Feed feed;
+  final List<String?> urls;
+  final double size;
+  final double radius;
+  final double aspectRatio;
+  final IconData icon;
+  final Widget? fallback;
+
+  @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final url = feed.imageUrl?.trim();
-    if (!feed.isPrivate || url?.isNotEmpty != true) {
-      return Artwork(url: url, size: size, radius: radius, icon: icon);
-    }
-    final secret = ref.watch(privateFeedSecretProvider(feed.id));
-    return secret.when(
-      loading: () => Artwork(size: size, radius: radius, icon: icon),
-      error: (_, _) => Artwork(size: size, radius: radius, icon: icon),
-      data: (value) {
-        final imageUri = Uri.tryParse(url!);
-        final headers =
-            value != null && imageUri != null && sameOrigin(imageUri, value.url)
-            ? value.headers
-            : const <String, String>{};
-        return Artwork(
-          url: url,
-          headers: headers,
-          size: size,
-          radius: radius,
-          icon: icon,
-        );
-      },
+    final candidates = urls
+        .whereType<String>()
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    Widget placeholder() => Artwork(
+      size: size,
+      radius: radius,
+      aspectRatio: aspectRatio,
+      icon: icon,
+      fallback: fallback,
     );
+    if (candidates.isEmpty) return placeholder();
+    final secret = feed.isPrivate
+        ? ref.watch(privateFeedSecretProvider(feed.id)).value
+        : null;
+    if (feed.isPrivate && secret == null) {
+      return Artwork(
+        size: size,
+        radius: radius,
+        aspectRatio: aspectRatio,
+        icon: icon,
+      );
+    }
+    Widget imageAt(int index) {
+      final url = candidates[index];
+      final uri = Uri.tryParse(url);
+      return Artwork(
+        url: url,
+        headers: secret != null && uri != null && sameOrigin(uri, secret.url)
+            ? secret.headers
+            : const {},
+        size: size,
+        radius: radius,
+        aspectRatio: aspectRatio,
+        icon: icon,
+        fallback: index + 1 < candidates.length ? imageAt(index + 1) : fallback,
+      );
+    }
+
+    return imageAt(0);
   }
 }
 

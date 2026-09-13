@@ -1081,7 +1081,9 @@ final class FeedRepository {
                 description: Value(parsed.description),
                 feedUrl: storedUrl,
                 siteUrl: Value(parsed.siteUrl?.toString()),
-                imageUrl: Value(parsed.imageUrl?.toString()),
+                imageUrl: Value(
+                  parsed.imageUrl?.toString() ?? effectiveFeed?.imageUrl,
+                ),
                 author: Value(parsed.author),
                 category: Value(
                   kind == FeedKind.reader

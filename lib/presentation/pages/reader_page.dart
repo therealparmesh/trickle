@@ -889,16 +889,7 @@ final class _FeedRow extends StatelessWidget {
       child: ListTile(
         onTap: () => context.push('/feed/${feed.id}'),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        leading: FeedArtwork(
-          feed: feed,
-          size: 54,
-          radius: 12,
-          icon: isNostr
-              ? Icons.person_outline_rounded
-              : youtubeKind == null
-              ? Icons.article_outlined
-              : Icons.ondemand_video_rounded,
-        ),
+        leading: FeedArtwork(feed: feed, size: 54, radius: 12),
         title: Text(
           feed.title,
           maxLines: 2,

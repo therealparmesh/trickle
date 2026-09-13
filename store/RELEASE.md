@@ -84,7 +84,7 @@ The main app and share extension include privacy manifests. Their App Group `Use
 
 The application targets iOS 17 or later, exceeding Apple's announced iOS 15 minimum for App Store Connect uploads and distribution submissions beginning in Spring 2027. Test fresh installs and upgrades on iOS 17 before every release.
 
-The iOS target is iPhone-only. The five 1320×2868 images in `store/apple/screenshots/` were regenerated and visually verified against 1.2 on August 26, 2026. Their fictional podcast, feed, copy, and artwork are original project fixtures under `store/apple/fixtures/`; no third-party content appears. To replace the complete set after a visual change, build and launch trickle once on a booted iPhone Pro Max simulator with that resolution, then run:
+The iOS target is iPhone-only. The five 1320×2868 images in `store/apple/screenshots/` were recaptured and visually verified against 1.2.6 on September 12, 2026. Their fictional podcast, feed, copy, and artwork are original project fixtures under `store/apple/fixtures/`; no third-party content appears. To replace the complete set after a visual change, build and launch trickle once on a booted iPhone Pro Max simulator with that resolution, then run:
 
 ```sh
 tool/maestro/capture_store_screenshots.sh [simulator-udid]
