@@ -111,14 +111,29 @@ final recentFeedImageProvider = StreamProvider.autoDispose
       (ref, id) => ref.watch(databaseProvider).watchRecentFeedImage(id),
     );
 final recentEpisodesProvider = StreamProvider<List<Episode>>(
-  (ref) => ref.watch(databaseProvider).watchRecentEpisodes(),
+  (ref) => ref.watch(databaseProvider).watchRecentEpisodes(limit: 8),
 );
-final newEpisodesProvider = StreamProvider<List<Episode>>(
-  (ref) => ref.watch(databaseProvider).watchNewEpisodes(),
+final newEpisodeCountProvider = StreamProvider.autoDispose<int>(
+  (ref) => ref.watch(databaseProvider).watchNewEpisodeCount(),
 );
-final inProgressEpisodesProvider = StreamProvider<List<Episode>>(
-  (ref) => ref.watch(databaseProvider).watchInProgressEpisodes(),
-);
+final podcastEpisodesProvider = StreamProvider.autoDispose
+    .family<List<Episode>, ({PodcastEpisodeFilter filter, int limit})>((
+      ref,
+      page,
+    ) {
+      final database = ref.watch(databaseProvider);
+      return switch (page.filter) {
+        PodcastEpisodeFilter.newEpisodes => database.watchNewEpisodes(
+          limit: page.limit,
+        ),
+        PodcastEpisodeFilter.inProgress => database.watchInProgressEpisodes(
+          limit: page.limit,
+        ),
+        PodcastEpisodeFilter.all => database.watchRecentEpisodes(
+          limit: page.limit,
+        ),
+      };
+    });
 final readerUnreadArticlesProvider = StreamProvider.autoDispose
     .family<List<Article>, int>(
       (ref, limit) =>
@@ -274,11 +289,11 @@ final articleAttachmentsProvider = FutureProvider.autoDispose
       return ref.watch(databaseProvider).attachmentsForArticle(id);
     });
 final articlePreviewImageProvider = FutureProvider.autoDispose
-    .family<String?, String>((ref, id) async {
+    .family<String?, ({String id, String? url})>((ref, source) async {
       final repository = ref.watch(articleRepositoryProvider);
-      final lease = repository.retainPreview(id);
+      final lease = repository.retainPreview(source.id);
       ref.onDispose(lease.cancel);
-      return repository.previewImageById(id, lease: lease);
+      return repository.previewImageById(source.id, lease: lease);
     });
 final _downloadsByEpisodeProvider = Provider<Map<String, MediaDownload>>((ref) {
   final downloads =

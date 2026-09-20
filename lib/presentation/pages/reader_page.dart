@@ -15,7 +15,7 @@ import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/content_list_controls.dart';
 import '../widgets/feed_category_field.dart';
-import 'podcasts_page.dart';
+import '../widgets/add_feed_dialog.dart';
 
 enum _ReaderFilter { unread, all, starred }
 
@@ -340,7 +340,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   void _scheduleSearch(String value) {
     _searchDebounce?.cancel();
     setState(() {});
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+    _searchDebounce = Timer(AppConstants.localSearchDebounce, () {
       if (!mounted) return;
       final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
       if (normalized == _query) return;

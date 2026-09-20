@@ -12,6 +12,8 @@ abstract final class AppConstants {
   static const backgroundRefreshBudget = interactiveRequestTimeout;
   static const feedRefreshTimeout = contentRequestTimeout;
   static const opmlImportFeedTimeout = contentRequestTimeout;
+  static const localSearchDebounce = Duration(milliseconds: 250);
+  static const catalogSearchDebounce = Duration(milliseconds: 500);
 
   static const allowedSpeeds = <int>[100, 125, 150, 175, 200];
   static const defaultSpeed = 100;

@@ -84,8 +84,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   void didUpdateWidget(covariant NavigationGlitch oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.routeObserver == widget.routeObserver) return;
-    oldWidget.routeObserver?.unsubscribe(this);
-    _route = null;
+    _unsubscribeFromRoute(oldWidget.routeObserver);
     _subscribeToRoute();
   }
 
@@ -95,9 +94,24 @@ class _NavigationGlitchState extends State<NavigationGlitch>
     if (observer == null || route is! ModalRoute<dynamic> || route == _route) {
       return;
     }
-    if (_route != null) observer.unsubscribe(this);
+    _unsubscribeFromRoute(observer);
     _route = route;
+    route.animation?.addStatusListener(_handleRouteAnimationStatus);
+    route.secondaryAnimation?.addStatusListener(_handleRouteAnimationStatus);
     observer.subscribe(this, route);
+  }
+
+  void _unsubscribeFromRoute(RouteObserver<ModalRoute<dynamic>>? observer) {
+    observer?.unsubscribe(this);
+    _route?.animation?.removeStatusListener(_handleRouteAnimationStatus);
+    _route?.secondaryAnimation?.removeStatusListener(
+      _handleRouteAnimationStatus,
+    );
+    _route = null;
+  }
+
+  void _handleRouteAnimationStatus(AnimationStatus status) {
+    if (_pending && _snapshot == null) _scheduleEffect();
   }
 
   @override
@@ -114,7 +128,10 @@ class _NavigationGlitchState extends State<NavigationGlitch>
     if (!mounted || _reduceMotion) return;
     _cancelEffect(rebuild: true);
     _pending = true;
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+        _route?.isCurrent == false ||
+        _route?.animation?.isAnimating == true ||
+        _route?.secondaryAnimation?.isAnimating == true) {
       return;
     }
     final generation = _captureGeneration;
@@ -203,7 +220,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   void dispose() {
     _captureGeneration++;
     WidgetsBinding.instance.removeObserver(this);
-    widget.routeObserver?.unsubscribe(this);
+    _unsubscribeFromRoute(widget.routeObserver);
     _animation.dispose();
     _shader?.dispose();
     _snapshot?.dispose();

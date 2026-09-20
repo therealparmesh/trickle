@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:ui' show SemanticsAction;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' hide Column, isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,10 +34,18 @@ import 'package:trickle/presentation/pages/reader_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
 import 'package:trickle/presentation/widgets/content_list_controls.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
+import 'package:trickle/presentation/widgets/design_system.dart';
 import 'package:trickle/presentation/widgets/episode_playback_button.dart';
 import 'package:trickle/presentation/widgets/navigation_glitch.dart';
 
 void main() {
+  setUpAll(() async {
+    final font = FontLoader('SpaceGrotesk')
+      ..addFont(rootBundle.load('assets/fonts/SpaceGrotesk-400.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/SpaceGrotesk-700.ttf'));
+    await font.load();
+  });
+
   testWidgets('list controls remain operable at accessibility text sizes', (
     tester,
   ) async {
@@ -562,58 +571,70 @@ void main() {
     },
   );
 
-  testWidgets('home command flow stacks at accessibility text sizes', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(393, 3000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
-          feedsProvider.overrideWith((_) => Stream.value(const [])),
-          readerUnreadArticlesProvider(
-            5,
-          ).overrideWith((_) => Stream.value(const [])),
-        ],
-        child: MaterialApp(
-          theme: TrickleTheme.dark,
-          home: MediaQuery(
-            data: const MediaQueryData(
-              size: Size(393, 3000),
-              textScaler: TextScaler.linear(3.2),
+  testWidgets(
+    'home places its library grid between episodes and unread items at large text sizes',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(393, 3000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+            feedsProvider.overrideWith((_) => Stream.value(const [])),
+            newEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
+            unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
+            readerUnreadArticlesProvider(
+              5,
+            ).overrideWith((_) => Stream.value(const [])),
+          ],
+          child: MaterialApp(
+            theme: TrickleTheme.dark,
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(393, 3000),
+                textScaler: TextScaler.linear(3.2),
+              ),
+              child: const HomePage(),
             ),
-            child: const HomePage(),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
+      );
+      await tester.pump();
+      await tester.pump();
 
-    expect(find.text('Up Next'), findsOneWidget);
-    expect(find.text('Downloads'), findsOneWidget);
-    expect(find.text('Saved episodes'), findsOneWidget);
-    expect(find.text('Library'), findsOneWidget);
-    expect(find.text('Podcasts'), findsNWidgets(2));
-    expect(find.text('Sources'), findsOneWidget);
-    expect(find.text('Add YouTube'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.text('Up Next')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Podcasts').first).dy),
-    );
-    expect(
-      tester.getTopLeft(find.text('Downloads')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Up Next')).dy),
-    );
-    expect(
-      tester.getTopLeft(find.text('Saved episodes')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Downloads')).dy),
-    );
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('Up Next'), findsOneWidget);
+      expect(find.text('Downloads'), findsOneWidget);
+      expect(find.text('Saved episodes'), findsOneWidget);
+      expect(find.text('Library'), findsOneWidget);
+      expect(find.text('Podcasts'), findsOneWidget);
+      expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('Add YouTube'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Library')).dy,
+        greaterThan(
+          tester
+              .getBottomLeft(find.text('Find a podcast to start listening'))
+              .dy,
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text('Sources')).dy,
+        greaterThan(tester.getBottomLeft(find.text('Podcasts')).dy),
+      );
+      await tester.scrollUntilVisible(
+        find.text('No unread feed items.'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        tester.getTopLeft(find.text('No unread feed items.')).dy,
+        greaterThan(tester.getBottomLeft(find.text('Add YouTube')).dy),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('home recent episodes form a horizontal two-row shelf', (
+  testWidgets('home shelf keeps playback and read states clear', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
@@ -656,6 +677,21 @@ void main() {
       feedUrl: 'https://example.test/articles.xml',
       kind: FeedKind.reader.index,
     );
+    final article = Article(
+      id: 'article',
+      feedId: readerFeed.id,
+      title: 'Home article',
+      discoveredAt: now,
+      contentFormat: ArticleContentFormat.html.index,
+      mediaKind: ArticleMediaKind.none.index,
+      starred: false,
+    );
+    final media = StreamController<MediaItem?>.broadcast();
+    final states = StreamController<PlaybackState>.broadcast();
+    addTearDown(() async {
+      await media.close();
+      await states.close();
+    });
 
     await tester.pumpWidget(
       ProviderScope(
@@ -664,12 +700,11 @@ void main() {
           feedsProvider.overrideWith((_) => Stream.value([feed, readerFeed])),
           readerUnreadArticlesProvider(
             5,
-          ).overrideWith((_) => Stream.value(const [])),
+          ).overrideWith((_) => Stream.value([article])),
           unreadArticleCountProvider.overrideWith((_) => Stream.value(1)),
-          currentMediaProvider.overrideWith((_) => Stream.value(null)),
-          playbackStateProvider.overrideWith(
-            (_) => Stream.value(PlaybackState()),
-          ),
+          newEpisodeCountProvider.overrideWith((_) => Stream.value(2)),
+          currentMediaProvider.overrideWith((_) => media.stream),
+          playbackStateProvider.overrideWith((_) => states.stream),
           feedProvider.overrideWith((_, _) => Stream.value(feed)),
           playbackProgressesProvider.overrideWith(
             (_) => Stream.value(const {}),
@@ -690,16 +725,35 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final first = tester.getTopLeft(find.text('Episode 1'));
-    final second = tester.getTopLeft(find.text('Episode 2'));
-    final third = tester.getTopLeft(find.text('Episode 3'));
+    Finder card(String title) =>
+        find.ancestor(of: find.text(title), matching: find.byType(SignalPanel));
+    final first = tester.getTopLeft(card('Episode 1'));
+    final second = tester.getTopLeft(card('Episode 2'));
+    final third = tester.getTopLeft(card('Episode 3'));
     expect(second.dx, closeTo(first.dx, 1));
     expect(second.dy, greaterThan(first.dy));
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
-    expect(find.bySemanticsLabel('Podcasts, 1 item'), findsNothing);
+    expect(find.bySemanticsLabel('Podcasts, 2 items'), findsOneWidget);
     expect(find.bySemanticsLabel('Up Next, 1 item'), findsNothing);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
+    expect(find.text('NEW'), findsNothing);
+    media.add(const MediaItem(id: 'episode-0', title: 'Episode 1'));
+    for (final (processingState, playing, label) in [
+      (AudioProcessingState.loading, false, 'LOADING'),
+      (AudioProcessingState.buffering, false, 'BUFFERING'),
+      (AudioProcessingState.ready, true, 'PLAYING'),
+      (AudioProcessingState.ready, false, 'PAUSED'),
+      (AudioProcessingState.error, false, 'PLAYBACK ERROR'),
+    ]) {
+      states.add(
+        PlaybackState(processingState: processingState, playing: playing),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(label), findsOneWidget);
+      if (label != 'PAUSED') expect(find.text('PAUSED'), findsNothing);
+    }
 
     await tester.scrollUntilVisible(
       find.text('Sources'),
@@ -707,10 +761,17 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.bySemanticsLabel('Sources, 1 item'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Home article'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(_dotWithColor(AppConstants.cyan), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('Unread article')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the Feeds See all action opens the complete reader', (
+  testWidgets('home See all actions open episodes and unread feed items', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(393, 3000));
@@ -721,6 +782,10 @@ void main() {
         GoRoute(
           path: '/reader',
           builder: (_, _) => const Scaffold(body: Text('Complete reader')),
+        ),
+        GoRoute(
+          path: '/podcasts',
+          builder: (_, _) => const Scaffold(body: Text('All episodes')),
         ),
       ],
     );
@@ -742,17 +807,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final feedsHeader = find.byWidgetPredicate(
-      (widget) => widget is SectionHeader && widget.title == 'Feeds',
-    );
-    final seeAll = find.descendant(
-      of: feedsHeader,
-      matching: find.text('See all'),
-    );
-    expect(seeAll, findsOneWidget);
-    expect(find.bySemanticsLabel('See all Feeds'), findsOneWidget);
-
-    await tester.tap(seeAll);
+    expect(find.text('Open'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('See all episodes'));
+    await tester.pumpAndSettle();
+    expect(find.text('All episodes'), findsOneWidget);
+    router.pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('See all unread feed items'));
     await tester.pumpAndSettle();
 
     expect(find.text('Complete reader'), findsOneWidget);
@@ -1117,11 +1178,9 @@ void main() {
       ProviderScope(
         overrides: [
           feedsProvider.overrideWith((_) => Stream.value([feed])),
-          newEpisodesProvider.overrideWith((_) => Stream.value(const [])),
-          inProgressEpisodesProvider.overrideWith(
-            (_) => Stream.value(const []),
+          podcastEpisodesProvider.overrideWith(
+            (_, _) => Stream.value(const []),
           ),
-          recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
         ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
@@ -1131,6 +1190,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('No episodes yet'), findsOneWidget);
+
+    await tester.tap(find.text('New'));
+    await tester.pumpAndSettle();
     expect(find.text('No new episodes'), findsOneWidget);
 
     await tester.tap(find.text('In Progress'));
@@ -1259,7 +1322,7 @@ void main() {
         MaterialApp(
           navigatorKey: navigatorKey,
           navigatorObservers: [observer],
-          theme: TrickleTheme.dark,
+          theme: TrickleTheme.dark.copyWith(platform: TargetPlatform.iOS),
           home: NavigationGlitch(
             routeObserver: observer,
             child: _NavigationTestPage(key: pageKey, title: 'Settings'),
@@ -1295,21 +1358,37 @@ void main() {
 
       unawaited(
         navigatorKey.currentState!.push(
-          PageRouteBuilder<void>(
-            transitionDuration: Duration.zero,
-            reverseTransitionDuration: Duration.zero,
-            pageBuilder: (_, _, _) =>
-                const Scaffold(body: Text('Second screen')),
+          MaterialPageRoute<void>(
+            allowSnapshotting: false,
+            builder: (_) => NavigationGlitch(
+              routeObserver: observer,
+              child: const Scaffold(body: Text('Second screen')),
+            ),
           ),
         ),
       );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(glitch, findsNothing);
+      await _pumpUntilGlitch(tester, glitch);
+      expect(glitch, findsOneWidget);
       await tester.pumpAndSettle();
       expect(glitch, findsNothing);
 
-      navigatorKey.currentState!.pop();
+      final canceledSwipe = await tester.startGesture(const Offset(1, 300));
+      await canceledSwipe.moveBy(const Offset(100, 0));
+      await tester.pump(const Duration(milliseconds: 100));
+      await canceledSwipe.moveBy(const Offset(-100, 0));
+      await canceledSwipe.up();
+      await tester.pumpAndSettle();
+      expect(find.text('Second screen'), findsOneWidget);
+      expect(glitch, findsNothing);
+
+      await tester.dragFrom(const Offset(1, 300), const Offset(700, 0));
       await tester.pump();
       await _pumpUntilGlitch(tester, glitch);
       expect(glitch, findsOneWidget);
+      expect(find.text('Second screen'), findsNothing);
       expect(pageKey.currentState, same(initialState));
 
       unawaited(
@@ -1804,6 +1883,8 @@ void main() {
   });
 
   testWidgets('compact controls expose useful semantics', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     var pressed = false;
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(
@@ -1822,7 +1903,7 @@ void main() {
                   tooltip: 'Search',
                   onPressed: () => pressed = true,
                 ),
-                HorizontalShortcutStrip(
+                LibraryShortcutGrid(
                   children: [
                     LibraryShortcut(
                       icon: Icons.download_rounded,
@@ -1877,116 +1958,96 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('library shortcuts align one-line and two-line labels', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: const Scaffold(
-          body: HorizontalShortcutStrip(
-            children: [
-              LibraryShortcut(
-                key: ValueKey('one-line shortcut'),
-                icon: Icons.dynamic_feed_outlined,
-                label: 'Sources',
-                onTap: _noop,
+  testWidgets(
+    'library shortcuts wrap into aligned non-scrolling rows without truncating labels',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final (width, scale, columns) in [
+        (360.0, 1.0, 4),
+        (375.0, 1.0, 4),
+        (393.0, 1.3, 3),
+        (393.0, 3.2, 1),
+      ]) {
+        await tester.binding.setSurfaceSize(Size(width, 852));
+        var tapped = false;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: TrickleTheme.dark,
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: Scaffold(
+                body: SingleChildScrollView(
+                  child: LibraryShortcutGrid(
+                    children: [
+                      for (final label in [
+                        'Podcasts',
+                        'Up Next',
+                        'Downloads',
+                        'Saved episodes',
+                        'Add podcast',
+                        'Add podcast URL',
+                        'Sources',
+                        'Saved articles',
+                        'Add feed',
+                        'Add YouTube',
+                      ])
+                        LibraryShortcut(
+                          icon: Icons.podcasts_rounded,
+                          label: label,
+                          onTap: () => tapped = true,
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              LibraryShortcut(
-                key: ValueKey('two-line shortcut'),
-                icon: Icons.bookmark_outline_rounded,
-                label: 'Saved articles',
-                onTap: _noop,
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
-    );
-
-    final oneLine = find.byKey(const ValueKey('one-line shortcut'));
-    final twoLine = find.byKey(const ValueKey('two-line shortcut'));
-    expect(tester.getTopLeft(oneLine).dy, tester.getTopLeft(twoLine).dy);
-    expect(tester.getSize(oneLine).height, tester.getSize(twoLine).height);
-    expect(
-      tester.getTopLeft(twoLine).dx - tester.getTopRight(oneLine).dx,
-      greaterThanOrEqualTo(6),
-    );
-
-    final labels = find.descendant(
-      of: find.byType(HorizontalShortcutStrip),
-      matching: find.byType(Text),
-    );
-    expect(
-      tester.getTopLeft(labels.at(0)).dy,
-      tester.getTopLeft(labels.at(1)).dy,
-    );
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('four shortcuts fit an iPhone width with even spacing', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(393, 300));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    const keys = [
-      ValueKey('podcasts shortcut'),
-      ValueKey('up-next shortcut'),
-      ValueKey('downloads shortcut'),
-      ValueKey('youtube shortcut'),
-    ];
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: TrickleTheme.dark,
-        home: const Scaffold(
-          body: HorizontalShortcutStrip(
-            children: [
-              LibraryShortcut(
-                key: ValueKey('podcasts shortcut'),
-                icon: Icons.podcasts_rounded,
-                label: 'Podcasts',
-                onTap: _noop,
-              ),
-              LibraryShortcut(
-                key: ValueKey('up-next shortcut'),
-                icon: Icons.queue_music_rounded,
-                label: 'Up Next',
-                onTap: _noop,
-              ),
-              LibraryShortcut(
-                key: ValueKey('downloads shortcut'),
-                icon: Icons.arrow_downward_rounded,
-                label: 'Downloads',
-                onTap: _noop,
-              ),
-              LibraryShortcut(
-                key: ValueKey('youtube shortcut'),
-                icon: Icons.video_call_outlined,
-                label: 'Add YouTube',
-                onTap: _noop,
-              ),
-            ],
+        );
+        final shortcuts = find.byType(LibraryShortcut);
+        final rects = [
+          for (var i = 0; i < 10; i++) tester.getRect(shortcuts.at(i)),
+        ];
+        for (final rect in rects) {
+          expect(rect.width, closeTo(rects.first.width, 0.01));
+          expect(rect.height, closeTo(rects.first.height, 0.01));
+        }
+        expect(
+          find.descendant(
+            of: find.byType(LibraryShortcutGrid),
+            matching: find.byType(Scrollable),
           ),
-        ),
-      ),
-    );
-
-    final rects = [for (final key in keys) tester.getRect(find.byKey(key))];
-    expect(rects.map((rect) => rect.width).toSet().length, 1);
-    for (var index = 1; index < rects.length; index++) {
-      expect(rects[index].left - rects[index - 1].right, closeTo(6, 0.01));
-    }
-    expect(rects.first.left, 10);
-    expect(rects.last.right, 383);
-    expect(
-      find.descendant(
-        of: find.byType(HorizontalShortcutStrip),
-        matching: find.byType(SingleChildScrollView),
-      ),
-      findsNothing,
-    );
-    expect(tester.takeException(), isNull);
-  });
+          findsNothing,
+        );
+        for (final rect in rects) {
+          expect(rect.left, greaterThanOrEqualTo(16));
+          expect(rect.right, lessThanOrEqualTo(width - 16));
+        }
+        expect(rects[columns].top - rects[0].bottom, closeTo(8, 0.01));
+        if (columns > 1) {
+          expect(rects[0].top, rects[1].top);
+          expect(rects[1].left - rects[0].right, closeTo(8, 0.01));
+        }
+        await tester.ensureVisible(find.text('Add podcast URL'));
+        await tester.pumpAndSettle();
+        expect(find.text('Add podcast URL').hitTestable(), findsOneWidget);
+        for (final text
+            in find
+                .descendant(of: shortcuts, matching: find.byType(Text))
+                .evaluate()) {
+          final label = text.renderObject! as RenderParagraph;
+          expect(
+            label.didExceedMaxLines,
+            isFalse,
+            reason: 'width=$width scale=$scale text=${label.text}',
+          );
+        }
+        await tester.tap(find.text('Add podcast URL'));
+        expect(tapped, isTrue);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    },
+  );
 
   testWidgets('mini player separates open and playback actions', (
     tester,
@@ -2757,7 +2818,7 @@ final class _NavigationTestPageState extends State<_NavigationTestPage> {
 void _noop() {}
 
 Future<void> _pumpUntilGlitch(WidgetTester tester, Finder glitch) async {
-  for (var attempt = 0; attempt < 30 && glitch.evaluate().isEmpty; attempt++) {
+  for (var attempt = 0; attempt < 80 && glitch.evaluate().isEmpty; attempt++) {
     await tester.pump(const Duration(milliseconds: 10));
   }
   if (glitch.evaluate().isNotEmpty) await tester.pump();

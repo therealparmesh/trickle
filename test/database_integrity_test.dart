@@ -645,10 +645,21 @@ void main() {
     final inProgress = await database.watchInProgressEpisodes().first;
 
     expect(newEpisodes.map((episode) => episode.id), ['new']);
+    expect(await database.watchNewEpisodeCount().first, 1);
     expect(inProgress.map((episode) => episode.id), [
       'partial-newer',
       'partial-older',
     ]);
+    await database
+        .into(database.playbackProgresses)
+        .insert(
+          PlaybackProgressesCompanion.insert(
+            episodeId: 'new',
+            positionMs: const Value(1000),
+            updatedAt: now,
+          ),
+        );
+    expect(await database.watchNewEpisodeCount().first, 0);
   });
 
   test('podcast automation uses one targeted pending-item index', () async {

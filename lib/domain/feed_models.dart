@@ -10,6 +10,7 @@ final class ParsedFeed {
     required this.kind,
     required this.episodes,
     required this.articles,
+    this.hasPodcastMetadata = false,
   });
 
   final String title;
@@ -20,6 +21,7 @@ final class ParsedFeed {
   final FeedKind kind;
   final List<ParsedEpisode> episodes;
   final List<ParsedArticle> articles;
+  final bool hasPodcastMetadata;
 }
 
 final class ParsedEpisode {

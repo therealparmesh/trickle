@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-import '../presentation/pages/podcasts_page.dart';
+import '../presentation/widgets/add_feed_dialog.dart';
 import '../services/incoming_share_service.dart';
 import '../services/sync_coordinator.dart';
 import 'app_providers.dart';

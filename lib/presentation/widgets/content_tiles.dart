@@ -317,10 +317,15 @@ final class _PodcastPreviewEpisodeTileState
 }
 
 final class ArticleTile extends ConsumerStatefulWidget {
-  ArticleTile(this.article, {this.showSource = true, Key? key})
-    : super(key: key ?? ValueKey(article.id));
+  ArticleTile(
+    this.article, {
+    this.showSource = true,
+    this.showReadState = true,
+    Key? key,
+  }) : super(key: key ?? ValueKey(article.id));
   final Article article;
   final bool showSource;
+  final bool showReadState;
 
   @override
   ConsumerState<ArticleTile> createState() => _ArticleTileState();
@@ -347,6 +352,9 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
         : isPost
         ? 'post'
         : 'article';
+    final readState = article.readAt == null
+        ? (isVideo ? 'Unwatched' : 'Unread')
+        : (isVideo ? 'Watched' : 'Read');
     final sourceTitle = widget.showSource
         ? ref.watch(feedSnapshotProvider(article.feedId))?.title
         : null;
@@ -360,7 +368,9 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
       relativeDate(article.publishedAt),
     ]);
     return _InsetListFrame(
-      accent: article.readAt == null ? AppConstants.cyan : null,
+      accent: widget.showReadState && article.readAt == null
+          ? AppConstants.cyan
+          : null,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -371,7 +381,11 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
               excludeSemantics: true,
               onTap: () => context.push('/article/${article.id}'),
               label: [
-                '${article.readAt == null ? (isVideo ? 'Unwatched' : 'Unread') : (isVideo ? 'Watched' : 'Read')} $noun ${article.title}',
+                [
+                  if (widget.showReadState) readState,
+                  noun,
+                  article.title,
+                ].join(' '),
                 if (article.contentWarning?.trim().isNotEmpty == true)
                   'Content warning',
                 if (article.starred) 'Saved',
@@ -411,20 +425,19 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
                             const SizedBox(height: 6),
                             Row(
                               children: [
-                                if (article.readAt == null) ...[
+                                if (widget.showReadState &&
+                                    article.readAt == null) ...[
                                   const _NewDot(color: AppConstants.cyan),
                                   const SizedBox(width: 7),
                                 ],
                                 Expanded(
                                   child: Text(
                                     metadata.isEmpty
-                                        ? isVideo
-                                              ? (article.readAt == null
-                                                    ? 'New'
-                                                    : 'Watched')
+                                        ? !widget.showReadState
+                                              ? '${noun[0].toUpperCase()}${noun.substring(1)}'
                                               : (article.readAt == null
                                                     ? 'New'
-                                                    : 'Read')
+                                                    : readState)
                                         : metadata,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -606,10 +619,10 @@ final class PodcastTile extends StatelessWidget {
         container: true,
         button: true,
         excludeSemantics: true,
-        onTap: () => context.push('/podcast/${feed.id}'),
+        onTap: () => context.push('/feed/${feed.id}'),
         label: ['Podcast ${feed.title}', detail].join('. '),
         child: InkWell(
-          onTap: () => context.push('/podcast/${feed.id}'),
+          onTap: () => context.push('/feed/${feed.id}'),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(

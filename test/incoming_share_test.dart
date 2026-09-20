@@ -2,7 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/services/incoming_share_service.dart';
 
 void main() {
-  test('shared text extracts a usable feed address without trailing prose', () {
+  test('shared text preserves URLs and extracts addresses from prose', () {
+    for (final url in [
+      'https://example.test/feed?token=abc!',
+      'https://example.test/feed_(private)',
+      'https://example.test/feed?token=abc;',
+    ]) {
+      expect(feedInputFromSharedText('  $url  '), url);
+    }
     expect(
       feedInputFromSharedText(
         'Worth following: (https://example.test/feed.xml). Sent from Safari',

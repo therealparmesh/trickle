@@ -25,7 +25,9 @@ final class OpmlImportResult {
   final int failed;
 }
 
-enum OpmlExportScope { podcasts, reading, allSubscriptions }
+enum OpmlScope { podcasts, reading, allSubscriptions }
+
+const _opmlNamespace = 'https://therealparmesh.github.io/trickle/opml';
 
 final class OpmlExportResult {
   const OpmlExportResult({
@@ -59,12 +61,14 @@ final class OpmlSubscription {
     required this.feedUrl,
     this.siteUrl,
     this.category,
+    this.kind,
   });
 
   final String title;
   final String feedUrl;
   final String? siteUrl;
   final String? category;
+  final FeedKind? kind;
 }
 
 final class OpmlService {
@@ -82,13 +86,13 @@ final class OpmlService {
   _ActiveOpmlImport? _activeImport;
 
   Future<OpmlExportResult> exportAndShare({
-    OpmlExportScope scope = OpmlExportScope.allSubscriptions,
+    OpmlScope scope = OpmlScope.allSubscriptions,
     Rect? sharePositionOrigin,
   }) async {
     final (title, filename) = switch (scope) {
-      OpmlExportScope.podcasts => ('trickle podcasts', 'trickle-podcasts.opml'),
-      OpmlExportScope.reading => ('trickle feeds', 'trickle-feeds.opml'),
-      OpmlExportScope.allSubscriptions => (
+      OpmlScope.podcasts => ('trickle podcasts', 'trickle-podcasts.opml'),
+      OpmlScope.reading => ('trickle feeds', 'trickle-feeds.opml'),
+      OpmlScope.allSubscriptions => (
         'trickle subscriptions',
         'trickle-subscriptions.opml',
       ),
@@ -116,6 +120,7 @@ final class OpmlService {
   }
 
   Future<OpmlImportResult?> pickAndImport({
+    OpmlScope scope = OpmlScope.allSubscriptions,
     void Function(int completed, int total)? onProgress,
   }) {
     final active = _activeImport;
@@ -124,7 +129,7 @@ final class OpmlService {
       return active.future;
     }
     final run = _ActiveOpmlImport()..addProgressListener(onProgress);
-    final future = _pickAndImport(run.reportProgress);
+    final future = _pickAndImport(scope, run.reportProgress);
     run.future = future;
     _activeImport = run;
     unawaited(
@@ -141,6 +146,7 @@ final class OpmlService {
   }
 
   Future<OpmlImportResult?> _pickAndImport(
+    OpmlScope scope,
     void Function(int completed, int total) onProgress,
   ) async {
     XFile? file;
@@ -159,7 +165,14 @@ final class OpmlService {
       final text = decodeOpmlBytes(await file.readAsBytes());
       return await importOpmlSubscriptions(
         text,
-        subscribe: _subscribeIfMissing,
+        subscribe: (subscription) => _subscribeIfMissing(
+          subscription,
+          kind: switch (scope) {
+            OpmlScope.podcasts => FeedKind.podcast,
+            OpmlScope.reading => FeedKind.reader,
+            OpmlScope.allSubscriptions => subscription.kind,
+          },
+        ),
         onProgress: onProgress,
       );
     } on FeedParseException {
@@ -176,13 +189,21 @@ final class OpmlService {
     }
   }
 
-  Future<void> _subscribeIfMissing(OpmlSubscription subscription) async {
+  Future<void> _subscribeIfMissing(
+    OpmlSubscription subscription, {
+    FeedKind? kind,
+  }) async {
     final url = subscription.feedUrl;
     final parsed = Uri.parse(url.trim());
     Feed feed;
     if (!parsed.hasQuery) {
       final normalized = feedUrlIdentity(url);
       final existing = await _database.feedByUrl(normalized);
+      if (existing != null && kind != null && existing.kind != kind.index) {
+        throw const FeedParseException(
+          'This address is already added with a different feed type.',
+        );
+      }
       if (existing?.subscribed == true) {
         feed = existing!;
       } else if (existing != null) {
@@ -190,12 +211,14 @@ final class OpmlService {
       } else {
         feed = await _feeds.subscribe(
           url,
+          expectedKind: kind,
           totalTimeout: AppConstants.opmlImportFeedTimeout,
         );
       }
     } else {
       feed = await _feeds.subscribe(
         url,
+        expectedKind: kind,
         totalTimeout: AppConstants.opmlImportFeedTimeout,
       );
     }
@@ -297,14 +320,14 @@ String _decodeUtf16(
 Future<OpmlExportDocument> buildOpmlExportDocument(
   AppDatabase database, {
   required PrivateFeedStore privateFeeds,
-  required OpmlExportScope scope,
+  required OpmlScope scope,
 }) async {
   final query = database.select(database.feeds)
     ..where((row) {
       final selected = switch (scope) {
-        OpmlExportScope.podcasts => row.kind.equals(FeedKind.podcast.index),
-        OpmlExportScope.reading => row.kind.equals(FeedKind.reader.index),
-        OpmlExportScope.allSubscriptions => const Constant(true),
+        OpmlScope.podcasts => row.kind.equals(FeedKind.podcast.index),
+        OpmlScope.reading => row.kind.equals(FeedKind.reader.index),
+        OpmlScope.allSubscriptions => const Constant(true),
       };
       return row.subscribed.equals(true) &
           row.protocol.equals(FeedProtocol.syndication.index) &
@@ -343,6 +366,7 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
         title: feed.title,
         feedUrl: feedUrl,
         siteUrl: feed.siteUrl,
+        kind: FeedKind.values[feed.kind],
         category: feed.kind == FeedKind.reader.index
             ? normalizeFeedCategory(feed.category)
             : null,
@@ -352,9 +376,9 @@ Future<OpmlExportDocument> buildOpmlExportDocument(
   return OpmlExportDocument(
     xml: buildOpmlDocument(
       title: switch (scope) {
-        OpmlExportScope.podcasts => 'trickle podcasts',
-        OpmlExportScope.reading => 'trickle feeds',
-        OpmlExportScope.allSubscriptions => 'trickle subscriptions',
+        OpmlScope.podcasts => 'trickle podcasts',
+        OpmlScope.reading => 'trickle feeds',
+        OpmlScope.allSubscriptions => 'trickle subscriptions',
       },
       subscriptions: subscriptions,
     ),
@@ -412,6 +436,7 @@ String buildOpmlDocument({
         'title': subscription.title,
         'type': 'rss',
         'xmlUrl': subscription.feedUrl,
+        if (subscription.kind != null) 'trickle:kind': subscription.kind!.name,
         if (subscription.siteUrl != null) 'htmlUrl': subscription.siteUrl!,
       },
     );
@@ -420,7 +445,7 @@ String buildOpmlDocument({
   builder.processing('xml', 'version="1.0" encoding="UTF-8"');
   builder.element(
     'opml',
-    attributes: {'version': '2.0'},
+    attributes: {'version': '2.0', 'xmlns:trickle': _opmlNamespace},
     nest: () {
       builder.element(
         'head',
@@ -506,6 +531,14 @@ List<OpmlSubscription> extractOpmlSubscriptions(String source) {
         feedUrl: value,
         siteUrl: _attribute(element, 'htmlurl')?.trim().nullIfEmpty,
         category: _opmlCategory(element, body),
+        kind: switch (element.getAttribute(
+          'kind',
+          namespaceUri: _opmlNamespace,
+        )) {
+          'podcast' => FeedKind.podcast,
+          'reader' => FeedKind.reader,
+          _ => null,
+        },
       ),
     );
     if (subscriptions.length == 1000) break;

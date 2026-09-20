@@ -4,7 +4,7 @@ trickle is a podcast player and feed reader for iOS and Android, with a cyberpun
 
 ## Features
 
-- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, Nostr profile feeds, standard OPML import, and an OPML export scope chooser for podcasts, feeds, or all compatible subscriptions
+- Apple podcast catalog search with complete pre-subscription details, direct feed subscription, website feed discovery, YouTube channel and playlist discovery, Nostr profile feeds, and OPML import/export for podcasts, feeds, or mixed subscriptions
 - RSS 2.0, RSS 1.0, Atom, and JSON Feed parsing that keeps podcasts separate from other feeds
 - Verified Nostr profile posts from secure relays, with replies and reposts excluded; Markdown, content warnings, images, native audio, and direct video are supported when supplied by a post
 - Streaming, resumable app-private downloads, storage totals and bulk cleanup, persistent Up Next, automatic download cleanup, and per-feed automation
@@ -28,9 +28,13 @@ Desktop, web, CarPlay, Android Auto, and Android Automotive are intentionally ou
 
 ## Interface
 
-The home flow starts with a horizontally scrolling two-row shelf of recent episodes with direct Play and Resume controls, followed by compact collection shortcuts, subscriptions, feed actions, and unread entries. Four-button collections divide the available width evenly, with longer labels wrapping inside their cell. Section-level See all actions open the complete library or Feeds destination. The Podcasts screen separates New, In Progress, and All episodes without duplicating queue state. Episodes distinguish New, In Progress, and Played at a glance. The only number badge is on the Home screen’s Sources shortcut; it shows the exact unread feed-item count and hides at zero. Feeds separates the item timeline from Sources, and the Library repeats the full collection navigation in one place. A persistent mini player keeps the current episode or video reachable without taking over navigation.
+Home shows up to eight recent episodes in a two-row scrolling shelf, a Library grid, then up to five unread feed items. Both content sections have a See all action without a heading. Home omits redundant new/unread markers while keeping playback states and progress. Library does not scroll separately: its grid has four columns at normal phone widths and uses fewer columns for larger text or narrower screens. Podcast actions are grouped in cyan, followed by feed actions in magenta. Long shortcut labels wrap.
 
-The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Route changes use a brief full-surface signal glitch after an instantaneous handoff and skip the effect when reduced motion is enabled. Persistent audio and video hosts stay outside the effect so navigation cannot reset playback. Playback, Picture in Picture, article reading, and in-place controls remain stable through navigation. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
+Navigation uses Flutter's platform-adaptive page transitions, including iOS swipe-back. The decorative glitch runs after a transition settles and never intercepts gestures.
+
+The corner Search button searches only the local library. Add podcast searches Apple’s catalog. Manual podcast and feed adds detect the content type, explain a mismatch, and use the correct collection. The Podcasts screen separates Episodes from Podcasts; its episode list has New, In Progress, and All filters and loads older entries in pages. Feeds separates Feed items from Sources. Podcasts shows the exact number of new episodes; Sources shows unread feed items. Both badges hide at zero. A persistent mini player keeps the current episode or video reachable throughout navigation.
+
+The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green is reserved for active playback. Content lists remain continuous and low-chrome. Route changes use a brief full-surface signal glitch after navigation settles and skip the effect when reduced motion is enabled. Persistent audio and video hosts stay outside the effect so navigation cannot reset playback. Playback, Picture in Picture, article reading, and in-place controls remain stable through navigation. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 
 On launch, the centered mark stays in place until Home's initial local data and player state are available. Home then appears without intermediate loading sections. This does not wait for network refreshes or add a timed splash delay. The navigation effect captures the rendered page only after its shader is ready.
 
@@ -85,6 +89,8 @@ The unsigned build commands verify compilation without requiring publisher crede
 
 The SQLite database uses schema version 6, WAL mode, foreign keys, indexed timeline queries, and FTS5 search backed by stable document IDs. Upgrades preserve existing content and search text; legacy feed repairs run only during migration. Refresh reads are limited to incoming items and explicit Nostr deletion targets. Older refresh results cannot replace newer content or settings. Background automation stages Up Next additions, and the audio handler acknowledges them only after merging them into the active queue.
 
+Catalog subscriptions and typed OPML imports carry an explicit feed type. Untyped manual and mixed OPML adds use podcast metadata or an all-audio entry list to identify podcasts. Once stored, a subscription keeps its type across refreshes, including empty feeds and text-only announcements. Subscription identity uses the complete normalized URL and authorization headers; token differences do not merge different feeds. OPML exports record the type in an optional namespaced attribute while retaining standard RSS outlines and category folders.
+
 New ZIP backups use version 3: a manifest and numbered JSON chunks. Export reads a consistent database snapshot in batches; restore validates every chunk before applying an atomic merge. The shared limits are 2 GiB of expanded records, 32 MiB per chunk, 5,000 feeds, 200,000 episodes and articles each, and 500,000 attachments. Version 1 and 2 backups remain readable within their original 50 MiB expanded-size limit. Sign-in headers and downloaded media are excluded.
 
 ### Playback
@@ -95,7 +101,21 @@ The latest audio or video selection owns playback. Native player commands are or
 
 Artwork uses the same fallback rules across lists and detail views. An unavailable item image falls back to source artwork. Sources without usable artwork can use an image from their 20 most recent items, excluding content warnings. This is a bounded local query using the existing feed/date index; it does not fetch publisher pages. Refresh preserves existing source artwork when a feed omits it. Remote images can be disabled in Settings, and private-feed headers are sent only to the matching origin.
 
-Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit cached reader HTML. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Network deadlines are 10 seconds for connections and video sources, 15 seconds for interactive catalog, media, and background work, and 30 seconds for feed, relay, article, image, and OPML documents. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
+Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit cached reader HTML. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
+
+### Time limits
+
+App-defined deadlines are centralized in `AppConstants`:
+
+| Work                                                                               | Limit      |
+| ---------------------------------------------------------------------------------- | ---------- |
+| Auxiliary extraction, Picture in Picture response, playback recovery grace         | 3 seconds  |
+| SQLite lock wait                                                                   | 5 seconds  |
+| Network connection, DNS, each video-source attempt                                 | 10 seconds |
+| Catalog search, media URL resolution, link previews, total background network work | 15 seconds |
+| Feed, relay, reader, image, and OPML documents                                     | 30 seconds |
+
+Redirects share the request's total deadline. Local searches use a 250 ms debounce; catalog search uses 500 ms. Transient player messages follow the standard four-second message duration. Native audio buffering and background downloads follow platform timing; these request limits do not stop a long episode or download.
 
 ## Project layout
 
@@ -117,4 +137,4 @@ The repository publishes these documents from `main/docs` through GitHub Pages.
 
 ## Release
 
-Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository. The checked-in copyright-safe images were regenerated and visually verified against 1.2 on August 26, 2026.
+Use the [release checklist](store/RELEASE.md), [store metadata](store/metadata.md), [App Review notes](store/app_review_notes.md), and [TestFlight notes](store/testflight_notes.md). The release workflow and screenshot-capture tooling are in `store/apple/` and `tool/maestro/`; private signing-key material remains outside the repository.

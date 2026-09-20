@@ -247,10 +247,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         onTap: () => _runTracked(
                           _SettingsAction.opmlImport,
                           () async {
+                            final scope = await _chooseOpmlScope(
+                              importing: true,
+                            );
+                            if (scope == null || !mounted) return;
                             try {
                               final result = await ref
                                   .read(opmlServiceProvider)
                                   .pickAndImport(
+                                    scope: scope,
                                     onProgress: (completed, total) {
                                       if (!mounted) return;
                                       setState(
@@ -387,7 +392,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
-  Future<void> _exportOpml(OpmlExportScope scope) async {
+  Future<void> _exportOpml(OpmlScope scope) async {
     final result = await ref
         .read(opmlServiceProvider)
         .exportAndShare(
@@ -396,9 +401,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         );
     if (!mounted) return;
     final noun = switch (scope) {
-      OpmlExportScope.podcasts => ('podcast', 'podcasts'),
-      OpmlExportScope.reading => ('feed', 'feeds'),
-      OpmlExportScope.allSubscriptions => ('subscription', 'subscriptions'),
+      OpmlScope.podcasts => ('podcast', 'podcasts'),
+      OpmlScope.reading => ('feed', 'feeds'),
+      OpmlScope.allSubscriptions => ('subscription', 'subscriptions'),
     };
     final details = <String>[
       '${result.exported} ${result.exported == 1 ? noun.$1 : noun.$2} exported',
@@ -432,31 +437,42 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ..invalidate(readerTextScaleProvider);
   }
 
-  Future<OpmlExportScope?> _chooseOpmlScope() {
-    return showModalBottomSheet<OpmlExportScope>(
+  Future<OpmlScope?> _chooseOpmlScope({bool importing = false}) {
+    return showModalBottomSheet<OpmlScope>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(title: Text('What should the OPML include?')),
+            ListTile(
+              title: Text(
+                importing
+                    ? 'What are you importing?'
+                    : 'What should the OPML include?',
+              ),
+            ),
             ListTile(
               leading: const Icon(Icons.podcasts_rounded),
               title: const Text('Podcasts'),
-              onTap: () => Navigator.pop(context, OpmlExportScope.podcasts),
+              onTap: () => Navigator.pop(context, OpmlScope.podcasts),
             ),
             ListTile(
               leading: const Icon(Icons.rss_feed_rounded),
               title: const Text('Feeds'),
-              onTap: () => Navigator.pop(context, OpmlExportScope.reading),
+              onTap: () => Navigator.pop(context, OpmlScope.reading),
             ),
             ListTile(
               leading: const Icon(Icons.dynamic_feed_rounded),
-              title: const Text('All subscriptions'),
-              subtitle: const Text('Podcasts, RSS, and YouTube feeds'),
-              onTap: () =>
-                  Navigator.pop(context, OpmlExportScope.allSubscriptions),
+              title: Text(
+                importing ? 'Mixed subscriptions' : 'All subscriptions',
+              ),
+              subtitle: Text(
+                importing
+                    ? 'Use saved types when available'
+                    : 'Podcasts, RSS, and YouTube feeds',
+              ),
+              onTap: () => Navigator.pop(context, OpmlScope.allSubscriptions),
             ),
             const SizedBox(height: 8),
           ],

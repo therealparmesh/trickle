@@ -59,7 +59,7 @@ void main() {
     );
   });
 
-  test('a non-HTML preview miss is not repeatedly fetched', () async {
+  test('preview misses are cached only for the unchanged source URL', () async {
     final adapter = _StaticAdapter(
       body: '%PDF',
       contentType: 'application/pdf',
@@ -72,6 +72,16 @@ void main() {
     expect(await repository.previewImageById(article.id), isNull);
     expect(adapter.requests, 1);
     expect((await database.articleById(article.id))?.imageUrl, isNull);
+    await (database.update(
+      database.articles,
+    )..where((row) => row.id.equals(article.id))).write(
+      const ArticlesCompanion(
+        canonicalUrl: Value('https://publisher.test/revised'),
+      ),
+    );
+    expect(await repository.previewImageById(article.id), isNull);
+    expect(await repository.previewImageById(article.id), isNull);
+    expect(adapter.requests, 2);
   });
 
   test(
@@ -280,6 +290,38 @@ void main() {
     },
   );
 
+  test(
+    'feed content supplies a preview without fetching the webpage',
+    () async {
+      final adapter = _StaticAdapter(
+        body: 'unavailable',
+        contentType: 'text/html',
+      );
+      final repository = ArticleRepository(
+        database,
+        _client(adapter),
+        privateFeeds,
+      );
+      final article = await _seedArticle(
+        database,
+        contentHtml:
+            '<p>Feed story</p><img width="1" height="1" src="/tracking.gif">'
+            '<picture><source srcset="/photo.webp 800w">'
+            '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></picture>',
+      );
+
+      expect(
+        await repository.previewImageById(article.id),
+        'https://publisher.test/photo.webp',
+      );
+      expect(adapter.requests, 0);
+      expect(
+        (await database.articleById(article.id))?.imageUrl,
+        'https://publisher.test/photo.webp',
+      );
+    },
+  );
+
   test('reader falls back instead of rendering a non-HTML response', () async {
     final repository = ArticleRepository(
       database,
@@ -378,6 +420,76 @@ void main() {
     },
   );
 
+  test(
+    'stale reader and preview requests cannot overwrite a refreshed item',
+    () async {
+      final original = await _seedArticle(database);
+      for (final preview in [false, true]) {
+        await database
+            .update(database.articles)
+            .write(
+              const ArticlesCompanion(
+                canonicalUrl: Value('https://publisher.test/launch'),
+                contentHtml: Value(null),
+                imageUrl: Value(null),
+              ),
+            );
+        final started = Completer<void>();
+        final resume = Completer<void>();
+        final repository = ArticleRepository(
+          database,
+          _client(
+            _StaticAdapter(
+              body:
+                  '<html><head><meta property="og:image" content="/old.jpg"></head>'
+                  '<body><article><p>Outdated article body.</p></article></body></html>',
+              contentType: 'text/html',
+              beforeResponse: () async {
+                started.complete();
+                await resume.future;
+              },
+            ),
+          ),
+          privateFeeds,
+        );
+        final pending = preview
+            ? repository.previewImageById(original.id)
+            : repository.load(original);
+        await started.future;
+        await database
+            .update(database.articles)
+            .write(
+              const ArticlesCompanion(
+                canonicalUrl: Value('https://publisher.test/corrected'),
+                title: Value('Corrected title'),
+                contentHtml: Value('<p>Corrected body.</p>'),
+              ),
+            );
+        await database.indexSearchItem(
+          entityId: original.id,
+          kind: 'article',
+          title: 'Corrected title',
+          body: 'Corrected body.',
+          feedTitle: 'Signal',
+        );
+        resume.complete();
+        await pending;
+
+        final current = (await database.articleById(original.id))!;
+        expect(current.contentHtml, '<p>Corrected body.</p>');
+        expect(current.imageUrl, isNull);
+        final indexed = await database
+            .customSelect(
+              'SELECT title, body FROM search_index WHERE entity_id = ?',
+              variables: [Variable(original.id)],
+            )
+            .getSingle();
+        expect(indexed.read<String>('title'), 'Corrected title');
+        expect(indexed.read<String>('body'), 'Corrected body.');
+      }
+    },
+  );
+
   test('reader focuses a generic page wrapper on its paragraph body', () async {
     final adapter = _StaticAdapter(
       body:
@@ -442,13 +554,14 @@ void main() {
       final repository = ArticleRepository(database, network, privateFeeds);
       final article = await _seedArticle(
         database,
-        summary: 'Publisher supplied summary.',
+        contentHtml: '   ',
+        summary: 'Publisher supplied <summary> & details.',
       );
 
       final result = await repository.load(article);
 
       expect(adapter.requests, 1);
-      expect(result.text, 'Publisher supplied summary.');
+      expect(result.text, 'Publisher supplied <summary> & details.');
       expect(result.readerFallback, isTrue);
     },
   );
@@ -1289,11 +1402,13 @@ final class _StaticAdapter implements HttpClientAdapter {
     required this.body,
     required this.contentType,
     this.statusCode = 200,
+    this.beforeResponse,
   });
 
   final String body;
   final String contentType;
   final int statusCode;
+  final Future<void> Function()? beforeResponse;
   int requests = 0;
 
   @override
@@ -1303,6 +1418,7 @@ final class _StaticAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests++;
+    await beforeResponse?.call();
     return ResponseBody.fromString(
       body,
       statusCode,

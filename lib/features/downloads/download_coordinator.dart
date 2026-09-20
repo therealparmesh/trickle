@@ -45,14 +45,16 @@ final class DownloadCoordinator {
     required AppDatabase database,
     required PlaybackSourceResolver sources,
     required SettingsRepository settings,
+    FileDownloader? downloader,
   }) : _database = database,
        _sources = sources,
-       _settings = settings;
+       _settings = settings,
+       _downloader = downloader ?? FileDownloader();
 
   final AppDatabase _database;
   final PlaybackSourceResolver _sources;
   final SettingsRepository _settings;
-  final FileDownloader _downloader = FileDownloader();
+  final FileDownloader _downloader;
   final Uuid _uuid = const Uuid();
   final DiskSpacePlus _diskSpace = DiskSpacePlus();
   StreamSubscription<void>? _updates;
@@ -192,7 +194,7 @@ final class DownloadCoordinator {
       final staleFile = File(existing!.filePath!);
       if (await staleFile.exists()) await staleFile.delete();
       await _setState(
-        episodeId,
+        existing.taskId,
         DownloadState.failed,
         clearPath: true,
         clearProgress: true,
@@ -257,7 +259,7 @@ final class DownloadCoordinator {
       final queued = await _downloader.enqueue(task);
       if (!queued) throw StateError('The download could not be queued.');
     } on Object catch (error, stackTrace) {
-      await _setState(episodeId, DownloadState.failed);
+      await _setState(taskId, DownloadState.failed);
       await _deleteTaskRecord(taskId);
       Error.throwWithStackTrace(error, stackTrace);
     }
@@ -269,7 +271,7 @@ final class DownloadCoordinator {
     if (row == null) return;
     final task = await _downloader.taskForId(row.taskId);
     if (task is DownloadTask && await _downloader.pause(task)) {
-      await _setState(episodeId, DownloadState.paused);
+      await _setState(row.taskId, DownloadState.paused);
     }
   }
 
@@ -279,10 +281,12 @@ final class DownloadCoordinator {
     if (row == null) return;
     final task = await _downloader.taskForId(row.taskId);
     if (task is DownloadTask && await _downloader.resume(task)) {
-      await _setState(episodeId, DownloadState.queued);
+      await _setState(row.taskId, DownloadState.queued);
       return;
     }
-    await startDownload(episodeId);
+    if ((await _download(episodeId))?.taskId == row.taskId) {
+      await startDownload(episodeId);
+    }
   }
 
   Future<void> delete(String episodeId) async {
@@ -298,7 +302,7 @@ final class DownloadCoordinator {
     }
     await (_database.delete(
       _database.mediaDownloads,
-    )..where((candidate) => candidate.episodeId.equals(episodeId))).go();
+    )..where((candidate) => candidate.taskId.equals(row.taskId))).go();
     _lastProgressWrite.remove(episodeId);
   }
 
@@ -390,7 +394,7 @@ final class DownloadCoordinator {
             if (await staleFile.exists()) await staleFile.delete();
           }
           await _setState(
-            row.episodeId,
+            row.taskId,
             DownloadState.failed,
             clearPath: true,
             clearProgress: true,
@@ -403,7 +407,7 @@ final class DownloadCoordinator {
       if (task == null &&
           row.status != DownloadState.failed.index &&
           row.status != DownloadState.canceled.index) {
-        await _setState(row.episodeId, DownloadState.failed);
+        await _setState(row.taskId, DownloadState.failed);
       }
     }
   }
@@ -479,17 +483,7 @@ final class DownloadCoordinator {
 
   Future<void> _handleUpdate(TaskUpdate update) async {
     final episodeId = update.task.metaData;
-    if (episodeId.isEmpty) {
-      if (update is TaskStatusUpdate && _isTerminal(update.status)) {
-        if (update.status == TaskStatus.complete) {
-          final staleFile = File(await update.task.filePath());
-          if (await staleFile.exists()) await staleFile.delete();
-        }
-        await _markTerminalStateCommitted(update.task.taskId);
-      }
-      return;
-    }
-    final current = await _download(episodeId);
+    final current = episodeId.isEmpty ? null : await _download(episodeId);
     if (current == null || current.taskId != update.task.taskId) {
       if (update is TaskStatusUpdate && _isTerminal(update.status)) {
         if (update.status == TaskStatus.complete) {
@@ -532,7 +526,7 @@ final class DownloadCoordinator {
             );
           } on Object {
             await _downloader.cancelTaskWithId(current.taskId);
-            await _setState(episodeId, DownloadState.failed);
+            await _setState(current.taskId, DownloadState.failed);
             _lastProgressWrite.remove(episodeId);
             return;
           }
@@ -542,7 +536,7 @@ final class DownloadCoordinator {
             : (total * update.progress).round();
         await (_database.update(
           _database.mediaDownloads,
-        )..where((row) => row.episodeId.equals(episodeId))).write(
+        )..where((row) => row.taskId.equals(current.taskId))).write(
           MediaDownloadsCompanion(
             bytesDownloaded: Value.absentIfNull(downloaded),
             totalBytes: Value.absentIfNull(total),
@@ -559,7 +553,7 @@ final class DownloadCoordinator {
               !await isUsableAudioFile(file)) {
             if (await file.exists()) await file.delete();
             await _setState(
-              episodeId,
+              current.taskId,
               DownloadState.failed,
               clearPath: true,
               clearProgress: true,
@@ -568,13 +562,14 @@ final class DownloadCoordinator {
             return;
           }
           final length = await file.length();
-          await _setState(
-            episodeId,
+          final updated = await _setState(
+            current.taskId,
             state,
             path: path,
             downloadedBytes: length,
             totalBytes: length,
           );
+          if (updated == 0 && await file.exists()) await file.delete();
           _lastProgressWrite.remove(episodeId);
           await _markTerminalStateCommitted(update.task.taskId);
           if (_initialized) await cleanupPlayed();
@@ -593,7 +588,7 @@ final class DownloadCoordinator {
           }
         }
         await _setState(
-          episodeId,
+          current.taskId,
           state,
           path: path,
           clearPath: clearStoredPath,
@@ -640,8 +635,8 @@ final class DownloadCoordinator {
     }
   }
 
-  Future<void> _setState(
-    String episodeId,
+  Future<int> _setState(
+    String taskId,
     DownloadState state, {
     String? path,
     bool clearPath = false,
@@ -650,9 +645,9 @@ final class DownloadCoordinator {
     int? totalBytes,
   }) async {
     final now = DateTime.now().toUtc();
-    await (_database.update(
+    return (_database.update(
       _database.mediaDownloads,
-    )..where((row) => row.episodeId.equals(episodeId))).write(
+    )..where((row) => row.taskId.equals(taskId))).write(
       MediaDownloadsCompanion(
         status: Value(state.index),
         filePath: clearPath ? const Value(null) : Value.absentIfNull(path),

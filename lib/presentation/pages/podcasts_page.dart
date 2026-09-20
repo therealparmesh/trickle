@@ -1,490 +1,207 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_providers.dart';
-import '../../core/constants.dart';
+import '../../core/content_filters.dart';
 import '../../core/errors.dart';
-import '../../core/feed_category.dart';
-import '../../core/nostr_identifier.dart';
-import '../../core/youtube_support.dart';
-import '../../data/database/app_database.dart';
+import '../widgets/add_feed_dialog.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
-import '../widgets/feed_category_field.dart';
-
-enum _PodcastEpisodeFilter { newEpisodes, inProgress, all }
 
 final class PodcastsPage extends ConsumerStatefulWidget {
-  const PodcastsPage({super.key});
+  const PodcastsPage({this.initialPodcasts = false, super.key});
+
+  final bool initialPodcasts;
 
   @override
   ConsumerState<PodcastsPage> createState() => _PodcastsPageState();
 }
 
-class _PodcastsPageState extends ConsumerState<PodcastsPage> {
-  _PodcastEpisodeFilter _filter = _PodcastEpisodeFilter.newEpisodes;
-
-  @override
-  Widget build(BuildContext context) {
-    final feeds = ref.watch(podcastFeedsProvider);
-    final episodes = switch (_filter) {
-      _PodcastEpisodeFilter.newEpisodes => ref.watch(newEpisodesProvider),
-      _PodcastEpisodeFilter.inProgress => ref.watch(inProgressEpisodesProvider),
-      _PodcastEpisodeFilter.all => ref.watch(recentEpisodesProvider),
-    };
-    return Scaffold(
-      appBar: AppBar(
-        title: const PageTitle('Podcasts'),
-        actions: [
-          IconButton(
-            tooltip: 'Add podcast by URL',
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const AddFeedDialog.podcast(),
-            ),
-            icon: const Icon(Icons.add_rounded),
-          ),
-          IconButton(
-            tooltip: 'Find podcasts',
-            onPressed: () => context.push('/search?tab=podcasts'),
-            icon: const Icon(Icons.search_rounded),
-          ),
-        ],
-      ),
-      body: AppBackdrop(
-        child: RefreshIndicator(
-          onRefresh: () => refreshAllFeeds(context, ref),
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const SliverPadding(padding: EdgeInsets.only(top: 8)),
-              feeds.when(
-                data: (items) => items.isEmpty
-                    ? SliverToBoxAdapter(
-                        child: EmptyState(
-                          icon: Icons.radar_rounded,
-                          title: 'No podcasts',
-                          message:
-                              'Search the catalog or add a publisher RSS URL.',
-                          action: 'Find podcasts',
-                          onAction: () => context.push('/search?tab=podcasts'),
-                        ),
-                      )
-                    : SliverList.builder(
-                        itemCount: items.length,
-                        itemBuilder: (context, index) =>
-                            PodcastTile(items[index]),
-                      ),
-                loading: () => const SliverToBoxAdapter(
-                  child: SizedBox(height: 220, child: LoadingView()),
-                ),
-                error: (error, _) => SliverToBoxAdapter(
-                  child: ErrorView(
-                    friendlyError(error),
-                    onRetry: () => ref.invalidate(feedsProvider),
-                  ),
-                ),
-              ),
-              if (feeds.value?.isNotEmpty == true) ...[
-                const SliverToBoxAdapter(child: SectionHeader('Episodes')),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: _episodeFilterControl(),
-                  ),
-                ),
-                episodes.when(
-                  data: (items) => items.isEmpty
-                      ? SliverToBoxAdapter(
-                          child: EmptyState(
-                            icon: Icons.multitrack_audio_rounded,
-                            title: switch (_filter) {
-                              _PodcastEpisodeFilter.newEpisodes =>
-                                'No new episodes',
-                              _PodcastEpisodeFilter.inProgress =>
-                                'Nothing in progress',
-                              _PodcastEpisodeFilter.all => 'No episodes yet',
-                            },
-                            message: switch (_filter) {
-                              _PodcastEpisodeFilter.newEpisodes =>
-                                'You’re caught up.',
-                              _PodcastEpisodeFilter.inProgress =>
-                                'Start an episode to continue it here.',
-                              _PodcastEpisodeFilter.all =>
-                                'Refresh a subscription to check for episodes.',
-                            },
-                            compact: true,
-                          ),
-                        )
-                      : SliverList.builder(
-                          itemCount: items.length,
-                          itemBuilder: (context, index) =>
-                              EpisodeTile(items[index]),
-                        ),
-                  loading: () => const SliverToBoxAdapter(
-                    child: SizedBox(height: 180, child: LoadingView()),
-                  ),
-                  error: (error, _) => SliverToBoxAdapter(
-                    child: ErrorView(
-                      friendlyError(error),
-                      onRetry: _invalidateEpisodes,
-                    ),
-                  ),
-                ),
-              ],
-              const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _episodeFilterControl() {
-    void select(_PodcastEpisodeFilter value) {
-      if (value != _filter) setState(() => _filter = value);
-    }
-
-    return AdaptiveFilterControl<_PodcastEpisodeFilter>(
-      value: _filter,
-      options: const [
-        AdaptiveFilterOption(_PodcastEpisodeFilter.newEpisodes, 'New'),
-        AdaptiveFilterOption(_PodcastEpisodeFilter.inProgress, 'In Progress'),
-        AdaptiveFilterOption(_PodcastEpisodeFilter.all, 'All'),
-      ],
-      onChanged: select,
-    );
-  }
-
-  void _invalidateEpisodes() {
-    switch (_filter) {
-      case _PodcastEpisodeFilter.newEpisodes:
-        ref.invalidate(newEpisodesProvider);
-      case _PodcastEpisodeFilter.inProgress:
-        ref.invalidate(inProgressEpisodesProvider);
-      case _PodcastEpisodeFilter.all:
-        ref.invalidate(recentEpisodesProvider);
-    }
-  }
-}
-
-final class AddFeedDialog extends ConsumerStatefulWidget {
-  const AddFeedDialog({
-    this.youtubeOnly = false,
-    this.podcastOnly = false,
-    this.initialInput,
-    super.key,
-  });
-
-  const AddFeedDialog.youtube({super.key})
-    : youtubeOnly = true,
-      podcastOnly = false,
-      initialInput = null;
-
-  const AddFeedDialog.podcast({super.key})
-    : youtubeOnly = false,
-      podcastOnly = true,
-      initialInput = null;
-
-  final bool youtubeOnly;
-  final bool podcastOnly;
-  final String? initialInput;
-
-  @override
-  ConsumerState<AddFeedDialog> createState() => _AddFeedDialogState();
-}
-
-class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
-  late final TextEditingController _url;
-  final _username = TextEditingController();
-  final _password = TextEditingController();
-  final _bearer = TextEditingController();
-  final _category = TextEditingController();
-  final _categoryFocus = FocusNode();
-  bool _private = false;
-  bool _busy = false;
-  String? _error;
+class _PodcastsPageState extends ConsumerState<PodcastsPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+  static const _pageSize = 100;
+  int _limit = _pageSize;
+  PodcastEpisodeFilter _filter = PodcastEpisodeFilter.all;
 
   @override
   void initState() {
     super.initState();
-    _url = TextEditingController(text: widget.initialInput);
+    _tabs = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialPodcasts ? 1 : 0,
+    );
   }
 
   @override
   void dispose() {
-    _url.dispose();
-    _username.dispose();
-    _password.dispose();
-    _bearer.dispose();
-    _category.dispose();
-    _categoryFocus.dispose();
+    _tabs.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final categoryOptions = widget.podcastOnly
-        ? const <String>[]
-        : feedCategoryOptions(
-            (ref.watch(readerFeedsProvider).value ?? const <Feed>[]).map(
-              (feed) => feed.category,
+    return Scaffold(
+      appBar: AppBar(
+        title: const PageTitle('Podcasts'),
+        bottom: AdaptiveTabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(text: 'Episodes'),
+            Tab(text: 'Podcasts'),
+          ],
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Add podcast URL',
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const AddFeedDialog.podcast(),
             ),
-          );
-    return AlertDialog(
-      title: Text(
-        widget.youtubeOnly
-            ? 'Add YouTube feed'
-            : widget.podcastOnly
-            ? 'Add podcast by URL'
-            : 'Add feed',
+            icon: const Icon(Icons.add_link_rounded),
+          ),
+          IconButton(
+            tooltip: 'Add podcast',
+            onPressed: () => context.push('/podcast-search'),
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
       ),
-      content: SingleChildScrollView(
-        child: SizedBox(
-          width: 440,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.youtubeOnly) ...[
-                const Text(
-                  'Paste a public YouTube channel or playlist. trickle finds its feed automatically.',
-                ),
-                const SizedBox(height: 14),
-              ],
-              TextField(
-                controller: _url,
-                enabled: !_busy,
-                onChanged: (_) => _clearError(),
-                autofocus: true,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: InputDecoration(
-                  labelText: widget.youtubeOnly
-                      ? 'YouTube channel or playlist URL'
-                      : widget.podcastOnly
-                      ? 'Podcast RSS URL'
-                      : 'Feed, website, or Nostr profile',
-                  hintText: widget.youtubeOnly
-                      ? 'youtube.com/@channel or playlist URL'
-                      : widget.podcastOnly
-                      ? 'https://publisher.com/podcast.xml'
-                      : 'RSS, Atom, JSON Feed, website, npub, or nprofile',
+      body: AppBackdrop(
+        child: TabBarView(
+          controller: _tabs,
+          children: [_episodes(), _podcasts()],
+        ),
+      ),
+    );
+  }
+
+  Widget _podcasts() {
+    final feeds = ref.watch(podcastFeedsProvider);
+    return RefreshIndicator(
+      onRefresh: () => refreshAllFeeds(context, ref),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          const SliverPadding(padding: EdgeInsets.only(top: 8)),
+          feeds.when(
+            data: (items) => items.isEmpty
+                ? SliverToBoxAdapter(
+                    child: EmptyState(
+                      icon: Icons.podcasts_rounded,
+                      title: 'No podcasts',
+                      message: 'Find a podcast or add its RSS URL.',
+                      action: 'Add podcast',
+                      onAction: () => context.push('/podcast-search'),
+                    ),
+                  )
+                : SliverList.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, index) => PodcastTile(items[index]),
+                  ),
+            loading: () => const SliverToBoxAdapter(
+              child: SizedBox(height: 220, child: LoadingView()),
+            ),
+            error: (error, _) => SliverToBoxAdapter(
+              child: ErrorView(
+                friendlyError(error),
+                onRetry: () => ref.invalidate(feedsProvider),
+              ),
+            ),
+          ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+        ],
+      ),
+    );
+  }
+
+  Widget _episodes() {
+    final provider = podcastEpisodesProvider((
+      filter: _filter,
+      limit: _limit + 1,
+    ));
+    final episodes = ref.watch(provider);
+    return RefreshIndicator(
+      onRefresh: () => refreshAllFeeds(context, ref),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: AdaptiveFilterControl<PodcastEpisodeFilter>(
+                value: _filter,
+                options: const [
+                  AdaptiveFilterOption(PodcastEpisodeFilter.newEpisodes, 'New'),
+                  AdaptiveFilterOption(
+                    PodcastEpisodeFilter.inProgress,
+                    'In Progress',
+                  ),
+                  AdaptiveFilterOption(PodcastEpisodeFilter.all, 'All'),
+                ],
+                onChanged: (value) => setState(() {
+                  _filter = value;
+                  _limit = _pageSize;
+                }),
+              ),
+            ),
+          ),
+          episodes.when(
+            data: (items) => items.isEmpty
+                ? SliverToBoxAdapter(
+                    child: EmptyState(
+                      icon: Icons.multitrack_audio_rounded,
+                      title: switch (_filter) {
+                        PodcastEpisodeFilter.newEpisodes => 'No new episodes',
+                        PodcastEpisodeFilter.inProgress =>
+                          'Nothing in progress',
+                        PodcastEpisodeFilter.all => 'No episodes yet',
+                      },
+                      message: switch (_filter) {
+                        PodcastEpisodeFilter.newEpisodes => 'You’re caught up.',
+                        PodcastEpisodeFilter.inProgress =>
+                          'Start an episode to continue it here.',
+                        PodcastEpisodeFilter.all =>
+                          'Add a podcast to start listening.',
+                      },
+                      action: _filter == PodcastEpisodeFilter.all
+                          ? 'Add podcast'
+                          : null,
+                      onAction: _filter == PodcastEpisodeFilter.all
+                          ? () => context.push('/podcast-search')
+                          : null,
+                    ),
+                  )
+                : SliverList.builder(
+                    itemCount: items.length > _limit ? _limit : items.length,
+                    itemBuilder: (context, index) => EpisodeTile(items[index]),
+                  ),
+            loading: () => const SliverToBoxAdapter(
+              child: SizedBox(height: 180, child: LoadingView()),
+            ),
+            error: (error, _) => SliverToBoxAdapter(
+              child: ErrorView(
+                friendlyError(error),
+                onRetry: () => ref.invalidate(provider),
+              ),
+            ),
+          ),
+          if ((episodes.value?.length ?? 0) > _limit)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _limit += _pageSize),
+                  icon: const Icon(Icons.expand_more_rounded),
+                  label: const Text('Load more'),
                 ),
               ),
-              if (!widget.podcastOnly) ...[
-                const SizedBox(height: 14),
-                FeedCategoryField(
-                  controller: _category,
-                  focusNode: _categoryFocus,
-                  options: categoryOptions,
-                  enabled: !_busy,
-                ),
-              ],
-              if (!widget.youtubeOnly)
-                AdaptiveSwitchTile(
-                  value: _private,
-                  onChanged: _busy
-                      ? null
-                      : (value) => setState(() {
-                          _private = value;
-                          _error = null;
-                        }),
-                  title: 'Private feed',
-                  subtitle:
-                      'trickle doesn’t collect your feed URL or credentials.',
-                ),
-              if (_private) ...[
-                TextField(
-                  controller: _username,
-                  enabled: !_busy,
-                  onChanged: (_) => _clearError(),
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Username (Basic auth)',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _password,
-                  enabled: !_busy,
-                  onChanged: (_) => _clearError(),
-                  obscureText: true,
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    'OR',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppConstants.secondaryText,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-                TextField(
-                  controller: _bearer,
-                  enabled: !_busy,
-                  onChanged: (_) => _clearError(),
-                  obscureText: true,
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Bearer token'),
-                ),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                InlineErrorView(_error!, title: 'Couldn’t subscribe'),
-              ],
-            ],
-          ),
-        ),
+            ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _busy ? null : _submit,
-          child: Text(_busy ? 'Subscribing…' : 'Subscribe'),
-        ),
-      ],
     );
-  }
-
-  Future<void> _submit() async {
-    if (_busy) return;
-    final url = _url.text.trim();
-    final username = _username.text.trim();
-    final password = _password.text;
-    final bearer = _bearer.text.trim();
-    if (url.isEmpty) {
-      setState(
-        () => _error = widget.youtubeOnly
-            ? 'Enter a public YouTube channel or playlist URL.'
-            : widget.podcastOnly
-            ? 'Enter a podcast RSS URL.'
-            : 'Enter a feed, website, or Nostr profile.',
-      );
-      return;
-    }
-    if (widget.podcastOnly && looksLikeNostrProfile(url)) {
-      setState(() => _error = 'Enter a podcast RSS URL.');
-      return;
-    }
-    if (!widget.youtubeOnly && looksLikeNostrProfile(url) && _private) {
-      setState(
-        () => _error =
-            'Nostr profiles are public. Turn off Private feed to continue.',
-      );
-      return;
-    }
-    if (!widget.youtubeOnly && looksLikeNostrProfile(url)) {
-      setState(() {
-        _busy = true;
-        _error = null;
-      });
-      try {
-        final feed = await ref
-            .read(nostrRepositoryProvider)
-            .subscribe(url, category: _category.text);
-        if (!mounted) return;
-        final router = GoRouter.of(context);
-        Navigator.pop(context);
-        unawaited(router.push('/feed/${feed.id}'));
-      } on Object catch (error) {
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _error = friendlyError(error);
-          });
-        }
-      }
-      return;
-    }
-    final candidate = Uri.tryParse(
-      Uri.tryParse(url)?.hasScheme == true ? url : 'https://$url',
-    );
-    if (candidate == null || candidate.host.isEmpty) {
-      setState(
-        () => _error = widget.podcastOnly
-            ? 'Enter a valid podcast RSS address.'
-            : 'Enter a valid feed or website address.',
-      );
-      return;
-    }
-    if (!const {'http', 'https'}.contains(candidate.scheme.toLowerCase())) {
-      setState(() => _error = 'Use an HTTP or HTTPS address.');
-      return;
-    }
-    if (widget.youtubeOnly && youtubeFeedKind(candidate) == null) {
-      setState(
-        () => _error =
-            'Enter a YouTube channel, playlist, or YouTube Atom feed URL.',
-      );
-      return;
-    }
-    if (candidate.userInfo.isNotEmpty) {
-      setState(
-        () => _error =
-            'Remove the username and password from the URL. Use the Private feed fields instead.',
-      );
-      return;
-    }
-    if (_private && username.isNotEmpty != password.isNotEmpty) {
-      setState(
-        () =>
-            _error = 'Basic authentication needs both a username and password.',
-      );
-      return;
-    }
-    if (_private && username.isNotEmpty && bearer.isNotEmpty) {
-      setState(
-        () => _error = 'Use Basic authentication or a bearer token, not both.',
-      );
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final feed = await ref
-          .read(feedRepositoryProvider)
-          .subscribe(
-            candidate.toString(),
-            username: _private ? username : null,
-            password: _private ? password : null,
-            bearerToken: _private ? bearer : null,
-            forcePrivate: _private,
-            expectedKind: widget.podcastOnly ? FeedKind.podcast : null,
-            category: widget.podcastOnly ? null : _category.text,
-          );
-      if (!mounted) return;
-      final kind =
-          FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
-      final route = kind == FeedKind.podcast
-          ? '/podcast/${feed.id}'
-          : '/feed/${feed.id}';
-      final router = GoRouter.of(context);
-      Navigator.pop(context);
-      unawaited(router.push(route));
-    } on Object catch (error) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = friendlyError(error);
-        });
-      }
-    }
-  }
-
-  void _clearError() {
-    if (_error != null) setState(() => _error = null);
   }
 }

@@ -11,16 +11,16 @@ import '../../domain/feed_models.dart';
 final class FeedParser {
   const FeedParser();
 
-  ParsedFeed parse(String source, Uri sourceUrl) {
+  ParsedFeed parse(String source, Uri sourceUrl, {FeedKind? kind}) {
     final trimmed = source.trimLeft();
-    if (trimmed.startsWith('{')) return _parseJson(trimmed, sourceUrl);
+    if (trimmed.startsWith('{')) return _parseJson(trimmed, sourceUrl, kind);
     try {
       final document = XmlDocument.parse(source);
       final root = document.rootElement;
       if (root.name.local.toLowerCase() == 'feed') {
-        return _parseAtom(root, sourceUrl);
+        return _parseAtom(root, sourceUrl, kind);
       }
-      return _parseRss(root, sourceUrl);
+      return _parseRss(root, sourceUrl, kind);
     } on XmlParserException {
       throw const FeedParseException('This feed contains invalid XML.');
     } on FeedParseException {
@@ -32,7 +32,7 @@ final class FeedParser {
     }
   }
 
-  ParsedFeed _parseRss(XmlElement root, Uri sourceUrl) {
+  ParsedFeed _parseRss(XmlElement root, Uri sourceUrl, FeedKind? kind) {
     final discoveredChannel = root.children.whereType<XmlElement>().firstWhere(
       (element) => element.name.local.toLowerCase() == 'channel',
       orElse: () => XmlElement(const XmlName.parts('missing')),
@@ -63,6 +63,7 @@ final class FeedParser {
       articles.add(_rssArticle(item, sourceUrl));
     }
     return _exclusiveFeed(
+      kind: kind,
       title: title,
       description: _plainText(_childText(channel, 'description')),
       siteUrl: _uri(_childText(channel, 'link'), sourceUrl),
@@ -135,7 +136,7 @@ final class FeedParser {
     );
   }
 
-  ParsedFeed _parseAtom(XmlElement root, Uri sourceUrl) {
+  ParsedFeed _parseAtom(XmlElement root, Uri sourceUrl, FeedKind? kind) {
     final episodes = <ParsedEpisode>[];
     final articles = <ParsedArticle>[];
     final feedImage = _uri(
@@ -221,6 +222,7 @@ final class FeedParser {
       orElse: () => XmlElement(const XmlName.parts('missing')),
     );
     return _exclusiveFeed(
+      kind: kind,
       title: _plainText(_atomHtml(root, 'title')) ?? sourceUrl.host,
       description: _plainText(_atomHtml(root, 'subtitle')),
       siteUrl: _uri(alternate.getAttribute('href'), sourceUrl),
@@ -234,7 +236,7 @@ final class FeedParser {
     );
   }
 
-  ParsedFeed _parseJson(String source, Uri sourceUrl) {
+  ParsedFeed _parseJson(String source, Uri sourceUrl, FeedKind? kind) {
     try {
       final data = (jsonDecode(source) as Map).cast<String, Object?>();
       final episodes = <ParsedEpisode>[];
@@ -255,9 +257,10 @@ final class FeedParser {
             orElse: () => const {},
           );
           final audioUrl = _uri(audio['url'] as String?, sourceUrl);
-          final content =
-              item['content_html'] as String? ??
-              _escapedText(item['content_text'] as String?);
+          final html = (item['content_html'] as String?)?.trim();
+          final content = html?.isNotEmpty == true
+              ? html
+              : _escapedText(item['content_text'] as String?);
           if (audioUrl != null) {
             episodes.add(
               ParsedEpisode(
@@ -305,6 +308,7 @@ final class FeedParser {
         }
       }
       return _exclusiveFeed(
+        kind: kind,
         title: data['title'] as String? ?? sourceUrl.host,
         description: _plainText(data['description'] as String?),
         siteUrl: _uri(data['home_page_url'] as String?, sourceUrl),
@@ -384,8 +388,9 @@ final class FeedParser {
       final local = element.name.local.toLowerCase();
       if (local != 'enclosure' && local != 'content') continue;
       final url = element.getAttribute('url');
-      final type =
-          element.getAttribute('type') ?? element.getAttribute('medium');
+      final medium = element.getAttribute('medium')?.trim().toLowerCase();
+      if (medium == 'video' || medium == 'image') continue;
+      final type = element.getAttribute('type') ?? medium;
       if (!_isAudioType(type, url)) continue;
       final parsed = _uri(url, sourceUrl);
       if (parsed != null) {
@@ -404,8 +409,14 @@ final class FeedParser {
   }
 
   bool _isAudioType(String? type, String? url) {
-    final normalized = type?.toLowerCase() ?? '';
+    final normalized = type?.trim().toLowerCase() ?? '';
     if (normalized.startsWith('audio/') || normalized == 'audio') return true;
+    if (normalized.startsWith('video/') ||
+        normalized.startsWith('image/') ||
+        normalized == 'video' ||
+        normalized == 'image') {
+      return false;
+    }
     final path = Uri.tryParse(url ?? '')?.path.toLowerCase() ?? '';
     return const [
       '.mp3',
@@ -502,6 +513,7 @@ final class FeedParser {
   }
 
   ParsedFeed _exclusiveFeed({
+    required FeedKind? kind,
     required String title,
     required String? description,
     required Uri? siteUrl,
@@ -511,16 +523,21 @@ final class FeedParser {
     required List<ParsedArticle> articles,
     required bool hasPodcastMetadata,
   }) {
-    final isPodcast =
-        episodes.isNotEmpty &&
-        (hasPodcastMetadata || episodes.length * 2 > articles.length);
+    final selectedKind =
+        kind ??
+        (hasPodcastMetadata ||
+                (episodes.isNotEmpty && episodes.length == articles.length)
+            ? FeedKind.podcast
+            : FeedKind.reader);
+    final isPodcast = selectedKind == FeedKind.podcast;
     return ParsedFeed(
       title: title,
       description: description,
       siteUrl: siteUrl,
       imageUrl: imageUrl,
       author: author,
-      kind: isPodcast ? FeedKind.podcast : FeedKind.reader,
+      kind: selectedKind,
+      hasPodcastMetadata: hasPodcastMetadata,
       episodes: isPodcast ? episodes : const [],
       articles: isPodcast ? const [] : articles,
     );

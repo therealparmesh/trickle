@@ -67,65 +67,32 @@ Future<void> refreshAllFeeds(
   }
 }
 
-final class HorizontalShortcutStrip extends StatelessWidget {
-  const HorizontalShortcutStrip({required this.children, super.key});
+final class LibraryShortcutGrid extends StatelessWidget {
+  const LibraryShortcutGrid({required this.children, super.key});
 
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (textScale > 1.5) {
-          const horizontalPadding = 10.0;
-          const spacing = 6.0;
-          final columns = textScale > 2 ? 1 : 2;
-          final itemWidth =
-              (constraints.maxWidth -
-                  horizontalPadding * 2 -
-                  spacing * (columns - 1)) /
-              columns;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
-            child: Wrap(
-              spacing: spacing,
-              runSpacing: 4,
-              children: [
-                for (final child in children)
-                  SizedBox(width: itemWidth, child: child),
-              ],
-            ),
-          );
-        }
-        if (children.length == 4 &&
-            constraints.hasBoundedWidth &&
-            constraints.maxWidth >= 360) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(
-              children: [
-                for (var index = 0; index < children.length; index++) ...[
-                  if (index > 0) const SizedBox(width: 6),
-                  Expanded(child: children[index]),
-                ],
-              ],
-            ),
-          );
-        }
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Row(
+    final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = ((constraints.maxWidth + 8) / (72 * textScale + 8))
+              .floor()
+              .clamp(1, 4);
+          final width = (constraints.maxWidth - (columns - 1) * 8) / columns;
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              for (var index = 0; index < children.length; index++) ...[
-                if (index > 0) const SizedBox(width: 6),
-                children[index],
-              ],
+              for (final child in children)
+                SizedBox(width: width, child: child),
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -821,7 +788,7 @@ final class LibraryShortcut extends StatelessWidget {
     final textScale = MediaQuery.textScalerOf(
       context,
     ).scale(1).clamp(1.0, 3.2).toDouble();
-    final labelStyle = Theme.of(context).textTheme.labelLarge!;
+    final labelStyle = Theme.of(context).textTheme.labelMedium!;
     final labelHeight =
         (labelStyle.fontSize ?? 14) *
         (labelStyle.height ?? 1.2) *
@@ -832,77 +799,74 @@ final class LibraryShortcut extends StatelessWidget {
       _ => null,
     };
     final badgeText = visibleBadge?.toString();
-    return SizedBox(
-      width: (94 + (textScale - 1) * 32).clamp(94.0, 164.0),
-      child: Semantics(
-        button: true,
-        label: visibleBadge == null
-            ? label
-            : '$label, $visibleBadge ${visibleBadge == 1 ? 'item' : 'items'}',
-        excludeSemantics: true,
+    return Semantics(
+      button: true,
+      label: visibleBadge == null
+          ? label
+          : '$label, $visibleBadge ${visibleBadge == 1 ? 'item' : 'items'}',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 8, 6, 10),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    SignalIcon(icon: icon, color: color, size: 54),
-                    if (badgeText case final text?)
-                      Positioned(
-                        top: -5,
-                        right: -7,
-                        child: MediaQuery.withNoTextScaling(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: color,
-                              borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  SignalIcon(icon: icon, color: color, size: 48),
+                  if (badgeText case final text?)
+                    Positioned(
+                      top: -5,
+                      right: -7,
+                      child: MediaQuery.withNoTextScaling(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 3,
-                              ),
-                              child: Text(
-                                text,
-                                style: const TextStyle(
-                                  color: AppConstants.background,
-                                  fontFamily: 'SpaceGrotesk',
-                                  fontSize: 10,
-                                  height: 1,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            child: Text(
+                              text,
+                              style: const TextStyle(
+                                color: AppConstants.background,
+                                fontFamily: 'SpaceGrotesk',
+                                fontSize: 10,
+                                height: 1,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                SizedBox(
-                  height: labelHeight,
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: MediaQuery.withClampedTextScaling(
-                      maxScaleFactor: 3.2,
-                      child: Text(
-                        label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: labelStyle,
-                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: labelHeight,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: MediaQuery.withClampedTextScaling(
+                    maxScaleFactor: 3.2,
+                    child: Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: labelStyle,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1061,7 +1025,14 @@ final class ArticleArtwork extends ConsumerWidget {
     final articleUrl = article.imageUrl?.trim();
     final hasArticleUrl = articleUrl?.isNotEmpty == true;
     final preview = remoteImages && !hasArticleUrl
-        ? ref.watch(articlePreviewImageProvider(article.id)).value
+        ? ref
+              .watch(
+                articlePreviewImageProvider((
+                  id: article.id,
+                  url: article.canonicalUrl,
+                )),
+              )
+              .value
         : null;
     final feed = ref.watch(feedSnapshotProvider(article.feedId));
     if (feed == null) {

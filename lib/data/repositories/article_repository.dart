@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -41,7 +42,7 @@ final class ArticleRepository {
   final AppDatabase _database;
   final SafeNetworkClient _network;
   final PrivateFeedStore _privateFeeds;
-  final Map<String, Future<String?>> _previewRequests = {};
+  final Map<(String, String), Future<String?>> _previewRequests = {};
   final Map<String, Set<Object>> _previewInterest = {};
   final Set<String> _previewMisses = {};
   final Queue<Completer<void>> _previewWaiters = Queue();
@@ -76,11 +77,8 @@ final class ArticleRepository {
     if (stored.imageUrl?.trim().isNotEmpty == true) {
       return stored.imageUrl!.trim();
     }
-    if (stored.canonicalUrl?.trim().isNotEmpty != true ||
-        _previewMisses.contains(stored.id)) {
-      return null;
-    }
-    final existing = _previewRequests[stored.id];
+    final key = (stored.id, stored.canonicalUrl ?? '');
+    final existing = _previewRequests[key];
     if (existing != null) return existing;
     final request = _discoverPreviewImage(
       stored,
@@ -88,12 +86,12 @@ final class ArticleRepository {
           ? null
           : () => _previewInterest[stored.id]?.isNotEmpty != true,
     );
-    _previewRequests[stored.id] = request;
+    _previewRequests[key] = request;
     try {
       return await request;
     } finally {
-      if (identical(_previewRequests[stored.id], request)) {
-        final _ = _previewRequests.remove(stored.id);
+      if (identical(_previewRequests[key], request)) {
+        final _ = _previewRequests.remove(key);
       }
     }
   }
@@ -105,46 +103,59 @@ final class ArticleRepository {
     await _acquirePreviewSlot();
     try {
       if (canceled?.call() == true) return null;
-      final uri = Uri.tryParse(article.canonicalUrl!);
-      if (uri == null) {
-        _rememberPreviewMiss(article.id);
-        return null;
-      }
       final feed = await _database.feedById(article.feedId);
-      var headers = const <String, String>{};
-      if (feed?.isPrivate == true) {
-        final secret = await _privateFeeds.read(feed?.credentialRef ?? '');
+      if (feed == null) return null;
+      final secret = feed.isPrivate
+          ? await _privateFeeds.read(feed.credentialRef ?? '')
+          : null;
+      final baseUrl =
+          article.canonicalUrl ??
+          secret?.url.toString() ??
+          feed.siteUrl ??
+          feed.feedUrl;
+      final content = article.contentHtml?.trim();
+      var image = content == null || content.isEmpty
+          ? null
+          : await compute(_extractPreviewImage, (
+              content,
+              baseUrl,
+            )).timeout(AppConstants.shortOperationTimeout);
+      if (image == null) {
+        final pageUrl = article.canonicalUrl;
+        if (pageUrl == null || _previewMisses.contains(pageUrl)) return null;
+        final uri = Uri.tryParse(pageUrl);
+        if (uri == null) return null;
+        var headers = const <String, String>{};
         if (secret != null && sameOrigin(uri, secret.url)) {
           headers = secret.headers;
         }
-      }
-      final document = await _network.get(
-        uri,
-        headers: headers,
-        maxBytes: AppConstants.discoveryLimitBytes,
-        totalTimeout: AppConstants.networkConnectionTimeout,
-      );
-      if (!_isHtmlDocument(document)) {
-        _rememberPreviewMiss(article.id);
-        return null;
-      }
-      final image = await compute(_extractPreviewImage, (
-        document.text,
-        document.url.toString(),
-      )).timeout(AppConstants.shortOperationTimeout);
-      if (image == null) {
-        _rememberPreviewMiss(article.id);
-        return null;
+        final document = await _network.get(
+          uri,
+          headers: headers,
+          maxBytes: AppConstants.discoveryLimitBytes,
+          totalTimeout: AppConstants.interactiveRequestTimeout,
+        );
+        if (!_isHtmlDocument(document)) {
+          _rememberPreviewMiss(article.canonicalUrl!);
+          return null;
+        }
+        image = await compute(_extractPreviewImage, (
+          document.text,
+          document.url.toString(),
+        )).timeout(AppConstants.shortOperationTimeout);
+        if (image == null) {
+          _rememberPreviewMiss(article.canonicalUrl!);
+          return null;
+        }
       }
       if (canceled?.call() == true) return null;
-      final missingImage = article.imageUrl;
       final updated =
           await (_database.update(_database.articles)..where(
                 (row) =>
                     row.id.equals(article.id) &
-                    (missingImage == null
-                        ? row.imageUrl.isNull()
-                        : row.imageUrl.equals(missingImage)),
+                    row.canonicalUrl.equalsNullable(article.canonicalUrl) &
+                    row.contentHtml.equalsNullable(article.contentHtml) &
+                    row.imageUrl.equalsNullable(article.imageUrl),
               ))
               .write(ArticlesCompanion(imageUrl: Value(image)));
       if (updated > 0) return image;
@@ -157,8 +168,8 @@ final class ArticleRepository {
     }
   }
 
-  void _rememberPreviewMiss(String articleId) {
-    if (!_previewMisses.add(articleId)) return;
+  void _rememberPreviewMiss(String url) {
+    if (!_previewMisses.add(url)) return;
     if (_previewMisses.length > _maxRememberedPreviewMisses) {
       _previewMisses.remove(_previewMisses.first);
     }
@@ -196,11 +207,9 @@ final class ArticleRepository {
       return _feedFallback(article);
     }
     late ExtractedArticle extracted;
-    String feedTitle = '';
     try {
       final uri = Uri.parse(rawUrl);
       final feed = await _database.feedById(article.feedId);
-      feedTitle = feed?.title ?? '';
       var headers = const <String, String>{};
       if (feed?.isPrivate == true) {
         final secret = await _privateFeeds.read(feed?.credentialRef ?? '');
@@ -223,19 +232,26 @@ final class ArticleRepository {
       return await _feedFallback(article);
     }
     try {
-      final updated =
-          await (_database.update(_database.articles)
-                ..where((row) => row.id.equals(article.id)))
-              .write(ArticlesCompanion(contentHtml: Value(extracted.html)));
-      if (updated > 0) {
-        await _database.indexSearchItem(
-          entityId: article.id,
-          kind: 'article',
-          title: article.title,
-          body: extracted.text,
-          feedTitle: feedTitle,
-        );
-      }
+      await _database.transaction(() async {
+        final updated =
+            await (_database.update(_database.articles)..where(
+                  (row) =>
+                      row.id.equals(article.id) &
+                      row.canonicalUrl.equals(rawUrl) &
+                      row.title.equals(article.title) &
+                      row.contentHtml.equalsNullable(article.contentHtml),
+                ))
+                .write(ArticlesCompanion(contentHtml: Value(extracted.html)));
+        if (updated > 0) {
+          await _database.indexSearchItem(
+            entityId: article.id,
+            kind: 'article',
+            title: article.title,
+            body: extracted.text,
+            feedTitle: (await _database.feedById(article.feedId))?.title ?? '',
+          );
+        }
+      });
     } on Object {
       // Reader content remains usable even when its local cache cannot persist.
     }
@@ -243,8 +259,13 @@ final class ArticleRepository {
   }
 
   Future<ExtractedArticle> _feedFallback(Article article) async {
+    final content = article.contentHtml?.trim();
     final fallback = await sanitizeContent(
-      article.contentHtml ?? article.summary ?? '',
+      content?.isNotEmpty == true
+          ? content!
+          : const HtmlEscape(
+              HtmlEscapeMode.element,
+            ).convert(article.summary ?? ''),
       article.canonicalUrl,
     );
     return ExtractedArticle(

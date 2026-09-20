@@ -552,32 +552,37 @@ class AppDatabase extends _$AppDatabase {
   );
 
   Stream<List<Episode>> watchNewEpisodes({int limit = 50}) {
-    final query =
-        select(episodes).join([
-            leftOuterJoin(
-              playbackProgresses,
-              playbackProgresses.episodeId.equalsExp(episodes.id),
-              useColumns: false,
-            ),
-          ])
-          ..where(
-            _subscribedPodcast() &
-                episodes.played.equals(false) &
-                (playbackProgresses.episodeId.isNull() |
-                    (playbackProgresses.completed.equals(false) &
-                        playbackProgresses.positionMs.isSmallerOrEqualValue(
-                          0,
-                        ))),
-          )
+    return (select(episodes)
+          ..where((_) => _newEpisode())
           ..orderBy([
-            OrderingTerm.desc(episodes.publishedAt),
-            OrderingTerm.desc(episodes.discoveredAt),
-            OrderingTerm.asc(episodes.id),
+            (row) => OrderingTerm.desc(row.publishedAt),
+            (row) => OrderingTerm.desc(row.discoveredAt),
+            (row) => OrderingTerm.asc(row.id),
           ])
-          ..limit(limit);
-    return query.watch().map(
-      (rows) => rows.map((row) => row.readTable(episodes)).toList(),
-    );
+          ..limit(limit))
+        .watch();
+  }
+
+  Expression<bool> _newEpisode() =>
+      _subscribedPodcast() &
+      episodes.played.equals(false) &
+      notExistsQuery(
+        selectOnly(playbackProgresses)
+          ..addColumns([playbackProgresses.episodeId])
+          ..where(
+            playbackProgresses.episodeId.equalsExp(episodes.id) &
+                (playbackProgresses.completed.equals(true) |
+                    playbackProgresses.positionMs.isBiggerThanValue(0)),
+          ),
+      );
+
+  Stream<int> watchNewEpisodeCount() {
+    final count = episodes.id.count();
+    return (selectOnly(episodes)
+          ..addColumns([count])
+          ..where(_newEpisode()))
+        .watchSingle()
+        .map((row) => row.read(count) ?? 0);
   }
 
   Stream<List<Episode>> watchInProgressEpisodes({int limit = 50}) {

@@ -2,18 +2,20 @@
 
 ## What's new
 
-Requires iOS 17 or later. Feed artwork now appears consistently in Sources and feed details, including YouTube channels and playlists. If an item image fails to load, trickle uses the source artwork instead. Refreshing a feed no longer clears its existing artwork when the feed omits an image.
+Requires iOS 17 or later. Home has a simpler Library grid between recent episodes and unread feed items. Search your library from the top corner, or use Add podcast to search Apple's catalog. Add podcasts and feeds by URL with automatic type detection. OPML imports and exports preserve podcast and feed types. Article previews now also use pictures embedded in feed content. Includes fixes for private-feed matching, downloads, and reader updates.
 
 ## What to test
 
 Please test the combined podcast and feed flow:
 
 - Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
-- Cold-launch trickle, open Library, Podcasts, Feeds, Search, or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
+- Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
-- On Home, play and resume episodes directly from the two-row shelf; verify its cards reflow at large text, four-button collections are evenly spaced, Add YouTube is fully visible, and Feeds See all opens the reader
+- Swipe back from search, podcast details, episode details, and the reader on iOS; complete and cancel the gesture. Check Android system Back. The previous page should retain its position and the glitch should wait until navigation settles
+- On Home, play and resume episodes directly from the two-row shelf. Loading and buffering must not briefly appear as Paused. New/unread markers should be absent on Home and remain in other lists. Check that the non-scrolling four-column Library grid sits between episodes and unread items, keeps podcast actions cyan and feed actions magenta, and adapts without clipping at larger text sizes. Each See all action should open its full list
+- Check Podcasts' new-episode badge and Sources' unread-item badge. Starting an episode removes it from the new count; marking an article read removes it from the unread count. Zero counts have no badge
+- Search from Home and confirm results are local. Use Add podcast for Apple catalog results. Add a regular feed through Add podcast URL, then a podcast through Add feed; each should explain and use the correct collection
 - Verify the Podcasts episode filters: New contains untouched episodes, In Progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
-- Verify badge rules: only the Home screen’s Sources shortcut shows a number badge; it displays the exact unread feed-item count and hides at zero
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
 - While audio buffers or changes between playing and paused, scroll a long episode list; unrelated rows should remain stable and responsive
@@ -33,7 +35,7 @@ Please test the combined podcast and feed flow:
 - With automatic queueing enabled, let a background refresh add episodes while Up Next is open or playing; each episode should appear once after the existing queue
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, change text size, close and reopen it, share it, and open it in the browser. Save the article, go offline, and verify its readable text remains available while remote media is clearly network-dependent
-- Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add Feed appears with an editable address and canceling makes no subscription change
+- Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add feed appears with an editable address and canceling makes no subscription change
 - Add a Nostr profile by `npub` and `nprofile`; verify only signed root posts appear, replies and reposts are absent, content warnings require a reveal, Markdown is readable, images keep their aspect ratio, native audio saves progress, and direct video can be minimized
 - Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
@@ -53,12 +55,12 @@ Please test the combined podcast and feed flow:
 - Fail the initial video page and verify the same player loads the official source URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
-- Import a public podcast through OPML, repeat with a tokenized feed URL, search for the same podcasts, and verify their catalog rows show Subscribed and remain actionable
+- Import a public podcast through OPML and search for it; its catalog row should show Subscribed. A private URL or different authentication must remain a separate subscription, even if its title matches
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
 - Assign categories while adding RSS, YouTube, and Nostr sources; verify the field suggests previous categories case-insensitively and accepts a new category. Change a category from the source page, then use Feeds > Sources > Organize feeds to move several sources at once. Rename a category and verify every matching source moves together; merging into an existing category must ask first. In Feed items, verify category unread counts, choose a category, search and sort it, then mark it read. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
 - During refresh, OPML import, or local backup restore, confirm the active row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker
-- Import one mixed OPML file containing a podcast and a feed; verify each appears exactly once in its matching section. Choose each scope from Export OPML and confirm the files contain podcasts, feeds, or all compatible subscriptions with the expected category folders
+- Import and export each OPML scope: Podcasts, Feeds, and All subscriptions. Reimport a mixed export and verify each source appears once in the correct collection with its category. Empty podcast feeds must remain podcasts on refresh
 - In a podcast and a feed, search with different capitalization, switch filters, change newest/oldest sorting, load another page, and verify the list and count stay consistent without a full-screen loading flash
 - Open a timed VTT, SRT, or JSON transcript, search it, tap a result, and verify playback seeks to that segment. A plain transcript should remain searchable and selectable without a seek affordance
 - Export and restore a local backup; verify Nostr profiles, post attachments, saved articles, audio progress, queue entries, bookmarks, settings, and tokenized private feed URLs survive, while sign-in headers and downloaded files are absent. While a restore is active, leave and reopen Settings, tap Restore local backup again, and confirm it rejoins the same restore without another picker or duplicate data

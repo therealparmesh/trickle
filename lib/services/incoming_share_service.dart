@@ -39,6 +39,12 @@ final class IncomingShareService {
 String? feedInputFromSharedText(String? shared) {
   final value = shared?.trim();
   if (value == null || value.isEmpty) return null;
+  final directUrl = Uri.tryParse(value);
+  if ((directUrl?.scheme == 'https' || directUrl?.scheme == 'http') &&
+      directUrl!.host.isNotEmpty &&
+      !value.contains(RegExp(r'\s'))) {
+    return value;
+  }
   final url = RegExp(
     r'https?://[^\s<>]+',
     caseSensitive: false,

@@ -6,6 +6,32 @@ import 'package:trickle/data/parsing/feed_parser.dart';
 void main() {
   const parser = FeedParser();
 
+  test('respects declared media types before audio URL extensions', () {
+    for (final attributes in [
+      'type="video/mp2t"',
+      'type="application/vnd.apple.mpegurl" medium="video"',
+    ]) {
+      final parsed = parser.parse('''
+        <rss xmlns:media="http://search.yahoo.com/mrss/">
+          <channel><title>Video</title><item><title>Clip</title>
+            <media:content url="https://example.com/video.m3u8" $attributes />
+          </item></channel>
+        </rss>
+      ''', Uri.parse('https://example.com/feed.xml'));
+      expect(parsed.kind, FeedKind.reader);
+      expect(parsed.episodes, isEmpty);
+      expect(parsed.articles.single.title, 'Clip');
+    }
+
+    final audio = parser.parse('''
+      <rss><channel><title>Audio</title><item><title>Episode</title>
+        <enclosure url="https://example.com/stream" type=" audio/mpeg " />
+      </item></channel></rss>
+    ''', Uri.parse('https://example.com/feed.xml'));
+    expect(audio.kind, FeedKind.podcast);
+    expect(audio.episodes.single.enclosureUrl.path, '/stream');
+  });
+
   test('keeps non-audio announcements inside a podcast subscription', () {
     final parsed = parser.parse('''
       <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
@@ -472,6 +498,7 @@ void main() {
           {
             "id": "text",
             "title": "Text",
+            "content_html": "   ",
             "content_text": "<h1>Not markup</h1> & still text"
           },
           {

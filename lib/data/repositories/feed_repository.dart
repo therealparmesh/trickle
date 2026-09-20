@@ -61,9 +61,10 @@ final class FeedRepository {
       initial,
       const <String, String>{},
       totalTimeout,
+      kind: FeedKind.podcast,
     );
     final feed = resolved.prepared.feed;
-    if (feed.kind != FeedKind.podcast) {
+    if (feed.episodes.isEmpty && !feed.hasPodcastMetadata) {
       throw const FeedParseException('That address is not a podcast feed.');
     }
     return feed;
@@ -91,33 +92,35 @@ final class FeedRepository {
         forcePrivate ||
         headers.isNotEmpty ||
         (initial.hasQuery && !isYouTubeAddress(initial));
-    final resolved = await _resolveFeedDocument(initial, headers, totalTimeout);
-    if (expectedKind != null && resolved.prepared.feed.kind != expectedKind) {
-      throw FeedParseException(
-        expectedKind == FeedKind.podcast
-            ? 'That address is not a podcast feed.'
-            : 'That address is a podcast feed.',
-      );
+    final resolved = await _resolveFeedDocument(
+      initial,
+      headers,
+      totalTimeout,
+      kind: expectedKind,
+    );
+    if (expectedKind == FeedKind.podcast &&
+        resolved.prepared.feed.episodes.isEmpty &&
+        !resolved.prepared.feed.hasPodcastMetadata) {
+      throw const FeedParseException('That address is not a podcast feed.');
     }
     final document = resolved.document;
-    // A public-looking discovery URL can redirect to a signed refresh URL.
-    // Keep that query-bearing URL in secure storage too.
-    final isPrivate =
-        requestedPrivate ||
-        (resolved.refreshUrl.hasQuery &&
-            !isYouTubeAddress(resolved.refreshUrl));
-
-    Feed? existing;
     String? credentialRef;
     PrivateFeedSecret? previousSecret;
     // Keep the stable address the user entered (or the feed URL discovered in
     // that page), not a transient redirect target such as a signed CDN URL.
     var storedUrl = feedUrlIdentity(resolved.refreshUrl.toString());
+    final existing = await _feedByAddress(
+      resolved.refreshUrl,
+      resolved.refreshHeaders,
+    );
+    // Backup restore can store a portable token URL outside secure storage.
+    // Storage location does not change the subscription's identity.
+    final isPrivate =
+        requestedPrivate ||
+        existing?.isPrivate == true ||
+        (resolved.refreshUrl.hasQuery &&
+            !isYouTubeAddress(resolved.refreshUrl));
     if (isPrivate) {
-      existing = await _privateFeedBySecret(
-        resolved.refreshUrl,
-        resolved.refreshHeaders,
-      );
       final existingCredentialRef = existing?.credentialRef;
       if (existingCredentialRef != null) {
         previousSecret = await _privateFeeds.read(existingCredentialRef);
@@ -130,16 +133,30 @@ final class FeedRepository {
         existingId: existing?.credentialRef,
       );
       storedUrl = 'private://$credentialRef';
-    } else {
-      existing = await _database.feedByUrl(storedUrl);
     }
 
     final feedId = existing?.id ?? _uuid.v4();
     try {
+      final existingKind = existing == null
+          ? null
+          : FeedKind.values[existing.kind];
+      if (expectedKind != null &&
+          existingKind != null &&
+          expectedKind != existingKind) {
+        throw FeedParseException(
+          existingKind == FeedKind.podcast
+              ? 'This address is already added as a podcast.'
+              : 'This address is already added as a feed.',
+        );
+      }
+      final prepared =
+          existingKind != null && existingKind != resolved.prepared.feed.kind
+          ? await _prepare(document, kind: existingKind)
+          : resolved.prepared;
       await _storeParsedFeed(
         feedId: feedId,
         storedUrl: storedUrl,
-        prepared: resolved.prepared,
+        prepared: prepared,
         isPrivate: isPrivate,
         credentialRef: credentialRef,
         document: document,
@@ -175,6 +192,11 @@ final class FeedRepository {
   }) async {
     final storedUrl = feedUrlIdentity(podcast.feedUrl.toString());
     final existingFeed = await _database.feedByUrl(storedUrl);
+    if (existingFeed != null && existingFeed.kind != FeedKind.podcast.index) {
+      throw const FeedParseException(
+        'This address is already added as a feed.',
+      );
+    }
     final feedId =
         existingFeed?.id ?? stableContentId('podcast-preview', storedUrl);
     final episodeId = stableContentId(
@@ -262,7 +284,19 @@ final class FeedRepository {
       password: password,
       bearerToken: bearerToken,
     );
-    final resolved = await _resolveFeedDocument(initial, headers, totalTimeout);
+    final resolved = await _resolveFeedDocument(
+      initial,
+      headers,
+      totalTimeout,
+      kind: FeedKind.values[feed.kind],
+    );
+    final duplicate = await _feedByAddress(
+      resolved.refreshUrl,
+      resolved.refreshHeaders,
+    );
+    if (duplicate != null && duplicate.id != feed.id) {
+      throw const FeedParseException('This feed is already in your library.');
+    }
     final previousSecret = await _privateFeeds.read(feed.credentialRef!);
     try {
       await _privateFeeds.save(
@@ -388,7 +422,10 @@ final class FeedRepository {
                 );
         return updated > 0 || await _database.feedById(feed.id) != null;
       }
-      final prepared = await _prepare(document);
+      final prepared = await _prepare(
+        document,
+        kind: FeedKind.values[feed.kind],
+      );
       await _storeParsedFeed(
         feedId: feed.id,
         storedUrl: feed.feedUrl,
@@ -859,8 +896,9 @@ final class FeedRepository {
   Future<_ResolvedFeed> _resolveFeedDocument(
     Uri address,
     Map<String, String> headers,
-    Duration totalTimeout,
-  ) async {
+    Duration totalTimeout, {
+    FeedKind? kind,
+  }) async {
     final stopwatch = Stopwatch()..start();
     final directYouTubeFeed = directYouTubeFeedUri(address);
     final requestAddress = directYouTubeFeed ?? address;
@@ -874,7 +912,7 @@ final class FeedRepository {
       totalTimeout: totalTimeout,
     );
     try {
-      final prepared = await _prepare(document);
+      final prepared = await _prepare(document, kind: kind);
       return _ResolvedFeed(document, requestAddress, requestHeaders, prepared);
     } on FeedParseException {
       final html = html_parser.parse(document.text);
@@ -925,7 +963,7 @@ final class FeedRepository {
         maxBytes: AppConstants.feedLimitBytes,
         totalTimeout: remaining,
       );
-      final prepared = await _prepare(feedDocument);
+      final prepared = await _prepare(feedDocument, kind: kind);
       return _ResolvedFeed(feedDocument, selected, selectedHeaders, prepared);
     }
   }
@@ -952,35 +990,13 @@ final class FeedRepository {
         currentFeed?.updatedAt != expectedRevision) {
       throw const _StaleFeedRefresh();
     }
-    var hasStoredItems = false;
-    if (currentFeed != null) {
-      hasStoredItems =
-          await (_database.select(_database.episodes)
-                ..where((row) => row.feedId.equals(feedId))
-                ..limit(1))
-              .getSingleOrNull() !=
-          null;
-      if (!hasStoredItems) {
-        hasStoredItems =
-            await (_database.select(_database.articles)
-                  ..where((row) => row.feedId.equals(feedId))
-                  ..limit(1))
-                .getSingleOrNull() !=
-            null;
-      }
-    }
     final currentKind =
         currentFeed != null &&
             currentFeed.kind >= 0 &&
             currentFeed.kind < FeedKind.values.length
         ? FeedKind.values[currentFeed.kind]
         : null;
-    // A temporary publisher-side feed regression must not move a populated
-    // subscription to the other library or erase its local history. Empty
-    // subscriptions may adopt a type once their first entries arrive.
-    final kind = currentKind != null && hasStoredItems
-        ? currentKind
-        : parsed.kind;
+    final kind = currentKind ?? parsed.kind;
     final parsedEpisodes = kind == FeedKind.podcast
         ? parsed.episodes
         : const <ParsedEpisode>[];
@@ -1341,10 +1357,13 @@ final class FeedRepository {
     return now.isAfter(nextStoredSecond) ? now : nextStoredSecond;
   }
 
-  Future<Feed?> _privateFeedBySecret(
-    Uri url,
-    Map<String, String> headers,
-  ) async {
+  Future<Feed?> _feedByAddress(Uri url, Map<String, String> headers) async {
+    if (headers.isEmpty) {
+      final publicFeed = await _database.feedByUrl(
+        feedUrlIdentity(url.toString()),
+      );
+      if (publicFeed != null) return publicFeed;
+    }
     return (await _privateFeedIndex())[_privateFeedIdentity(url, headers)];
   }
 
@@ -1414,7 +1433,7 @@ final class FeedRepository {
     return stableContentId(
       'private-feed',
       jsonEncode([
-        credentialAgnosticUrl(url),
+        feedUrlIdentity(url.toString()),
         for (final entry in headerEntries) [entry.key, entry.value],
       ]),
     );
@@ -1437,10 +1456,11 @@ final class FeedRepository {
     return <String, String>{};
   }
 
-  Future<_PreparedFeed> _prepare(NetworkDocument document) {
+  Future<_PreparedFeed> _prepare(NetworkDocument document, {FeedKind? kind}) {
     return compute(_parseAndPrepareFeed, (
       source: document.text,
       url: document.url.toString(),
+      kind: kind,
     ));
   }
 }
@@ -1481,8 +1501,14 @@ final class _PreparedFeed {
   final List<String> articleBodies;
 }
 
-_PreparedFeed _parseAndPrepareFeed(({String source, String url}) input) {
-  final feed = const FeedParser().parse(input.source, Uri.parse(input.url));
+_PreparedFeed _parseAndPrepareFeed(
+  ({String source, String url, FeedKind? kind}) input,
+) {
+  final feed = const FeedParser().parse(
+    input.source,
+    Uri.parse(input.url),
+    kind: input.kind,
+  );
   return _PreparedFeed(
     feed: feed,
     feedBody: '${feed.author ?? ''} ${plainText(feed.description)}',

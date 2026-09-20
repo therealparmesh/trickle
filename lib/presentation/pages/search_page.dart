@@ -40,11 +40,8 @@ final _privateCatalogSubscriptionsProvider = FutureProvider<Map<String, Feed>>((
     privateFeeds.map((feed) async {
       try {
         final secret = await store.read(feed.credentialRef ?? '');
-        if (secret == null) return null;
-        return MapEntry(
-          feedUrlIdentity(credentialAgnosticUrl(secret.url)),
-          feed,
-        );
+        if (secret == null || secret.headers.isNotEmpty) return null;
+        return MapEntry(feedUrlIdentity(secret.url.toString()), feed);
       } on Object {
         return null;
       }
@@ -69,16 +66,16 @@ final _catalogSubscriptionProvider = Provider.autoDispose
     });
 
 final class SearchPage extends ConsumerStatefulWidget {
-  const SearchPage({this.initialCatalog = false, super.key});
-  final bool initialCatalog;
+  const SearchPage({super.key}) : catalog = false;
+  const SearchPage.catalog({super.key}) : catalog = true;
+
+  final bool catalog;
 
   @override
   ConsumerState<SearchPage> createState() => _SearchPageState();
 }
 
-class _SearchPageState extends ConsumerState<SearchPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
+class _SearchPageState extends ConsumerState<SearchPage> {
   final _query = TextEditingController();
   Timer? _debounce;
   bool _loading = false;
@@ -87,41 +84,26 @@ class _SearchPageState extends ConsumerState<SearchPage>
   List<PodcastSearchResult> _catalog = const [];
   int _searchGeneration = 0;
   String _scheduledQuery = '';
-  late int _scheduledTab;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(
-      length: 2,
-      vsync: this,
-      initialIndex: widget.initialCatalog ? 1 : 0,
-    )..addListener(_scheduleSearch);
-    _scheduledTab = _tabs.index;
     _query.addListener(_scheduleSearch);
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _tabs.dispose();
     _query.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final results = _tabs.index == 0 ? _local.length : _catalog.length;
+    final results = widget.catalog ? _catalog.length : _local.length;
     return Scaffold(
       appBar: AppBar(
-        title: const PageTitle('Search'),
-        bottom: AdaptiveTabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'Library'),
-            Tab(text: 'Podcast catalog'),
-          ],
-        ),
+        title: PageTitle(widget.catalog ? 'Add podcast' : 'Search library'),
       ),
       body: AppBackdrop(
         child: Column(
@@ -135,9 +117,9 @@ class _SearchPageState extends ConsumerState<SearchPage>
                 keyboardType: TextInputType.text,
                 smartDashesType: SmartDashesType.disabled,
                 smartQuotesType: SmartQuotesType.disabled,
-                hintText: _tabs.index == 0
-                    ? 'Episodes, articles, posts, or feeds…'
-                    : 'Podcast title or creator…',
+                hintText: widget.catalog
+                    ? 'Podcast title or creator…'
+                    : 'Episodes, articles, posts, or feeds…',
                 leading: const Icon(Icons.search_rounded),
                 trailing: [
                   if (_query.text.isNotEmpty)
@@ -169,11 +151,12 @@ class _SearchPageState extends ConsumerState<SearchPage>
               ),
             Expanded(
               child: _query.text.trim().length < 2
-                  ? const EmptyState(
+                  ? EmptyState(
                       icon: Icons.manage_search_rounded,
                       title: 'Enter at least two characters',
-                      message:
-                          'Search your library or find podcasts in Apple’s catalog.',
+                      message: widget.catalog
+                          ? 'Find podcasts in Apple’s catalog.'
+                          : 'Search podcasts, episodes, articles, posts, and feeds in your library.',
                     )
                   : _error != null && results == 0 && !_loading
                   ? ErrorView(_error!, onRetry: _runSearch)
@@ -181,14 +164,13 @@ class _SearchPageState extends ConsumerState<SearchPage>
                   ? EmptyState(
                       icon: Icons.search_off_rounded,
                       title: 'Nothing found',
-                      message: _tabs.index == 0
-                          ? 'Try another phrase or add a new feed.'
-                          : 'Try a broader podcast title or creator.',
+                      message: widget.catalog
+                          ? 'Try a broader podcast title or creator.'
+                          : 'Try another phrase or add a new feed.',
                     )
-                  : TabBarView(
-                      controller: _tabs,
-                      children: [_localResults(), _catalogResults()],
-                    ),
+                  : widget.catalog
+                  ? _catalogResults()
+                  : _localResults(),
             ),
           ],
         ),
@@ -248,24 +230,21 @@ class _SearchPageState extends ConsumerState<SearchPage>
 
   void _scheduleSearch() {
     final query = _normalizedSearchQuery(_query.text);
-    final tab = _tabs.index;
-    if (query == _scheduledQuery && tab == _scheduledTab) return;
+    if (query == _scheduledQuery) return;
     _scheduledQuery = query;
-    _scheduledTab = tab;
     final canSearch = query.length >= 2;
     setState(() {
       _loading = canSearch;
       _error = null;
-      if (!canSearch && tab == 0) {
+      if (!canSearch) {
         _local = const [];
-      } else if (!canSearch) {
         _catalog = const [];
       }
     });
     _debounce?.cancel();
-    final duration = tab == 0
-        ? const Duration(milliseconds: 150)
-        : const Duration(milliseconds: 450);
+    final duration = widget.catalog
+        ? AppConstants.catalogSearchDebounce
+        : AppConstants.localSearchDebounce;
     _debounce = Timer(duration, _runSearch);
   }
 
@@ -280,18 +259,16 @@ class _SearchPageState extends ConsumerState<SearchPage>
       });
       return;
     }
-    final tab = _tabs.index;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      if (tab == 0) {
+      if (!widget.catalog) {
         final hits = await ref.read(databaseProvider).search(query);
         if (!mounted ||
             generation != _searchGeneration ||
-            _normalizedSearchQuery(_query.text) != query ||
-            _tabs.index != tab) {
+            _normalizedSearchQuery(_query.text) != query) {
           return;
         }
         setState(() => _local = hits);
@@ -302,8 +279,7 @@ class _SearchPageState extends ConsumerState<SearchPage>
             .search(query, region);
         if (!mounted ||
             generation != _searchGeneration ||
-            _normalizedSearchQuery(_query.text) != query ||
-            _tabs.index != tab) {
+            _normalizedSearchQuery(_query.text) != query) {
           return;
         }
         setState(() => _catalog = results);
@@ -311,15 +287,13 @@ class _SearchPageState extends ConsumerState<SearchPage>
     } on Object catch (error) {
       if (mounted &&
           generation == _searchGeneration &&
-          _normalizedSearchQuery(_query.text) == query &&
-          _tabs.index == tab) {
+          _normalizedSearchQuery(_query.text) == query) {
         setState(() => _error = friendlyError(error));
       }
     } finally {
       if (mounted &&
           generation == _searchGeneration &&
-          _normalizedSearchQuery(_query.text) == query &&
-          _tabs.index == tab) {
+          _normalizedSearchQuery(_query.text) == query) {
         setState(() => _loading = false);
       }
     }
@@ -439,7 +413,7 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
 
   void _open(Feed? feed) {
     if (feed != null) {
-      unawaited(context.push('/podcast/${feed.id}'));
+      unawaited(context.push('/feed/${feed.id}'));
     } else {
       unawaited(context.push('/podcast-preview', extra: widget.result));
     }

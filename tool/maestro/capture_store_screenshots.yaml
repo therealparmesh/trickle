@@ -9,8 +9,16 @@ appId: com.parmscript.trickle
     text: "Back"
     optional: true
 - assertVisible: "Library"
+- tapOn: "Search"
+- assertVisible: "Search library"
+- swipe:
+    start: "1%, 40%"
+    end: "90%, 40%"
+    duration: 500
+- assertVisible: "Library"
 - waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/01-home"
+- tapOn: "Podcasts.*"
 - tapOn: "Podcast Neon Dispatch. trickle studio"
 - assertVisible: "Episodes"
 - waitForAnimationToEnd
@@ -19,9 +27,25 @@ appId: com.parmscript.trickle
 - assertVisible: "Show notes"
 - waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/03-episode"
-- tapOn: "Back"
-- tapOn: "Back"
-- tapOn: "See all Unread"
+- swipe:
+    start: "1%, 40%"
+    end: "90%, 40%"
+    duration: 500
+- assertVisible: "Episodes"
+- swipe:
+    start: "1%, 40%"
+    end: "90%, 40%"
+    duration: 500
+- assertVisible: "Podcasts"
+- swipe:
+    start: "1%, 40%"
+    end: "90%, 40%"
+    duration: 500
+- assertVisible: "Library"
+- scrollUntilVisible:
+    element: "See all unread feed items"
+    direction: DOWN
+- tapOn: "See all unread feed items"
 - assertVisible: ".*All feeds.*"
 - waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/04-unread"
@@ -29,3 +53,8 @@ appId: com.parmscript.trickle
 - assertVisible: "Reader"
 - waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/05-reader"
+- swipe:
+    start: "1%, 40%"
+    end: "90%, 40%"
+    duration: 500
+- assertVisible: ".*All feeds.*"

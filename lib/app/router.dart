@@ -7,7 +7,6 @@ import '../presentation/pages/article_page.dart';
 import '../presentation/pages/downloads_page.dart';
 import '../presentation/pages/episode_page.dart';
 import '../presentation/pages/home_page.dart';
-import '../presentation/pages/library_page.dart';
 import '../presentation/pages/player_page.dart';
 import '../presentation/pages/feed_detail_page.dart';
 import '../presentation/pages/podcasts_page.dart';
@@ -26,8 +25,9 @@ GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
     Widget child, {
     required RouteObserver<ModalRoute<dynamic>> observer,
   }) {
-    return NoTransitionPage<void>(
+    return MaterialPage<void>(
       key: state.pageKey,
+      allowSnapshotting: false,
       child: NavigationGlitch(routeObserver: observer, child: child),
     );
   }
@@ -50,7 +50,12 @@ GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
           ),
           GoRoute(
             path: '/podcasts',
-            pageBuilder: (_, state) => shellPage(state, const PodcastsPage()),
+            pageBuilder: (_, state) => shellPage(
+              state,
+              PodcastsPage(
+                initialPodcasts: state.uri.queryParameters['tab'] == 'podcasts',
+              ),
+            ),
           ),
           GoRoute(
             path: '/reader',
@@ -63,24 +68,13 @@ GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
             ),
           ),
           GoRoute(
-            path: '/library',
-            pageBuilder: (_, state) => shellPage(state, const LibraryPage()),
-          ),
-          GoRoute(
             path: '/search',
-            pageBuilder: (_, state) => shellPage(
-              state,
-              SearchPage(
-                initialCatalog: state.uri.queryParameters['tab'] == 'podcasts',
-              ),
-            ),
+            pageBuilder: (_, state) => shellPage(state, const SearchPage()),
           ),
           GoRoute(
-            path: '/podcast/:id',
-            pageBuilder: (_, state) => shellPage(
-              state,
-              FeedDetailPage(feedId: state.pathParameters['id']!),
-            ),
+            path: '/podcast-search',
+            pageBuilder: (_, state) =>
+                shellPage(state, const SearchPage.catalog()),
           ),
           GoRoute(
             path: '/podcast-preview',

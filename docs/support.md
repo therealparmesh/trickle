@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: August 31, 2026_
+_Last updated: September 20, 2026_
 
 ## Contact
 
@@ -24,6 +24,16 @@ Include the following information when reporting a problem:
 Do not include private-feed passwords, bearer tokens, authorization headers, or complete private-feed URLs.
 
 ## Troubleshooting
+
+### Finding and adding content
+
+Home’s Search button searches your library. Use Add podcast in Library to search Apple’s podcast catalog, or Add podcast URL to paste an RSS URL. Add feed accepts RSS, Atom, JSON Feed, website, and Nostr profile addresses. If a podcast URL is entered under Add feed, or a regular feed under Add podcast URL, trickle explains the mismatch and adds it to the right collection.
+
+Home previews eight recent episodes and five unread feed items. The Library grid sits between them: cyan shortcuts are for podcasts, magenta shortcuts are for feeds. It shows four columns at normal phone widths and fewer with larger text, without scrolling separately. See all above the episode shelf opens the full episode list. See all above unread feed items opens Feeds. The full lists have Load more controls for older items.
+
+Podcasts has a badge for new episodes you have not started. Sources has a badge for unread feed items. Both show the full count and disappear at zero. In-progress and completed episodes are not included in the Podcasts badge.
+
+Article thumbnails come from the feed's image, an image in its content, or the linked webpage. Some publishers provide no usable picture or block previews. In those cases, trickle shows source artwork or a placeholder. Turn on Remote images in Settings to load pictures.
 
 ### Feed refresh
 
@@ -59,7 +69,7 @@ Use the Picture in Picture button on a supported device to keep video and audio 
 
 ### Nostr profile feeds
 
-Paste an `npub`, `nprofile`, or `nostr:` profile address into Add Feed. trickle reads verified root posts from a small finite set of secure relays. Replies and reposts are omitted so the feed stays focused on the profile's own posts.
+Paste an `npub`, `nprofile`, or `nostr:` profile address into Add feed. trickle reads verified root posts from a small finite set of secure relays. Replies and reposts are omitted so the feed stays focused on the profile's own posts.
 
 Posts can contain text, Markdown articles, content warnings, images, audio, and direct video. Audio uses the native player and saves progress. Relay and media availability remain controlled by their respective operators; retry the feed or attachment if one is temporarily unavailable.
 
@@ -81,9 +91,9 @@ Open Downloads to see the number of downloads and their stored size. Its menu ca
 
 ## Backup and migration
 
-Settings can import standard OPML files containing podcasts, RSS feeds, and YouTube feeds. Export OPML opens a scope chooser for podcasts, feeds, or all compatible subscriptions. Feed categories are stored as OPML folders. Portable URLs with embedded tokens are included; feeds that require separate authorization headers are skipped. Nostr profiles are stored only in trickle backups because OPML does not support them.
+Settings can import and export standard OPML files. Before importing, choose Podcasts, Feeds, or Mixed subscriptions. Use Podcasts for a podcast-player export; mixed files use saved types when available and detect the rest. Export offers podcasts, feeds, or all compatible subscriptions. trickle exports preserve subscription types and store feed categories as OPML folders. Portable URLs with embedded tokens are included; feeds that require separate authorization headers are skipped. Nostr profiles are stored only in trickle backups because OPML does not support them.
 
-You can also share a feed, website, podcast RSS, YouTube, `npub`, or `nprofile` address to trickle from another app. Review or edit the address in Add Feed before subscribing.
+You can also share a feed, website, podcast RSS, YouTube, `npub`, or `nprofile` address to trickle from another app. Review or edit the address in Add feed before subscribing.
 
 Saving a normal article stores its readable text for offline use. Publisher-hosted images and video still require a connection unless the operating system already cached them.
 

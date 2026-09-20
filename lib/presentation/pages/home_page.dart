@@ -13,7 +13,7 @@ import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/design_system.dart';
 import '../widgets/episode_playback_button.dart';
-import 'podcasts_page.dart';
+import '../widgets/add_feed_dialog.dart';
 
 final class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -21,8 +21,8 @@ final class HomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final episodes = ref.watch(recentEpisodesProvider);
-    final podcastFeeds = ref.watch(podcastFeedsProvider);
     final articles = ref.watch(readerUnreadArticlesProvider(5));
+    final newEpisodeCount = ref.watch(newEpisodeCountProvider).value;
     final unreadFeedItemCount = ref.watch(unreadArticleCountProvider).value;
     return Scaffold(
       body: AppBackdrop(
@@ -32,13 +32,19 @@ final class HomePage extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _HomeToolbar()),
+              SliverToBoxAdapter(
+                child: _SeeAll(
+                  label: 'See all episodes',
+                  onPressed: () => context.push('/podcasts'),
+                ),
+              ),
               episodes.when(
                 data: (items) => items.isEmpty
                     ? SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(18, 12, 18, 2),
                           child: AppCard(
-                            onTap: () => context.push('/search?tab=podcasts'),
+                            onTap: () => context.push('/podcast-search'),
                             child: const Row(
                               children: [
                                 Icon(
@@ -60,9 +66,7 @@ final class HomePage extends ConsumerWidget {
                           ),
                         ),
                       )
-                    : SliverToBoxAdapter(
-                        child: _RecentStrip(episodes: items.take(8).toList()),
-                      ),
+                    : SliverToBoxAdapter(child: _RecentStrip(episodes: items)),
                 loading: () => const SliverToBoxAdapter(
                   child: SizedBox(height: 176, child: LoadingView()),
                 ),
@@ -73,16 +77,15 @@ final class HomePage extends ConsumerWidget {
                   ),
                 ),
               ),
+              const SliverToBoxAdapter(child: SectionHeader('Library')),
               SliverToBoxAdapter(
-                child: _HomeShortcuts(
-                  title: 'Library',
-                  action: 'Open',
-                  onAction: () => context.push('/library'),
-                  shortcuts: [
+                child: LibraryShortcutGrid(
+                  children: [
                     LibraryShortcut(
                       icon: Icons.podcasts_rounded,
                       label: 'Podcasts',
-                      onTap: () => context.push('/podcasts'),
+                      badge: newEpisodeCount,
+                      onTap: () => context.push('/podcasts?tab=podcasts'),
                     ),
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
@@ -99,49 +102,19 @@ final class HomePage extends ConsumerWidget {
                       label: 'Saved episodes',
                       onTap: () => context.push('/saved'),
                     ),
-                  ],
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: SectionHeader(
-                  'Podcasts',
-                  action: 'See all',
-                  onAction: () => context.push('/podcasts'),
-                ),
-              ),
-              podcastFeeds.when(
-                data: (items) => items.isEmpty
-                    ? const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(18, 4, 18, 10),
-                          child: Text(
-                            'No podcast subscriptions yet.',
-                            style: TextStyle(color: AppConstants.secondaryText),
-                          ),
-                        ),
-                      )
-                    : SliverList.builder(
-                        itemCount: items.take(5).length,
-                        itemBuilder: (context, index) =>
-                            PodcastTile(items[index]),
+                    LibraryShortcut(
+                      icon: Icons.add_circle_outline_rounded,
+                      label: 'Add podcast',
+                      onTap: () => context.push('/podcast-search'),
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.add_link_rounded,
+                      label: 'Add podcast URL',
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const AddFeedDialog.podcast(),
                       ),
-                loading: () => const SliverToBoxAdapter(
-                  child: SizedBox(height: 120, child: LoadingView()),
-                ),
-                error: (error, _) => SliverToBoxAdapter(
-                  child: ErrorView(
-                    friendlyError(error),
-                    onRetry: () => ref.invalidate(feedsProvider),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _HomeShortcuts(
-                  title: 'Feeds',
-                  accent: AppConstants.magenta,
-                  action: 'See all',
-                  onAction: () => context.push('/reader'),
-                  shortcuts: [
+                    ),
                     LibraryShortcut(
                       icon: Icons.dynamic_feed_outlined,
                       label: 'Sources',
@@ -177,10 +150,9 @@ final class HomePage extends ConsumerWidget {
                 ),
               ),
               SliverToBoxAdapter(
-                child: SectionHeader(
-                  'Unread',
-                  action: 'See all',
-                  onAction: () => context.push('/reader'),
+                child: _SeeAll(
+                  label: 'See all unread feed items',
+                  onPressed: () => context.push('/reader'),
                 ),
               ),
               articles.when(
@@ -195,9 +167,9 @@ final class HomePage extends ConsumerWidget {
                         ),
                       )
                     : SliverList.builder(
-                        itemCount: items.take(5).length,
+                        itemCount: items.length,
                         itemBuilder: (context, index) =>
-                            ArticleTile(items[index]),
+                            ArticleTile(items[index], showReadState: false),
                       ),
                 loading: () => const SliverToBoxAdapter(
                   child: SizedBox(height: 100, child: LoadingView()),
@@ -282,7 +254,7 @@ final class _RecentStrip extends StatelessWidget {
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           mainAxisExtent: textScale > 1.5 ? 354 : 304,
-          mainAxisSpacing: 9,
+          mainAxisSpacing: 8,
           crossAxisSpacing: 8,
         ),
         itemBuilder: (context, index) => _RecentEpisodeCard(episodes[index]),
@@ -303,20 +275,26 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     final listeningState = episodeListeningState(episode, progress);
     final feed = ref.watch(feedSnapshotProvider(episode.feedId));
     final isCurrent = playback.isCurrent;
+    final playbackPhase = playbackUiPhaseFor(
+      processingState: playback.processingState,
+      playing: playback.playing,
+    );
     final status = isCurrent
-        ? (playback.playing ? 'playing' : 'paused')
+        ? playbackPhase.label
+        : listeningState == EpisodeListeningState.newEpisode
+        ? null
         : listeningState.label;
-    final metadata = [
+    final metadata = metadataLine([
       if (feed?.title.isNotEmpty == true) feed!.title,
       relativeDate(episode.publishedAt),
       compactDuration(episode.durationMs),
-    ].join(', ');
+    ]);
     return SignalPanel(
       accent: isCurrent
           ? AppConstants.acid
-          : listeningState == EpisodeListeningState.played
-          ? null
-          : listeningState.color,
+          : listeningState == EpisodeListeningState.inProgress
+          ? listeningState.color
+          : null,
       padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(8),
@@ -329,7 +307,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                 onTap: () => context.push('/episode/${episode.id}'),
                 onLongPress: () => _showActions(context, ref),
                 label:
-                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}. $status${metadata.isEmpty ? '' : '. $metadata'}',
+                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}${status == null ? '' : '. $status'}${metadata.isEmpty ? '' : '. $metadata'}',
                 hint: 'Long press for playback options',
                 child: InkWell(
                   onTap: () => context.push('/episode/${episode.id}'),
@@ -337,24 +315,26 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                   child: Row(
                     children: [
                       EpisodeArtwork(episode: episode, size: 64, radius: 5),
-                      const SizedBox(width: 11),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              status.toUpperCase(),
-                              maxLines: 1,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: isCurrent
-                                        ? AppConstants.acid
-                                        : listeningState.color,
-                                    letterSpacing: 1.1,
-                                  ),
-                            ),
-                            const SizedBox(height: 2),
+                            if (status != null) ...[
+                              Text(
+                                status.toUpperCase(),
+                                maxLines: 1,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: isCurrent
+                                          ? playbackPhase.color
+                                          : listeningState.color,
+                                      letterSpacing: 1.1,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                            ],
                             EpisodeTitle(
                               title: episode.title,
                               explicit: episode.explicit,
@@ -378,7 +358,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             EpisodePlaybackButton(episode: episode, progress: progress),
           ],
         ),
@@ -421,34 +401,26 @@ final class _RecentEpisodeCard extends ConsumerWidget {
   }
 }
 
-final class _HomeShortcuts extends StatelessWidget {
-  const _HomeShortcuts({
-    required this.title,
-    required this.shortcuts,
-    this.accent = AppConstants.cyan,
-    this.action,
-    this.onAction,
-  });
+final class _SeeAll extends StatelessWidget {
+  const _SeeAll({required this.label, required this.onPressed});
 
-  final String title;
-  final List<Widget> shortcuts;
-  final Color accent;
-  final String? action;
-  final VoidCallback? onAction;
+  final String label;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionHeader(
-          title,
-          accent: accent,
-          action: action,
-          onAction: onAction,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Semantics(
+          label: label,
+          button: true,
+          excludeSemantics: true,
+          onTap: onPressed,
+          child: TextButton(onPressed: onPressed, child: const Text('See all')),
         ),
-        HorizontalShortcutStrip(children: shortcuts),
-      ],
+      ),
     );
   }
 }

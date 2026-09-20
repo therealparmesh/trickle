@@ -386,7 +386,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   void _scheduleSearch(String value) {
     _searchDebounce?.cancel();
     setState(() {});
-    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+    _searchDebounce = Timer(AppConstants.localSearchDebounce, () {
       if (!mounted) return;
       final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
       if (normalized == _query) return;

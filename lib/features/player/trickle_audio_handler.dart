@@ -1789,6 +1789,15 @@ final class TrickleAudioHandler extends BaseAudioHandler
     final isPlaying = _processingState == AudioProcessingState.error
         ? false
         : playing ?? _player?.playing ?? false;
+    final processingState = _processingState == AudioProcessingState.error
+        ? AudioProcessingState.error
+        : _loadingMedia
+        ? AudioProcessingState.loading
+        : _processingState == AudioProcessingState.ready &&
+              !isPlaying &&
+              _isPlayRequested(_loadGeneration)
+        ? AudioProcessingState.buffering
+        : _processingState;
     final currentId = mediaItem.value?.id;
     final currentIndex = currentId == null
         ? -1
@@ -1812,7 +1821,7 @@ final class TrickleAudioHandler extends BaseAudioHandler
           MediaAction.seekForward,
           MediaAction.setSpeed,
         },
-        processingState: _processingState,
+        processingState: processingState,
         playing: isPlaying,
         errorCode: _processingState == AudioProcessingState.error ? 1 : null,
         errorMessage: _processingState == AudioProcessingState.error

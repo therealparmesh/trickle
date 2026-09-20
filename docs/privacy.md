@@ -12,7 +12,7 @@ trickle does not collect your information.
 
 ## Data stored on the device
 
-Subscriptions, reading state, playback progress, queue entries, settings, bookmarks, article cache, and downloaded media are stored locally. Text shared to trickle is held briefly in app-private system storage until trickle opens the editable Add Feed confirmation. Android backup and device transfer exclude trickle application data. On Apple platforms, trickle excludes its Application Support directory from iCloud backup.
+Subscriptions, reading state, playback progress, queue entries, settings, bookmarks, article cache, and downloaded media are stored locally. Text shared to trickle is held briefly in app-private system storage until trickle opens the editable Add feed confirmation. Android backup and device transfer exclude trickle application data. On Apple platforms, trickle excludes its Application Support directory from iCloud backup.
 
 Private-feed URLs and authorization headers are stored using the operating system's Keychain or Keystore. Apple Keychain entries are restricted to the current device. An active authenticated media download may require the operating system's app-private download scheduler to retain its URL and request headers until that task ends.
 

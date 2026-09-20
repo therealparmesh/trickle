@@ -24,6 +24,7 @@ void main() {
           title: 'Signal & Noise',
           feedUrl: 'https://example.com/feed.xml?token=a&mode=full',
           siteUrl: 'https://example.com/show',
+          kind: FeedKind.podcast,
         ),
       ],
     );
@@ -45,6 +46,7 @@ void main() {
       'https://example.com/feed.xml?token=a&mode=full',
     );
     expect(outline.getAttribute('htmlUrl'), 'https://example.com/show');
+    expect(extractOpmlSubscriptions(source).single.kind, FeedKind.podcast);
   });
 
   test('round-trips reader categories as standard OPML folders', () {
@@ -55,6 +57,7 @@ void main() {
           title: 'Science Daily',
           feedUrl: 'https://science.test/rss',
           category: 'Science',
+          kind: FeedKind.reader,
         ),
         OpmlSubscription(
           title: 'World News',
@@ -75,6 +78,10 @@ void main() {
         .findElements('outline')
         .toList();
     final imported = extractOpmlSubscriptions(source);
+    expect(
+      imported.singleWhere((item) => item.title == 'Science Daily').kind,
+      FeedKind.reader,
+    );
 
     expect(topLevel.map((outline) => outline.getAttribute('text')), [
       'News',
@@ -151,17 +158,17 @@ void main() {
       final podcastDocument = await buildOpmlExportDocument(
         database,
         privateFeeds: privateFeeds,
-        scope: OpmlExportScope.podcasts,
+        scope: OpmlScope.podcasts,
       );
       final allDocument = await buildOpmlExportDocument(
         database,
         privateFeeds: privateFeeds,
-        scope: OpmlExportScope.allSubscriptions,
+        scope: OpmlScope.allSubscriptions,
       );
       final readingDocument = await buildOpmlExportDocument(
         database,
         privateFeeds: privateFeeds,
-        scope: OpmlExportScope.reading,
+        scope: OpmlScope.reading,
       );
       final podcasts = _opmlUrls(podcastDocument.xml);
       final allSubscriptions = _opmlUrls(allDocument.xml);
@@ -289,6 +296,69 @@ void main() {
       expect(articles.single.feedId, reader.id);
     },
   );
+
+  test('explicit import scopes survive mixed OPML export and reimport', () async {
+    for (final scope in [OpmlScope.podcasts, OpmlScope.reading]) {
+      FlutterSecureStorage.setMockInitialValues({});
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _MixedOpmlFeedAdapter(),
+        addressValidator: (_) async {},
+      );
+      final privateFeeds = PrivateFeedStore(
+        storage: const FlutterSecureStorage(),
+      );
+      final feeds = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      var source =
+          '<opml version="2.0"><body><outline xmlUrl="https://podcast.test/mixed"/></body></opml>';
+      final service = OpmlService(
+        database,
+        feeds,
+        privateFeeds,
+        pickFile: () async => XFile.fromData(
+          Uint8List.fromList(utf8.encode(source)),
+          name: 'feeds.opml',
+        ),
+      );
+      try {
+        final result = await service.pickAndImport(scope: scope);
+        expect(result?.imported, 1);
+        expect(result?.failed, 0);
+        final feed = (await database.select(database.feeds).get()).single;
+        final expectedKind = scope == OpmlScope.podcasts
+            ? FeedKind.podcast
+            : FeedKind.reader;
+        expect(feed.kind, expectedKind.index);
+        source = (await buildOpmlExportDocument(
+          database,
+          privateFeeds: privateFeeds,
+          scope: OpmlScope.allSubscriptions,
+        )).xml;
+        await feeds.deleteFeed(feed.id);
+        expect(await database.select(database.feeds).get(), isEmpty);
+        expect((await service.pickAndImport())?.failed, 0);
+        expect(
+          (await database.select(database.feeds).get()).single.kind,
+          expectedKind.index,
+        );
+        expect(
+          await database.select(database.episodes).get(),
+          hasLength(expectedKind == FeedKind.podcast ? 1 : 0),
+        );
+        expect(
+          await database.select(database.articles).get(),
+          hasLength(expectedKind == FeedKind.reader ? 2 : 0),
+        );
+      } finally {
+        network.close();
+        await database.close();
+      }
+    }
+  });
 
   test('decodes UTF-8 and UTF-16 OPML files', () {
     const source =
@@ -504,6 +574,7 @@ final class _MixedOpmlFeedAdapter implements HttpClientAdapter {
         '''
         <rss version="2.0"><channel>
           <title>Imported show</title>
+          ${options.uri.path == '/mixed' ? '<item><guid>announcement</guid><title>News</title><link>https://podcast.test/news</link></item>' : ''}
           <item>
             <guid>episode-1</guid>
             <title>Playable episode</title>

@@ -18,7 +18,7 @@ import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/podcast_search_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/domain/feed_models.dart';
-import 'package:trickle/presentation/pages/podcasts_page.dart';
+import 'package:trickle/presentation/widgets/add_feed_dialog.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/search_page.dart';
 import 'package:trickle/services/opml_service.dart';
@@ -26,7 +26,7 @@ import 'package:trickle/services/opml_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('an OPML podcast with a tokenized URL matches catalog search', (
+  testWidgets('catalog matching keeps token-distinct feeds separate', (
     tester,
   ) async {
     FlutterSecureStorage.setMockInitialValues({});
@@ -75,14 +75,17 @@ void main() {
     expect(imported.kind, FeedKind.podcast.index);
     expect(imported.isPrivate, isTrue);
     expect(imported.feedUrl, startsWith('private://'));
+    await tester.runAsync(
+      () => repository.subscribe(
+        'https://example.test/feed.xml',
+        bearerToken: 'different-account',
+      ),
+    );
 
     final router = GoRouter(
       initialLocation: '/search',
       routes: [
-        GoRoute(
-          path: '/search',
-          builder: (_, _) => const SearchPage(initialCatalog: true),
-        ),
+        GoRoute(path: '/search', builder: (_, _) => const SearchPage.catalog()),
       ],
     );
     await tester.pumpWidget(
@@ -111,6 +114,23 @@ void main() {
       of: find.text('Explicit Signal'),
       matching: find.byType(ListTile),
     );
+    expect(
+      find.descendant(of: importedRow, matching: find.text('Subscribed')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.descendant(of: importedRow, matching: find.text('Subscribe')),
+    );
+    for (
+      var attempt = 0;
+      attempt < 30 && find.text('Subscribed').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+    }
     expect(
       find.descendant(of: importedRow, matching: find.text('Subscribed')),
       findsOneWidget,
@@ -159,10 +179,10 @@ void main() {
         routes: [
           GoRoute(
             path: '/search',
-            builder: (_, _) => const SearchPage(initialCatalog: true),
+            builder: (_, _) => const SearchPage.catalog(),
           ),
           GoRoute(
-            path: '/podcast/:id',
+            path: '/feed/:id',
             builder: (_, _) => const Scaffold(body: Text('Podcast detail')),
           ),
           GoRoute(
@@ -274,7 +294,7 @@ void main() {
         find.descendant(of: firstRow, matching: find.text('Subscribed')),
         findsOneWidget,
       );
-      expect(find.text('Search'), findsOneWidget);
+      expect(find.text('Add podcast'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 1));
@@ -298,10 +318,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/search',
       routes: [
-        GoRoute(
-          path: '/search',
-          builder: (_, _) => const SearchPage(initialCatalog: true),
-        ),
+        GoRoute(path: '/search', builder: (_, _) => const SearchPage.catalog()),
       ],
     );
     await tester.pumpWidget(
@@ -364,10 +381,7 @@ void main() {
     final router = GoRouter(
       initialLocation: '/search',
       routes: [
-        GoRoute(
-          path: '/search',
-          builder: (_, _) => const SearchPage(initialCatalog: true),
-        ),
+        GoRoute(path: '/search', builder: (_, _) => const SearchPage.catalog()),
       ],
     );
     await tester.pumpWidget(
@@ -573,6 +587,109 @@ void main() {
     network.close();
     await database.close();
   });
+
+  testWidgets(
+    'manual adds explain a type mismatch and use the correct collection',
+    (tester) async {
+      for (final podcastIntent in [false, true]) {
+        FlutterSecureStorage.setMockInitialValues({});
+        final database = AppDatabase.forTesting(NativeDatabase.memory());
+        final network = SafeNetworkClient.forTesting(
+          Dio()..httpClientAdapter = _ImmediateFeedAdapter(),
+          addressValidator: (_) async {},
+        );
+        final repository = FeedRepository(
+          database: database,
+          network: network,
+          privateFeeds: PrivateFeedStore(storage: const FlutterSecureStorage()),
+        );
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, _) => Scaffold(
+                body: FilledButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => podcastIntent
+                        ? const AddFeedDialog.podcast()
+                        : const AddFeedDialog(),
+                  ),
+                  child: const Text('Add subscription'),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: '/feed/:id',
+              builder: (_, state) => Scaffold(
+                body: Text('Details: ${state.pathParameters['id']}'),
+              ),
+            ),
+          ],
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              databaseProvider.overrideWithValue(database),
+              feedRepositoryProvider.overrideWithValue(repository),
+            ],
+            child: MaterialApp.router(
+              theme: TrickleTheme.dark,
+              routerConfig: router,
+            ),
+          ),
+        );
+        await tester.tap(find.text('Add subscription'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byType(EditableText).first,
+          podcastIntent
+              ? 'https://example.test/reader.xml'
+              : 'https://example.test/feed.xml',
+        );
+        await tester.tap(find.text('Subscribe'));
+        for (
+          var attempt = 0;
+          attempt < 40 && find.byType(AddFeedDialog).evaluate().isNotEmpty;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 20));
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+        }
+        await tester.pump(const Duration(milliseconds: 300));
+        final feed = (await database.select(database.feeds).get()).single;
+        expect(
+          feed.kind,
+          (podcastIntent ? FeedKind.reader : FeedKind.podcast).index,
+        );
+        expect(find.text('Details: ${feed.id}'), findsOneWidget);
+        expect(
+          find.text(
+            podcastIntent
+                ? 'This is a feed. Added to Feeds.'
+                : 'This is a podcast. Added to Podcasts.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          await database.select(database.episodes).get(),
+          hasLength(podcastIntent ? 0 : 1),
+        );
+        expect(
+          await database.select(database.articles).get(),
+          hasLength(podcastIntent ? 1 : 0),
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 1));
+        router.dispose();
+        network.close();
+        await database.close();
+      }
+    },
+  );
 
   testWidgets('add feed rejects malformed addresses before subscribing', (
     tester,
@@ -826,7 +943,14 @@ final class _ImmediateFeedAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     return ResponseBody.fromString(
+      options.uri.path == '/reader.xml'
+          ? '''
+      <rss version="2.0"><channel><title>Signal Feed</title>
+        <item><guid>article-1</guid><title>Article</title>
+          <link>https://example.test/article</link></item>
+      </channel></rss>
       '''
+          : '''
       <rss version="2.0"
         xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
         <channel>
