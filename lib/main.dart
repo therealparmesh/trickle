@@ -231,6 +231,7 @@ Future<_TrickleRuntime> _createRuntime() async {
     );
     await audio.reloadQueueFromDatabase();
     await audio.initialize();
+    await audio.restoreLastPlayback();
     return _TrickleRuntime(
       database: database,
       network: network,

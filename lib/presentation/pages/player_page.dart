@@ -57,12 +57,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     );
     if (item == null) {
       return Scaffold(
-        appBar: AppBar(title: const PageTitle('Now Playing')),
+        appBar: AppBar(title: const PageTitle('Now playing')),
         body: const AppBackdrop(
           child: EmptyState(
             icon: Icons.graphic_eq_rounded,
             title: 'Nothing playing',
-            message: 'Choose an episode to light up the signal.',
+            message: 'Choose an episode to start listening.',
           ),
         ),
       );
@@ -79,7 +79,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
       appBar: AppBar(
-        title: const PageTitle('Now Playing'),
+        title: const PageTitle('Now playing'),
         actions: [
           IconButton(
             tooltip: _sleepTimerDescription(sleep),
@@ -143,7 +143,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 620),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 10, 24, 40),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.sm,
+                    AppSpacing.xl,
+                    40,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -163,7 +168,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: AppSpacing.xl),
                       EpisodeTitle(
                         title: item.title,
                         explicit: explicit,
@@ -171,7 +176,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineMedium,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       Text(
                         item.album ?? 'Podcast',
                         textAlign: TextAlign.center,
@@ -180,11 +185,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.lg),
                       SignalPanel(
                         accent: phase.color,
                         color: AppConstants.surface.withValues(alpha: 0.86),
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.md,
+                          AppSpacing.md,
+                          AppSpacing.md,
+                          AppSpacing.md,
+                        ),
                         child: Column(
                           children: [
                             _PlaybackProgress(
@@ -192,7 +202,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                               fallbackDuration: item.duration ?? Duration.zero,
                               phase: phase,
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: AppSpacing.sm),
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 final showQueueNavigation =
@@ -264,7 +274,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                         ),
                       ),
                       if (phase.isError) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: AppSpacing.md),
                         Semantics(
                           liveRegion: true,
                           child: Text(
@@ -275,7 +285,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 26),
+                      const SizedBox(height: AppSpacing.xl),
                       Row(
                         children: [
                           Container(
@@ -283,7 +293,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                             height: 3,
                             color: AppConstants.cyan,
                           ),
-                          const SizedBox(width: 9),
+                          const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(
                               'Playback speed',
@@ -292,7 +302,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpacing.md),
                       PlaybackSpeedSelector(
                         selected: speed,
                         onSelected: (value) => _runPlayback(
@@ -301,9 +311,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                               .setSpeed(value / 100),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: AppSpacing.lg),
                       _PlaybackOptions(),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: AppSpacing.xl),
                       _Extras(episodeId: item.id),
                     ],
                   ),
@@ -553,7 +563,7 @@ class _PlaybackProgressState extends ConsumerState<_PlaybackProgress> {
               : null,
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -912,7 +922,12 @@ class _ExtrasState extends ConsumerState<_Extras> {
       privateSecret: secret,
       allowRemoteImages: allowRemoteImages,
       scale: 0.85,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
     );
   }
 
@@ -976,7 +991,12 @@ class _ExtrasState extends ConsumerState<_Extras> {
               .toList();
     final visible = matches.take(_transcriptLimit).toList();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1000,7 +1020,7 @@ class _ExtrasState extends ConsumerState<_Extras> {
               _transcriptLimit = _transcriptPageSize;
             }),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.sm),
           if (matches.isEmpty)
             const ListTile(
               contentPadding: EdgeInsets.zero,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
@@ -105,7 +107,12 @@ final class _SavedPageState extends ConsumerState<SavedPage> {
 
   Widget _loadMore({required int remaining, required VoidCallback onPressed}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.xl,
+      ),
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: const Icon(Icons.expand_more_rounded),

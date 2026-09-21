@@ -281,14 +281,14 @@ class _ArticleContentState extends State<ArticleContent> {
         final continues = _fragmentContinues(node);
         yield Container(
           margin: EdgeInsets.only(
-            top: continuation ? 0 : 10,
-            bottom: continues ? 0 : 10,
+            top: continuation ? 0 : AppSpacing.sm,
+            bottom: continues ? 0 : AppSpacing.sm,
           ),
           padding: EdgeInsets.fromLTRB(
-            16,
-            continuation ? 0 : 12,
-            14,
-            continues ? 0 : 12,
+            AppSpacing.lg,
+            continuation ? 0 : AppSpacing.md,
+            AppSpacing.md,
+            continues ? 0 : AppSpacing.md,
           ),
           decoration: const BoxDecoration(
             color: AppConstants.elevated,
@@ -309,14 +309,14 @@ class _ArticleContentState extends State<ArticleContent> {
         final continues = _fragmentContinues(node);
         yield Container(
           margin: EdgeInsets.only(
-            top: continuation ? 0 : 10,
-            bottom: continues ? 0 : 10,
+            top: continuation ? 0 : AppSpacing.sm,
+            bottom: continues ? 0 : AppSpacing.sm,
           ),
           padding: EdgeInsets.fromLTRB(
-            14,
-            continuation ? 0 : 14,
-            14,
-            continues ? 0 : 14,
+            AppSpacing.md,
+            continuation ? 0 : AppSpacing.md,
+            AppSpacing.md,
+            continues ? 0 : AppSpacing.md,
           ),
           decoration: BoxDecoration(
             color: AppConstants.elevated,
@@ -374,8 +374,8 @@ class _ArticleContentState extends State<ArticleContent> {
             padding: EdgeInsets.only(
               bottom: item.attributes[_listItemContinuesAttribute] == 'true'
                   ? 0
-                  : 8,
-              left: 5,
+                  : AppSpacing.sm,
+              left: AppSpacing.xs,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,7 +492,7 @@ class _ArticleContentState extends State<ArticleContent> {
 
   Widget _paragraph(List<dom.Node> nodes, {bool continues = false}) {
     return Padding(
-      padding: EdgeInsets.only(bottom: continues ? 0 : 16),
+      padding: EdgeInsets.only(bottom: continues ? 0 : AppSpacing.lg),
       child: Text.rich(_inline(nodes), style: _bodyStyle()),
     );
   }
@@ -1089,10 +1089,10 @@ final class ArticleImage extends ConsumerWidget {
                       .clamp(1, 2048)
                       .toInt();
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                 child: ClipPath(
                   clipper: ShapeBorderClipper(
-                    shape: const CutCornerBorder(cut: 9),
+                    shape: const CutCornerBorder(cut: 8),
                   ),
                   child: Image.file(
                     File(localPath),
@@ -1111,7 +1111,7 @@ final class ArticleImage extends ConsumerWidget {
         ? image
         : InkWell(
             onTap: onTap,
-            customBorder: const CutCornerBorder(cut: 9),
+            customBorder: const CutCornerBorder(cut: 8),
             child: image,
           );
     if (onTap != null) {
@@ -1177,7 +1177,7 @@ final class ArticleImage extends ConsumerWidget {
                 Icons.broken_image_outlined,
                 color: AppConstants.secondaryText,
               ),
-              SizedBox(height: 5),
+              SizedBox(height: AppSpacing.xs),
               Text(
                 'Image unavailable',
                 style: TextStyle(
@@ -1191,7 +1191,7 @@ final class ArticleImage extends ConsumerWidget {
         return Align(
           alignment: Alignment.centerLeft,
           child: ClipPath(
-            clipper: ShapeBorderClipper(shape: const CutCornerBorder(cut: 9)),
+            clipper: ShapeBorderClipper(shape: const CutCornerBorder(cut: 8)),
             child: SizedBox(
               key: keyed ? ValueKey('article-image:$source') : null,
               width: width,
@@ -1210,7 +1210,7 @@ final class ArticleImage extends ConsumerWidget {
     );
     return padded
         ? Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
             child: placeholder,
           )
         : placeholder;

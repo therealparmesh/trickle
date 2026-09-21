@@ -43,9 +43,9 @@ appId: com.parmscript.trickle
     duration: 500
 - assertVisible: "Library"
 - scrollUntilVisible:
-    element: "See all unread feed items"
+    element: "See all feed items"
     direction: DOWN
-- tapOn: "See all unread feed items"
+- tapOn: "See all feed items"
 - assertVisible: ".*All feeds.*"
 - waitForAnimationToEnd
 - takeScreenshot: "store/apple/screenshots/04-unread"

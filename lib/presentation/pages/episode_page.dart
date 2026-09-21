@@ -7,6 +7,7 @@ import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
 import '../episode_actions.dart';
+import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/design_system.dart';
 import '../widgets/episode_playback_button.dart';
@@ -91,6 +92,8 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
     final download = ref.watch(downloadForEpisodeProvider(episode.id));
     final downloadAction = episodeDownloadAction(download);
     final progress = ref.watch(episodeProgressProvider(episode.id)).value;
+    final listeningState = episodeListeningState(episode, progress);
+    final progressFraction = episodeProgressFraction(episode, progress);
     final showNotes = ref.watch(episodeShowNotesProvider(episode.id));
     final secret = feed?.isPrivate == true
         ? ref.watch(privateFeedSecretProvider(feed!.id)).value
@@ -98,16 +101,19 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
     final metadata = [
       relativeDate(episode.publishedAt),
       compactDuration(episode.durationMs),
-      if (episode.played) 'Played',
+      listeningState.label,
     ].where((part) => part.isNotEmpty).join(' · ');
     final position = progress?.positionMs ?? 0;
     final duration = progress?.durationMs ?? episode.durationMs ?? 0;
-    final showProgress =
-        position > 0 && duration > 0 && progress?.completed != true;
 
     return SelectionArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 56),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          56,
+        ),
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
@@ -141,7 +147,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   if (feed?.title.isNotEmpty == true) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     Text(
                       feed!.title,
                       textAlign: wide ? TextAlign.start : TextAlign.center,
@@ -152,7 +158,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                     ),
                   ],
                   if (metadata.isNotEmpty) ...[
-                    const SizedBox(height: 5),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(
                       metadata,
                       textAlign: wide ? TextAlign.start : TextAlign.center,
@@ -161,14 +167,14 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                       ),
                     ),
                   ],
-                  if (showProgress) ...[
-                    const SizedBox(height: 16),
+                  if (progressFraction != null) ...[
+                    const SizedBox(height: AppSpacing.lg),
                     LinearProgressIndicator(
-                      value: (position / duration).clamp(0, 1),
+                      value: progressFraction,
                       minHeight: 3,
                       backgroundColor: AppConstants.hairline,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppSpacing.sm),
                     Text(
                       '${formatDuration(Duration(milliseconds: position))} played · ${formatDuration(Duration(milliseconds: duration - position))} remaining',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -176,7 +182,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.lg),
                   EpisodePlaybackButton(episode: episode, expanded: true),
                 ],
               );
@@ -185,7 +191,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     artwork,
-                    const SizedBox(width: 24),
+                    const SizedBox(width: AppSpacing.xl),
                     Expanded(child: information),
                   ],
                 );
@@ -194,17 +200,17 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Center(child: artwork),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: AppSpacing.xl),
                   information,
                 ],
               );
             },
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: AppSpacing.lg),
           Wrap(
             alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
               _ActionButton(
                 icon: Icons.playlist_play_rounded,
@@ -240,7 +246,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.queue_music_rounded),
-                      title: Text('Add to Up Next'),
+                      title: Text('Add to Up next'),
                     ),
                   ),
                   PopupMenuItem(
@@ -248,12 +254,14 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(
-                        episode.played
+                        listeningState == EpisodeListeningState.played
                             ? Icons.replay_rounded
                             : Icons.done_rounded,
                       ),
                       title: Text(
-                        episode.played ? 'Mark unplayed' : 'Mark played',
+                        listeningState == EpisodeListeningState.played
+                            ? 'Mark unplayed'
+                            : 'Mark played',
                       ),
                     ),
                   ),
@@ -268,9 +276,9 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
               ),
             ],
           ),
-          const SizedBox(height: 34),
+          const SizedBox(height: AppSpacing.xxl),
           Text('Show notes', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.md),
           EpisodeShowNotes(
             value: showNotes,
             onRetry: () => ref.invalidate(episodeShowNotesProvider(episode.id)),

@@ -102,7 +102,7 @@ INSERT INTO episodes (
   'store-podcast',
   'store-episode-queue',
   'Queue Craft: Decide once, keep listening',
-  '<p>How a clear Up Next list can reduce taps without taking control away from the listener.</p>',
+  '<p>How a clear Up next list can reduce taps without taking control away from the listener.</p>',
   'https://example.com/audio/queue-craft.mp3',
   'audio/mpeg',
   'https://raw.githubusercontent.com/therealparmesh/trickle/main/store/apple/fixtures/queue-craft.png',

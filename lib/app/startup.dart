@@ -23,7 +23,7 @@ class _StartupGateState extends ConsumerState<StartupGate> {
       final initialData = <AsyncValue<Object?>>[
         ref.watch(recentEpisodesProvider),
         ref.watch(podcastFeedsProvider),
-        ref.watch(readerUnreadArticlesProvider(5)),
+        ref.watch(recentArticlesProvider),
         ref.watch(unreadArticleCountProvider),
         ref.watch(currentMediaProvider),
       ];

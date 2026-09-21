@@ -25,11 +25,11 @@ final class QueuePage extends ConsumerWidget {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return Scaffold(
       appBar: AppBar(
-        title: const PageTitle('Up Next'),
+        title: const PageTitle('Up next'),
         actions: [
           if (largeText)
             IconButton(
-              tooltip: 'Clear Up Next',
+              tooltip: 'Clear Up next',
               color: AppConstants.danger,
               onPressed: queue.isEmpty
                   ? null
@@ -48,21 +48,24 @@ final class QueuePage extends ConsumerWidget {
       ),
       body: AppBackdrop(
         child: queueState.when(
-          loading: () => const LoadingView(label: 'Loading Up Next'),
+          loading: () => const LoadingView(label: 'Loading Up next'),
           error: (error, _) => ErrorView(
             friendlyError(error),
-            title: 'Couldn’t load Up Next',
+            title: 'Couldn’t load Up next',
             onRetry: () => ref.invalidate(queueProvider),
           ),
           data: (queue) => queue.isEmpty
               ? const EmptyState(
                   icon: Icons.queue_music_rounded,
-                  title: 'Nothing is Up Next',
+                  title: 'Nothing is Up next',
                   message:
-                      'Choose Play next or Add to Up Next from an episode menu.',
+                      'Choose Play next or Add to Up next from an episode menu.',
                 )
               : ReorderableListView.builder(
-                  padding: const EdgeInsets.only(top: 8, bottom: 24),
+                  padding: const EdgeInsets.only(
+                    top: AppSpacing.sm,
+                    bottom: AppSpacing.xl,
+                  ),
                   itemCount: queue.length,
                   onReorderItem: (oldIndex, newIndex) {
                     final items = [...queue];
@@ -86,7 +89,7 @@ final class QueuePage extends ConsumerWidget {
                         child: Align(
                           alignment: Alignment.centerRight,
                           child: Padding(
-                            padding: EdgeInsets.only(right: 22),
+                            padding: EdgeInsets.only(right: AppSpacing.xl),
                             child: Icon(Icons.delete_outline_rounded),
                           ),
                         ),
@@ -110,8 +113,8 @@ final class QueuePage extends ConsumerWidget {
                           );
                           return Padding(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                              horizontal: AppSpacing.sm,
+                              vertical: AppSpacing.xs,
                             ),
                             child: SignalPanel(
                               accent: playback.isCurrent
@@ -183,9 +186,9 @@ final class QueuePage extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear Up Next?'),
+        title: const Text('Clear Up next?'),
         content: const Text(
-          'Playback will stop and every episode will be removed from Up Next.',
+          'Playback will stop and every episode will be removed from Up next.',
         ),
         actions: [
           TextButton(
@@ -198,7 +201,7 @@ final class QueuePage extends ConsumerWidget {
               foregroundColor: AppConstants.background,
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Clear Up Next'),
+            child: const Text('Clear Up next'),
           ),
         ],
       ),
@@ -223,7 +226,7 @@ final class QueuePage extends ConsumerWidget {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Remove from Up Next?'),
+            title: const Text('Remove from Up next?'),
             content: Text(title),
             actions: [
               TextButton(

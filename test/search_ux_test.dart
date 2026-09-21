@@ -16,12 +16,18 @@ import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/podcast_search_repository.dart';
+import 'package:trickle/data/repositories/playback_source_resolver.dart';
+import 'package:trickle/data/repositories/settings_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/domain/feed_models.dart';
+import 'package:trickle/features/downloads/download_coordinator.dart';
+import 'package:trickle/features/player/trickle_audio_handler.dart';
 import 'package:trickle/presentation/widgets/add_feed_dialog.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/search_page.dart';
 import 'package:trickle/services/opml_service.dart';
+
+import 'support/unused_downloader.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -438,6 +444,23 @@ void main() {
       network: network,
       privateFeeds: PrivateFeedStore(storage: const FlutterSecureStorage()),
     );
+    final settings = SettingsRepository(database);
+    final sources = PlaybackSourceResolver(
+      database,
+      PrivateFeedStore(),
+      network,
+    );
+    final audio = TrickleAudioHandler(
+      database: database,
+      settings: settings,
+      sourceResolver: sources,
+    );
+    final downloads = DownloadCoordinator(
+      downloader: UnusedDownloader(),
+      database: database,
+      settings: settings,
+      sources: sources,
+    );
     final now = DateTime.utc(2026, 7, 22);
     await database
         .into(database.feeds)
@@ -469,6 +492,8 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(database),
           feedRepositoryProvider.overrideWithValue(repository),
+          audioHandlerProvider.overrideWithValue(audio),
+          downloadCoordinatorProvider.overrideWithValue(downloads),
           remoteImagesProvider.overrideWith((_) => Stream.value(false)),
         ],
         child: MaterialApp(
@@ -520,6 +545,10 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 1));
+    final disposal = audio.disposeHandler();
+    await tester.pumpAndSettle();
+    await disposal;
+    await downloads.dispose();
     network.close();
     await database.close();
   });

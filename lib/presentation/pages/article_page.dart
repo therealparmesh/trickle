@@ -150,7 +150,12 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                     _revealedContentWarning == warning;
                 return SelectionArea(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 64),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      64,
+                    ),
                     children: [
                       Align(
                         alignment: Alignment.topCenter,
@@ -169,9 +174,9 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                       ?.copyWith(fontSize: 38 * scale),
                                 ),
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: AppSpacing.md),
                               _metadata(value, feed?.title),
-                              const SizedBox(height: 26),
+                              const SizedBox(height: AppSpacing.xl),
                               if (extracted?.readerFallback == true) ...[
                                 _ReaderFallbackNotice(
                                   onRetry: () => _refreshContent(value),
@@ -179,7 +184,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                       ? null
                                       : () => _openInBrowser(value),
                                 ),
-                                const SizedBox(height: 20),
+                                const SizedBox(height: AppSpacing.lg),
                               ],
                               if (!revealContent)
                                 _ContentWarningGate(
@@ -198,10 +203,10 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                   leadingTitleToOmit: value.title,
                                 ),
                               ],
-                              const SizedBox(height: 30),
+                              const SizedBox(height: AppSpacing.xxl),
                               Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
+                                spacing: AppSpacing.sm,
+                                runSpacing: AppSpacing.sm,
                                 children: [
                                   FilledButton.tonalIcon(
                                     onPressed: () =>
@@ -265,7 +270,12 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     final activeVideo = ref.watch(videoSessionProvider);
     return SelectionArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(22, 20, 22, 64),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.lg,
+          AppSpacing.xl,
+          64,
+        ),
         children: [
           Align(
             alignment: Alignment.topCenter,
@@ -281,16 +291,16 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                       style: Theme.of(context).textTheme.displaySmall,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   _metadata(article, feed?.title),
                   if (summary?.isNotEmpty == true) ...[
-                    const SizedBox(height: 26),
+                    const SizedBox(height: AppSpacing.xl),
                     Text(
                       summary!,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   ],
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xl),
                   FilledButton.icon(
                     onPressed: () {
                       if (activeVideo?.articleId == article.id) {
@@ -311,7 +321,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                           : 'Play video',
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: AppSpacing.sm),
                   const Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -320,7 +330,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                         size: 18,
                         color: AppConstants.secondaryText,
                       ),
-                      SizedBox(width: 8),
+                      SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
                           'Use Picture in Picture for background or lock-screen audio.',
@@ -332,10 +342,10 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
                     children: [
                       FilledButton.tonalIcon(
                         onPressed: () => _runAction(() => _setSaved(article)),
@@ -562,10 +572,10 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: AppSpacing.sm),
           child: Container(width: 18, height: 3, color: AppConstants.magenta),
         ),
-        const SizedBox(width: 9),
+        const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Text(
             metadataLine([
@@ -658,9 +668,9 @@ final class _ContentWarningGate extends StatelessWidget {
             'Content warning',
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.sm),
           Text(warning),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpacing.md),
           FilledButton.tonal(
             onPressed: onReveal,
             child: const Text('Show content'),
@@ -694,7 +704,12 @@ final class _ReaderFallbackNotice extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.sm,
+            AppSpacing.sm,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -702,14 +717,14 @@ final class _ReaderFallbackNotice extends StatelessWidget {
                 'Reader view unavailable',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               const Text(
                 'Showing the feed summary instead.',
                 style: TextStyle(color: AppConstants.secondaryText),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: AppSpacing.sm),
               Wrap(
-                spacing: 4,
+                spacing: AppSpacing.xs,
                 children: [
                   TextButton(
                     onPressed: onRetry,

@@ -297,7 +297,12 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                           (articles.value?.length ?? 0) < articleTotal))
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg,
+                          AppSpacing.md,
+                          AppSpacing.lg,
+                          0,
+                        ),
                         child: OutlinedButton.icon(
                           onPressed: () => setState(() => _limit += _pageSize),
                           icon: const Icon(Icons.expand_more_rounded),
@@ -333,7 +338,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
       filterOptions: const [
         AdaptiveFilterOption(EpisodeFeedFilter.all, 'All'),
         AdaptiveFilterOption(EpisodeFeedFilter.unplayed, 'Unplayed'),
-        AdaptiveFilterOption(EpisodeFeedFilter.inProgress, 'In Progress'),
+        AdaptiveFilterOption(EpisodeFeedFilter.inProgress, 'In progress'),
         AdaptiveFilterOption(EpisodeFeedFilter.saved, 'Saved'),
         AdaptiveFilterOption(EpisodeFeedFilter.downloaded, 'Downloaded'),
       ],
@@ -593,7 +598,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                 if (loading)
                   const SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                       child: InlineLoadingView(
                         label: 'Loading podcast details',
                       ),
@@ -602,7 +607,9 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                 else if (snapshot.hasError)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                      ),
                       child: InlineErrorView(
                         friendlyError(snapshot.error!),
                         title: 'Couldn’t load podcast details',
@@ -639,7 +646,12 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                 if (visibleCount < episodes.length)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.md,
+                        AppSpacing.lg,
+                        0,
+                      ),
                       child: OutlinedButton.icon(
                         onPressed: () => setState(() => _limit += _pageSize),
                         icon: const Icon(Icons.expand_more_rounded),
@@ -647,7 +659,9 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                       ),
                     ),
                   ),
-                const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+                const SliverPadding(
+                  padding: EdgeInsets.only(bottom: AppSpacing.xl),
+                ),
               ],
             );
           },
@@ -754,50 +768,60 @@ final class _FeedHero extends StatelessWidget {
         : AppConstants.magenta;
     return LayoutBuilder(
       builder: (context, constraints) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.xs,
+        ),
         child: SignalPanel(
           accent: accent,
           color: AppConstants.surface.withValues(alpha: 0.88),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (stackIdentity) ...[
                 FeedArtwork(feed: feed, size: 88, radius: 8),
                 if (subscriptionControl != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
                   Align(
                     alignment: AlignmentDirectional.centerStart,
                     child: subscriptionControl,
                   ),
                 ],
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
                 _FeedIdentity(feed: feed),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
                 _FeedDescription(feed: feed),
               ] else if (constraints.maxWidth < 460) ...[
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     FeedArtwork(feed: feed, size: 88, radius: 8),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: AppSpacing.md),
                     Expanded(child: _FeedIdentity(feed: feed)),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
                 _FeedDescription(feed: feed),
               ] else
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     FeedArtwork(feed: feed, size: 124, radius: 10),
-                    const SizedBox(width: 20),
+                    const SizedBox(width: AppSpacing.lg),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _FeedIdentity(feed: feed),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: AppSpacing.md),
                           _FeedDescription(feed: feed),
                         ],
                       ),
@@ -805,24 +829,24 @@ final class _FeedHero extends StatelessWidget {
                   ],
                 ),
               if (!stackIdentity && subscriptionControl != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpacing.sm),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: subscriptionControl,
                 ),
               ],
               if (onCategoryTap != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 _FeedCategoryChip(
                   category: feed.category,
                   onPressed: onCategoryTap!,
                 ),
               ],
               if (refreshing) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
                 const InlineLoadingView(label: 'Refreshing feed'),
               ] else if (feed.subscribed && feed.refreshError != null) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
                 InlineErrorView(
                   feed.refreshError!,
                   title: 'Couldn’t refresh feed',
@@ -862,7 +886,7 @@ final class _FeedCategoryChip extends StatelessWidget {
             side: BorderSide(
               color: AppConstants.magenta.withValues(alpha: 0.35),
             ),
-            shape: const CutCornerBorder(cut: 7),
+            shape: const CutCornerBorder(cut: 8),
           ),
         ),
       ),
@@ -956,7 +980,7 @@ final class _FeedIdentity extends StatelessWidget {
         if (feed.author?.isNotEmpty == true &&
             feed.author!.trim().toLowerCase() !=
                 feed.title.trim().toLowerCase()) ...[
-          const SizedBox(height: 7),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             feed.author!,
             maxLines: 2,
@@ -1012,22 +1036,24 @@ final class _SubscriptionControl extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: busy ? null : onPressed,
-            customBorder: const CutCornerBorder(cut: 7),
+            customBorder: const CutCornerBorder(cut: 8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               child: DecoratedBox(
                 key: const ValueKey('subscription-pill'),
                 decoration: ShapeDecoration(
                   color: color.withValues(alpha: 0.06),
                   shape: CutCornerBorder(
-                    cut: 7,
+                    cut: 8,
                     side: BorderSide(color: color.withValues(alpha: 0.4)),
                   ),
                 ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 28),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1046,7 +1072,7 @@ final class _SubscriptionControl extends StatelessWidget {
                                 : Icons.add_rounded,
                             size: 14,
                           ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: AppSpacing.xs),
                         Text(
                           label,
                           style: Theme.of(
@@ -1167,7 +1193,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                 FeedKind.reader => 'Feed settings',
                 FeedKind.podcast => 'Podcast settings',
               }, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpacing.md),
               if (_isReader) ...[
                 FeedCategoryField(
                   controller: _category,
@@ -1176,7 +1202,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                   enabled: !_busy,
                   initialCategory: widget.feed.category,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
               ],
               if (!_isReader) ...[
                 AdaptiveSwitchTile(
@@ -1210,7 +1236,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                   onChanged: _busy
                       ? null
                       : (value) => setState(() => _autoQueue = value),
-                  title: 'Add new episodes to Up Next',
+                  title: 'Add new episodes to Up next',
                 ),
               ],
               AdaptiveSwitchTile(
@@ -1234,7 +1260,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                     'Alerts depend on iOS or Android background scheduling.',
               ),
               if (!_isReader) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpacing.sm),
                 Column(
                   children: [
                     TextField(
@@ -1247,7 +1273,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                         helperText: '0–600',
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpacing.sm),
                     TextField(
                       enabled: !_busy,
                       controller: _outro,
@@ -1261,7 +1287,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                   ],
                 ),
               ],
-              const SizedBox(height: 18),
+              const SizedBox(height: AppSpacing.lg),
               if (widget.feed.isPrivate)
                 OutlinedButton.icon(
                   onPressed: _busy ? null : _updatePrivateAccess,
@@ -1272,7 +1298,7 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
                         : 'Update private access',
                   ),
                 ),
-              if (widget.feed.isPrivate) const SizedBox(height: 10),
+              if (widget.feed.isPrivate) const SizedBox(height: AppSpacing.sm),
               FilledButton(
                 onPressed: _busy ? null : _save,
                 child: Text(
@@ -1482,7 +1508,7 @@ class _PrivateAccessDialogState extends State<_PrivateAccessDialog> {
                   labelText: 'Private feed URL',
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               const Text(
                 'For a URL token, leave the fields below blank. For Basic or Bearer authentication, enter the replacement credentials.',
                 style: TextStyle(
@@ -1491,7 +1517,7 @@ class _PrivateAccessDialogState extends State<_PrivateAccessDialog> {
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _username,
                 autocorrect: false,
@@ -1499,7 +1525,7 @@ class _PrivateAccessDialogState extends State<_PrivateAccessDialog> {
                   labelText: 'Username (Basic auth)',
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpacing.sm),
               TextField(
                 controller: _password,
                 obscureText: true,
@@ -1508,7 +1534,7 @@ class _PrivateAccessDialogState extends State<_PrivateAccessDialog> {
                 decoration: const InputDecoration(labelText: 'Password'),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                 child: Text(
                   'OR',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -1525,7 +1551,7 @@ class _PrivateAccessDialogState extends State<_PrivateAccessDialog> {
                 decoration: const InputDecoration(labelText: 'Bearer token'),
               ),
               if (_error != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 InlineErrorView(
                   _error!,
                   title: 'Couldn’t update private access',

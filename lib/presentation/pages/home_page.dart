@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,7 +23,7 @@ final class HomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final episodes = ref.watch(recentEpisodesProvider);
-    final articles = ref.watch(readerUnreadArticlesProvider(5));
+    final articles = ref.watch(recentArticlesProvider);
     final newEpisodeCount = ref.watch(newEpisodeCountProvider).value;
     final unreadFeedItemCount = ref.watch(unreadArticleCountProvider).value;
     return Scaffold(
@@ -42,7 +44,12 @@ final class HomePage extends ConsumerWidget {
                 data: (items) => items.isEmpty
                     ? SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 12, 18, 2),
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.md,
+                            AppSpacing.lg,
+                            AppSpacing.xs,
+                          ),
                           child: AppCard(
                             onTap: () => context.push('/podcast-search'),
                             child: const Row(
@@ -51,7 +58,7 @@ final class HomePage extends ConsumerWidget {
                                   Icons.add_circle_outline_rounded,
                                   color: AppConstants.cyan,
                                 ),
-                                SizedBox(width: 12),
+                                SizedBox(width: AppSpacing.md),
                                 Expanded(
                                   child: Text(
                                     'Find a podcast to start listening',
@@ -89,7 +96,7 @@ final class HomePage extends ConsumerWidget {
                     ),
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
-                      label: 'Up Next',
+                      label: 'Up next',
                       onTap: () => context.push('/queue'),
                     ),
                     LibraryShortcut(
@@ -117,7 +124,7 @@ final class HomePage extends ConsumerWidget {
                     ),
                     LibraryShortcut(
                       icon: Icons.dynamic_feed_outlined,
-                      label: 'Sources',
+                      label: 'Feeds',
                       badge: unreadFeedItemCount,
                       color: AppConstants.magenta,
                       onTap: () => context.push('/reader?tab=feeds'),
@@ -139,7 +146,7 @@ final class HomePage extends ConsumerWidget {
                     ),
                     LibraryShortcut(
                       icon: Icons.video_call_outlined,
-                      label: 'Add YouTube',
+                      label: 'Add YouTube feed',
                       color: AppConstants.magenta,
                       onTap: () => showDialog<void>(
                         context: context,
@@ -151,17 +158,22 @@ final class HomePage extends ConsumerWidget {
               ),
               SliverToBoxAdapter(
                 child: _SeeAll(
-                  label: 'See all unread feed items',
-                  onPressed: () => context.push('/reader'),
+                  label: 'See all feed items',
+                  onPressed: () => context.push('/reader?filter=all'),
                 ),
               ),
               articles.when(
                 data: (items) => items.isEmpty
                     ? const SliverToBoxAdapter(
                         child: Padding(
-                          padding: EdgeInsets.fromLTRB(18, 4, 18, 10),
+                          padding: EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.xs,
+                            AppSpacing.lg,
+                            AppSpacing.sm,
+                          ),
                           child: Text(
-                            'No unread feed items.',
+                            'No feed items yet.',
                             style: TextStyle(color: AppConstants.secondaryText),
                           ),
                         ),
@@ -169,7 +181,7 @@ final class HomePage extends ConsumerWidget {
                     : SliverList.builder(
                         itemCount: items.length,
                         itemBuilder: (context, index) =>
-                            ArticleTile(items[index], showReadState: false),
+                            ArticleTile(items[index]),
                       ),
                 loading: () => const SliverToBoxAdapter(
                   child: SizedBox(height: 100, child: LoadingView()),
@@ -177,12 +189,13 @@ final class HomePage extends ConsumerWidget {
                 error: (error, _) => SliverToBoxAdapter(
                   child: ErrorView(
                     friendlyError(error),
-                    onRetry: () =>
-                        ref.invalidate(readerUnreadArticlesProvider(5)),
+                    onRetry: () => ref.invalidate(recentArticlesProvider),
                   ),
                 ),
               ),
-              const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+              const SliverPadding(
+                padding: EdgeInsets.only(bottom: AppSpacing.xl),
+              ),
             ],
           ),
         ),
@@ -197,13 +210,18 @@ final class _HomeToolbar extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 11, 16, 9),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.md,
+          AppSpacing.lg,
+          AppSpacing.sm,
+        ),
         child: SizedBox(
           height: 50,
           child: Row(
             children: [
               const ExcludeSemantics(child: TrickleMark(size: 34)),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: MediaQuery.withClampedTextScaling(
                   maxScaleFactor: 2,
@@ -222,7 +240,7 @@ final class _HomeToolbar extends StatelessWidget {
                 tooltip: 'Search',
                 onPressed: () => context.push('/search'),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               GlassIconButton(
                 icon: Icons.settings_outlined,
                 tooltip: 'Settings',
@@ -244,18 +262,23 @@ final class _RecentStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
-    final rowHeight = (82 + (textScale - 1) * 36).clamp(82.0, 166.0);
+    final rowHeight = math.max(80.0, 48 * textScale + AppSpacing.xl);
     return SizedBox(
-      height: rowHeight * 2 + 26,
+      height: rowHeight * 2 + AppSpacing.xl,
       child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.sm,
+          AppSpacing.lg,
+          AppSpacing.sm,
+        ),
         scrollDirection: Axis.horizontal,
         itemCount: episodes.length,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisExtent: textScale > 1.5 ? 354 : 304,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
+          mainAxisExtent: textScale > 1.5 ? 352 : 304,
+          mainAxisSpacing: AppSpacing.sm,
+          crossAxisSpacing: AppSpacing.sm,
         ),
         itemBuilder: (context, index) => _RecentEpisodeCard(episodes[index]),
       ),
@@ -279,11 +302,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
       processingState: playback.processingState,
       playing: playback.playing,
     );
-    final status = isCurrent
-        ? playbackPhase.label
-        : listeningState == EpisodeListeningState.newEpisode
-        ? null
-        : listeningState.label;
+    final status = isCurrent ? playbackPhase.label : listeningState.label;
     final metadata = metadataLine([
       if (feed?.title.isNotEmpty == true) feed!.title,
       relativeDate(episode.publishedAt),
@@ -292,12 +311,12 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     return SignalPanel(
       accent: isCurrent
           ? AppConstants.acid
-          : listeningState == EpisodeListeningState.inProgress
-          ? listeningState.color
-          : null,
+          : listeningState == EpisodeListeningState.played
+          ? null
+          : listeningState.color,
       padding: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(AppSpacing.sm),
         child: Row(
           children: [
             Expanded(
@@ -307,34 +326,32 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                 onTap: () => context.push('/episode/${episode.id}'),
                 onLongPress: () => _showActions(context, ref),
                 label:
-                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}${status == null ? '' : '. $status'}${metadata.isEmpty ? '' : '. $metadata'}',
+                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}. $status${metadata.isEmpty ? '' : '. $metadata'}',
                 hint: 'Long press for playback options',
                 child: InkWell(
                   onTap: () => context.push('/episode/${episode.id}'),
                   onLongPress: () => _showActions(context, ref),
                   child: Row(
                     children: [
-                      EpisodeArtwork(episode: episode, size: 64, radius: 5),
-                      const SizedBox(width: 12),
+                      EpisodeArtwork(episode: episode, size: 64, radius: 4),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (status != null) ...[
-                              Text(
-                                status.toUpperCase(),
-                                maxLines: 1,
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: isCurrent
-                                          ? playbackPhase.color
-                                          : listeningState.color,
-                                      letterSpacing: 1.1,
-                                    ),
-                              ),
-                              const SizedBox(height: 2),
-                            ],
+                            Text(
+                              status,
+                              maxLines: 1,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: isCurrent
+                                        ? playbackPhase.color
+                                        : listeningState.color,
+                                    letterSpacing: 0.5,
+                                  ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
                             EpisodeTitle(
                               title: episode.title,
                               explicit: episode.explicit,
@@ -347,7 +364,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                                     ? AppConstants.secondaryText
                                     : AppConstants.primaryText,
                                 fontWeight: FontWeight.w700,
-                                height: 1.15,
+                                height: 1.25,
                               ),
                             ),
                           ],
@@ -358,7 +375,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.sm),
             EpisodePlaybackButton(episode: episode, progress: progress),
           ],
         ),
@@ -385,7 +402,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.queue_music_rounded),
-              title: const Text('Add to Up Next'),
+              title: const Text('Add to Up next'),
               onTap: () => Navigator.pop(context, EpisodeAction.addToUpNext),
             ),
           ],
@@ -410,7 +427,7 @@ final class _SeeAll extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
       child: Align(
         alignment: Alignment.centerRight,
         child: Semantics(

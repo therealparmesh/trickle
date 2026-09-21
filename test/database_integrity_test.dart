@@ -524,52 +524,64 @@ void main() {
     },
   );
 
-  test('shared playback progress excludes completed history', () async {
-    final now = DateTime.utc(2026, 7, 24);
-    await database
-        .into(database.feeds)
-        .insert(
-          FeedsCompanion.insert(
-            id: 'feed',
-            title: 'Feed',
-            feedUrl: 'https://example.com/feed.xml',
-            createdAt: now,
-            updatedAt: now,
-          ),
-        );
-    for (final id in const ['partial', 'complete']) {
+  test(
+    'shared status progress excludes played history but preserves completion flags',
+    () async {
+      final now = DateTime.utc(2026, 7, 24);
       await database
-          .into(database.episodes)
+          .into(database.feeds)
           .insert(
-            EpisodesCompanion.insert(
-              id: id,
-              feedId: 'feed',
-              title: id,
-              enclosureUrl: 'https://example.com/$id.mp3',
-              discoveredAt: now,
+            FeedsCompanion.insert(
+              id: 'feed',
+              title: 'Feed',
+              feedUrl: 'https://example.com/feed.xml',
+              createdAt: now,
+              updatedAt: now,
             ),
           );
-    }
-    await database.batch((batch) {
-      batch.insertAll(database.playbackProgresses, [
-        PlaybackProgressesCompanion.insert(
-          episodeId: 'partial',
-          positionMs: const Value(1000),
-          updatedAt: now,
-        ),
-        PlaybackProgressesCompanion.insert(
-          episodeId: 'complete',
-          positionMs: const Value(2000),
-          completed: const Value(true),
-          updatedAt: now,
-        ),
-      ]);
-    });
+      for (final id in const ['partial', 'complete', 'completed-progress']) {
+        await database
+            .into(database.episodes)
+            .insert(
+              EpisodesCompanion.insert(
+                id: id,
+                feedId: 'feed',
+                title: id,
+                enclosureUrl: 'https://example.com/$id.mp3',
+                discoveredAt: now,
+                played: Value(id == 'complete'),
+              ),
+            );
+      }
+      await database.batch((batch) {
+        batch.insertAll(database.playbackProgresses, [
+          PlaybackProgressesCompanion.insert(
+            episodeId: 'partial',
+            positionMs: const Value(1000),
+            updatedAt: now,
+          ),
+          PlaybackProgressesCompanion.insert(
+            episodeId: 'complete',
+            positionMs: const Value(2000),
+            completed: const Value(true),
+            updatedAt: now,
+          ),
+          PlaybackProgressesCompanion.insert(
+            episodeId: 'completed-progress',
+            completed: const Value(true),
+            updatedAt: now,
+          ),
+        ]);
+      });
 
-    final progresses = await database.watchIncompletePlaybackProgresses().first;
+      final progresses = await database.watchEpisodeStatusProgresses().first;
 
-    expect(progresses.map((progress) => progress.episodeId), ['partial']);
-  });
+      expect(progresses.map((progress) => progress.episodeId).toSet(), {
+        'partial',
+        'completed-progress',
+      });
+    },
+  );
 
   test('podcast status views separate new and in-progress episodes', () async {
     final now = DateTime.utc(2026, 7, 29);
@@ -610,6 +622,8 @@ void main() {
           ('played', 'podcast', true),
           ('reader-new', 'reader', false),
           ('unsubscribed-new', 'unsubscribed', false),
+          ('unsubscribed-partial', 'unsubscribed', false),
+          ('reader-partial', 'reader', false),
         ])
           EpisodesCompanion.insert(
             id: entry.$1,
@@ -621,6 +635,12 @@ void main() {
           ),
       ]);
       batch.insertAll(database.playbackProgresses, [
+        for (final id in ['unsubscribed-partial', 'reader-partial'])
+          PlaybackProgressesCompanion.insert(
+            episodeId: id,
+            positionMs: const Value(1000),
+            updatedAt: now.subtract(const Duration(hours: 2)),
+          ),
         PlaybackProgressesCompanion.insert(
           episodeId: 'partial-newer',
           positionMs: const Value(2000),
@@ -649,7 +669,30 @@ void main() {
     expect(inProgress.map((episode) => episode.id), [
       'partial-newer',
       'partial-older',
+      'unsubscribed-partial',
     ]);
+    final unplayed = await database
+        .watchFilteredEpisodesForFeed(
+          feedId: 'podcast',
+          limit: 20,
+          sort: ContentSort.newest,
+          filter: EpisodeFeedFilter.unplayed,
+        )
+        .first;
+    expect(unplayed.map((episode) => episode.id).toSet(), {
+      'new',
+      'partial-newer',
+      'partial-older',
+    });
+    expect(
+      await database
+          .watchFilteredEpisodeCountForFeed(
+            feedId: 'podcast',
+            filter: EpisodeFeedFilter.unplayed,
+          )
+          .first,
+      unplayed.length,
+    );
     await database
         .into(database.playbackProgresses)
         .insert(
@@ -687,7 +730,7 @@ void main() {
   });
 
   test(
-    'version 4 migration preserves Up Next and adds queue staging',
+    'version 4 migration preserves Up next and adds queue staging',
     () async {
       await database.close();
       final underlying = sqlite3.openInMemory();

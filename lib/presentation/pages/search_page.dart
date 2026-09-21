@@ -109,7 +109,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.sm,
+              ),
               child: SearchBar(
                 controller: _query,
                 autoFocus: true,
@@ -119,7 +124,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 smartQuotesType: SmartQuotesType.disabled,
                 hintText: widget.catalog
                     ? 'Podcast title or creator…'
-                    : 'Episodes, articles, posts, or feeds…',
+                    : 'Episodes and articles…',
                 leading: const Icon(Icons.search_rounded),
                 trailing: [
                   if (_query.text.isNotEmpty)
@@ -142,7 +147,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               ),
             if (_error != null && results > 0)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                ),
                 child: InlineErrorView(
                   _error!,
                   title: 'Couldn’t update results',
@@ -156,7 +166,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       title: 'Enter at least two characters',
                       message: widget.catalog
                           ? 'Find podcasts in Apple’s catalog.'
-                          : 'Search podcasts, episodes, articles, posts, and feeds in your library.',
+                          : 'Search episodes and articles in your library.',
                     )
                   : _error != null && results == 0 && !_loading
                   ? ErrorView(_error!, onRetry: _runSearch)
@@ -180,9 +190,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   Widget _localResults() {
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
       itemCount: _local.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 3),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
       itemBuilder: (context, index) {
         final hit = _local[index];
         final icon = switch (hit.kind) {
@@ -214,9 +229,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Widget _catalogResults() {
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.8;
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.xl,
+      ),
       itemCount: _catalog.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 3),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
       itemBuilder: (context, index) {
         final result = _catalog[index];
         return _CatalogResultRow(
@@ -374,7 +394,10 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
         child: InkWell(
           onTap: _busy || subscription.resolving ? null : () => _open(feed),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xs,
+              vertical: AppSpacing.sm,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -383,18 +406,22 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
                   children: [
                     Artwork(
                       url: widget.result.artworkUrl?.toString(),
-                      size: 54,
+                      size: AppSizes.artwork,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [title, const SizedBox(height: 4), subtitle],
+                        children: [
+                          title,
+                          const SizedBox(height: AppSpacing.xs),
+                          subtitle,
+                        ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Align(alignment: Alignment.centerRight, child: action),
               ],
             ),

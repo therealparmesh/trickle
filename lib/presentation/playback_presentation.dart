@@ -25,7 +25,9 @@ double? episodeProgressFraction(
 ) {
   final position = progress?.positionMs ?? 0;
   final duration = progress?.durationMs ?? episode.durationMs ?? 0;
-  if (position <= 0 || duration <= 0 || progress?.completed == true) {
+  if (duration <= 0 ||
+      episodeListeningState(episode, progress) !=
+          EpisodeListeningState.inProgress) {
     return null;
   }
   return (position / duration).clamp(0, 1);
@@ -34,7 +36,7 @@ double? episodeProgressFraction(
 extension EpisodeListeningStatePresentation on EpisodeListeningState {
   String get label => switch (this) {
     EpisodeListeningState.newEpisode => 'New',
-    EpisodeListeningState.inProgress => 'In Progress',
+    EpisodeListeningState.inProgress => 'In progress',
     EpisodeListeningState.played => 'Played',
   };
 
@@ -60,6 +62,10 @@ PlaybackUiPhase playbackUiPhaseFor({
   }
   if (processingState == AudioProcessingState.error) {
     return PlaybackUiPhase.error;
+  }
+  if (processingState == AudioProcessingState.idle ||
+      processingState == AudioProcessingState.completed) {
+    return PlaybackUiPhase.paused;
   }
   return playing ? PlaybackUiPhase.playing : PlaybackUiPhase.paused;
 }

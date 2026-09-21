@@ -78,7 +78,7 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
         onTap: onPressed,
         child: FilledButton.icon(
           style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(54),
+            minimumSize: const Size.fromHeight(AppSizes.control),
             backgroundColor: failed ? AppConstants.danger : null,
           ),
           onPressed: onPressed,
@@ -86,7 +86,7 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
               ? const SizedBox.square(
                   dimension: 20,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2.3,
+                    strokeWidth: 2,
                     color: AppConstants.background,
                   ),
                 )
@@ -122,12 +122,12 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
           child: InkWell(
             onTap: onPressed,
             child: SizedBox.square(
-              dimension: 48,
+              dimension: AppSizes.control,
               child: Center(
                 child: busy
                     ? const SizedBox.square(
                         dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Icon(
                         icon,

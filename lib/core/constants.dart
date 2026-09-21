@@ -1,5 +1,21 @@
 import 'package:flutter/material.dart';
 
+abstract final class AppSpacing {
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const lg = 16.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+}
+
+abstract final class AppSizes {
+  static const icon = 24.0;
+  static const shortcutIcon = 40.0;
+  static const control = 48.0;
+  static const artwork = 56.0;
+}
+
 abstract final class AppConstants {
   // Time-bounded work uses one short auxiliary tier plus three network tiers.
   // Callers select the smallest tier that can finish the whole operation,

@@ -63,7 +63,7 @@ final class SignalPanel extends StatelessWidget {
     this.onTap,
     this.accent,
     this.color = AppConstants.surface,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(AppSpacing.lg),
     super.key,
   });
 
@@ -84,7 +84,10 @@ final class SignalPanel extends StatelessWidget {
             top: 12,
             bottom: 12,
             child: IgnorePointer(
-              child: ColoredBox(color: value, child: const SizedBox(width: 3)),
+              child: ColoredBox(
+                color: value,
+                child: const SizedBox(width: AppSpacing.xs),
+              ),
             ),
           ),
       ],
@@ -102,7 +105,7 @@ final class SignalIcon extends StatelessWidget {
   const SignalIcon({
     required this.icon,
     this.color = AppConstants.cyan,
-    this.size = 46,
+    this.size = AppSizes.control,
     super.key,
   });
 
@@ -115,10 +118,10 @@ final class SignalIcon extends StatelessWidget {
     return ExcludeSemantics(
       child: Material(
         color: color.withValues(alpha: 0.12),
-        shape: CutCornerBorder(cut: size * 0.2),
+        shape: const CutCornerBorder(cut: AppSpacing.sm),
         child: SizedBox.square(
           dimension: size,
-          child: Icon(icon, color: color, size: size * 0.48),
+          child: Icon(icon, color: color, size: AppSizes.icon),
         ),
       ),
     );
@@ -138,7 +141,7 @@ final class SignalMediaFrame extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          Padding(padding: const EdgeInsets.all(6), child: child),
+          Padding(padding: const EdgeInsets.all(AppSpacing.sm), child: child),
           const Positioned(
             top: 0,
             right: 16,

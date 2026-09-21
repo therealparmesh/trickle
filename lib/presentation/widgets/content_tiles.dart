@@ -65,11 +65,20 @@ final class EpisodeTile extends ConsumerWidget {
               child: InkWell(
                 onTap: () => context.push('/episode/${episode.id}'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.xs,
+                    AppSpacing.md,
+                  ),
                   child: Row(
                     children: [
-                      EpisodeArtwork(episode: episode, size: 58, radius: 5),
-                      const SizedBox(width: 12),
+                      EpisodeArtwork(
+                        episode: episode,
+                        size: AppSizes.artwork,
+                        radius: 4,
+                      ),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,13 +97,13 @@ final class EpisodeTile extends ConsumerWidget {
                                 height: 1.2,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: AppSpacing.sm),
                             Row(
                               children: [
                                 if (listeningState !=
                                     EpisodeListeningState.played) ...[
                                   _NewDot(color: listeningState.color),
-                                  const SizedBox(width: 7),
+                                  const SizedBox(width: AppSpacing.sm),
                                 ],
                                 Expanded(
                                   child: Text(
@@ -114,7 +123,7 @@ final class EpisodeTile extends ConsumerWidget {
                               ],
                             ),
                             if (progressFraction case final value?) ...[
-                              const SizedBox(height: 7),
+                              const SizedBox(height: AppSpacing.sm),
                               LinearProgressIndicator(
                                 value: value,
                                 minHeight: 3,
@@ -132,7 +141,7 @@ final class EpisodeTile extends ConsumerWidget {
           ),
           EpisodePlaybackButton(episode: episode, progress: progress),
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
             child: PopupMenuButton<EpisodeAction>(
               tooltip: 'Episode actions',
               icon: const Icon(Icons.more_horiz_rounded),
@@ -144,7 +153,7 @@ final class EpisodeTile extends ConsumerWidget {
                 ),
                 const PopupMenuItem(
                   value: EpisodeAction.addToUpNext,
-                  child: Text('Add to Up Next'),
+                  child: Text('Add to Up next'),
                 ),
                 PopupMenuItem(
                   value: downloadMenu.action,
@@ -156,7 +165,11 @@ final class EpisodeTile extends ConsumerWidget {
                 ),
                 PopupMenuItem(
                   value: EpisodeAction.togglePlayed,
-                  child: Text(episode.played ? 'Mark unplayed' : 'Mark played'),
+                  child: Text(
+                    listeningState == EpisodeListeningState.played
+                        ? 'Mark unplayed'
+                        : 'Mark played',
+                  ),
                 ),
               ],
             ),
@@ -219,14 +232,19 @@ final class _PodcastPreviewEpisodeTileState
         ].join('. '),
         excludeSemantics: true,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.lg,
+            AppSpacing.md,
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Artwork(
                 url: (episode.imageUrl ?? widget.fallbackArtworkUrl)
                     ?.toString(),
-                size: 58,
+                size: AppSizes.artwork,
                 radius: 5,
                 fallback:
                     episode.imageUrl != null &&
@@ -234,12 +252,12 @@ final class _PodcastPreviewEpisodeTileState
                         episode.imageUrl != widget.fallbackArtworkUrl
                     ? Artwork(
                         url: widget.fallbackArtworkUrl.toString(),
-                        size: 58,
+                        size: AppSizes.artwork,
                         radius: 5,
                       )
                     : null,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,7 +273,7 @@ final class _PodcastPreviewEpisodeTileState
                       ),
                     ),
                     if (metadata.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: AppSpacing.sm),
                       Text(
                         metadata,
                         maxLines: 1,
@@ -267,7 +285,7 @@ final class _PodcastPreviewEpisodeTileState
                       ),
                     ],
                     if (description.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(height: AppSpacing.sm),
                       Text(
                         description,
                         maxLines: 2,
@@ -282,7 +300,7 @@ final class _PodcastPreviewEpisodeTileState
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.sm),
               Semantics(
                 button: true,
                 enabled: !_playing,
@@ -317,15 +335,10 @@ final class _PodcastPreviewEpisodeTileState
 }
 
 final class ArticleTile extends ConsumerStatefulWidget {
-  ArticleTile(
-    this.article, {
-    this.showSource = true,
-    this.showReadState = true,
-    Key? key,
-  }) : super(key: key ?? ValueKey(article.id));
+  ArticleTile(this.article, {this.showSource = true, Key? key})
+    : super(key: key ?? ValueKey(article.id));
   final Article article;
   final bool showSource;
-  final bool showReadState;
 
   @override
   ConsumerState<ArticleTile> createState() => _ArticleTileState();
@@ -368,9 +381,7 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
       relativeDate(article.publishedAt),
     ]);
     return _InsetListFrame(
-      accent: widget.showReadState && article.readAt == null
-          ? AppConstants.cyan
-          : null,
+      accent: article.readAt == null ? AppConstants.cyan : null,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -381,11 +392,7 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
               excludeSemantics: true,
               onTap: () => context.push('/article/${article.id}'),
               label: [
-                [
-                  if (widget.showReadState) readState,
-                  noun,
-                  article.title,
-                ].join(' '),
+                [readState, noun, article.title].join(' '),
                 if (article.contentWarning?.trim().isNotEmpty == true)
                   'Content warning',
                 if (article.starred) 'Saved',
@@ -394,7 +401,12 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
               child: InkWell(
                 onTap: () => context.push('/article/${article.id}'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.xs,
+                    AppSpacing.md,
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -404,7 +416,7 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
                         hidden:
                             article.contentWarning?.trim().isNotEmpty == true,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,23 +434,16 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
                                     : AppConstants.secondaryText,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: AppSpacing.sm),
                             Row(
                               children: [
-                                if (widget.showReadState &&
-                                    article.readAt == null) ...[
+                                if (article.readAt == null) ...[
                                   const _NewDot(color: AppConstants.cyan),
-                                  const SizedBox(width: 7),
+                                  const SizedBox(width: AppSpacing.sm),
                                 ],
                                 Expanded(
                                   child: Text(
-                                    metadata.isEmpty
-                                        ? !widget.showReadState
-                                              ? '${noun[0].toUpperCase()}${noun.substring(1)}'
-                                              : (article.readAt == null
-                                                    ? 'New'
-                                                    : readState)
-                                        : metadata,
+                                    metadataLine([readState, metadata]),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
@@ -454,7 +459,7 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
                       ),
                       if (article.starred)
                         const Padding(
-                          padding: EdgeInsets.only(left: 6),
+                          padding: EdgeInsets.only(left: AppSpacing.sm),
                           child: Icon(
                             Icons.bookmark_rounded,
                             size: 16,
@@ -468,7 +473,10 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 8, top: 8),
+            padding: const EdgeInsets.only(
+              right: AppSpacing.sm,
+              top: AppSpacing.sm,
+            ),
             child: PopupMenuButton<String>(
               tooltip: '${noun[0].toUpperCase()}${noun.substring(1)} actions',
               enabled: !_busy,
@@ -555,7 +563,7 @@ final class _ArticleThumbnail extends StatelessWidget {
       );
     }
     if (!isVideo) {
-      return ArticleArtwork(article: article, size: 72, radius: 5);
+      return ArticleArtwork(article: article, size: 72, radius: 4);
     }
     return Stack(
       alignment: Alignment.center,
@@ -572,7 +580,7 @@ final class _ArticleThumbnail extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           child: const Padding(
-            padding: EdgeInsets.all(5),
+            padding: EdgeInsets.all(AppSpacing.xs),
             child: Icon(
               Icons.play_arrow_rounded,
               color: Colors.white,
@@ -624,11 +632,14 @@ final class PodcastTile extends StatelessWidget {
         child: InkWell(
           onTap: () => context.push('/feed/${feed.id}'),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.sm,
+            ),
             child: Row(
               children: [
-                FeedArtwork(feed: feed, size: 72, radius: 5),
-                const SizedBox(width: 14),
+                FeedArtwork(feed: feed, size: 72, radius: 4),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,7 +654,7 @@ final class PodcastTile extends StatelessWidget {
                           height: 1.15,
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
                         detail,
                         maxLines: 1,
@@ -680,10 +691,13 @@ final class _InsetListFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       child: Material(
         color: Colors.transparent,
-        shape: const CutCornerBorder(cut: 9),
+        shape: const CutCornerBorder(cut: 8),
         clipBehavior: Clip.hardEdge,
         child: Stack(
           children: [
@@ -696,7 +710,7 @@ final class _InsetListFrame extends StatelessWidget {
                 child: IgnorePointer(
                   child: ColoredBox(
                     color: value,
-                    child: const SizedBox(width: 2),
+                    child: const SizedBox(width: AppSpacing.xs),
                   ),
                 ),
               ),

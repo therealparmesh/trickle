@@ -15,9 +15,9 @@ abstract final class TrickleTheme {
   static const _tabLabelStyle = TextStyle(
     fontFamily: TrickleFonts.ui,
     fontSize: 14,
-    height: 1.15,
+    height: 1.25,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.15,
+    letterSpacing: 0,
   );
 
   static final ThemeData dark = _buildDark();
@@ -61,9 +61,9 @@ abstract final class TrickleTheme {
           color: AppConstants.primaryText,
           fontFamily: TrickleFonts.display,
           fontSize: 22,
-          height: 1.05,
+          height: 1.25,
           fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
+          letterSpacing: 0,
         ),
       ),
       textTheme: base.textTheme
@@ -75,35 +75,35 @@ abstract final class TrickleTheme {
             displaySmall: const TextStyle(
               fontFamily: TrickleFonts.display,
               fontSize: 36,
-              height: 1.04,
+              height: 1.25,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.35,
+              letterSpacing: 0,
             ),
             headlineMedium: const TextStyle(
               fontFamily: TrickleFonts.display,
               fontSize: 26,
-              height: 1.1,
+              height: 1.25,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.15,
+              letterSpacing: 0,
             ),
             titleLarge: const TextStyle(
               fontFamily: TrickleFonts.display,
               fontSize: 20,
-              height: 1.15,
+              height: 1.25,
               fontWeight: FontWeight.w600,
-              letterSpacing: 0.1,
+              letterSpacing: 0,
             ),
             titleMedium: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 16,
               height: 1.25,
               fontWeight: FontWeight.w600,
-              letterSpacing: -0.1,
+              letterSpacing: 0,
             ),
             titleSmall: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 14,
-              height: 1.22,
+              height: 1.25,
               fontWeight: FontWeight.w600,
               letterSpacing: 0,
             ),
@@ -112,42 +112,42 @@ abstract final class TrickleTheme {
               fontSize: 16,
               height: 1.5,
               fontWeight: FontWeight.w400,
-              letterSpacing: -0.1,
+              letterSpacing: 0,
             ),
             bodyMedium: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 14,
-              height: 1.45,
+              height: 1.25,
               fontWeight: FontWeight.w400,
               letterSpacing: 0,
             ),
             bodySmall: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 12,
-              height: 1.35,
+              height: 1.25,
               fontWeight: FontWeight.w400,
-              letterSpacing: 0.08,
+              letterSpacing: 0,
             ),
             labelLarge: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 14,
-              height: 1.15,
+              height: 1.25,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.1,
+              letterSpacing: 0,
             ),
             labelMedium: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 12,
-              height: 1.15,
+              height: 1.25,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
+              letterSpacing: 0,
             ),
             labelSmall: const TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 10,
-              height: 1.15,
+              height: 1.25,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.35,
+              letterSpacing: 0,
             ),
           ),
       inputDecorationTheme: InputDecorationTheme(
@@ -171,7 +171,7 @@ abstract final class TrickleTheme {
         backgroundColor: AppConstants.surface,
         selectedColor: AppConstants.cyan.withValues(alpha: 0.12),
         side: const BorderSide(color: AppConstants.hairline),
-        shape: const CutCornerBorder(cut: 9),
+        shape: const CutCornerBorder(cut: AppSpacing.sm),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -193,12 +193,14 @@ abstract final class TrickleTheme {
             TextStyle(
               fontFamily: TrickleFonts.ui,
               fontSize: 13,
-              height: 1.15,
+              height: 1.25,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.1,
+              letterSpacing: 0,
             ),
           ),
-          minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+          minimumSize: const WidgetStatePropertyAll(
+            Size.square(AppSizes.control),
+          ),
           visualDensity: VisualDensity.standard,
         ),
       ),
@@ -206,24 +208,32 @@ abstract final class TrickleTheme {
         style: FilledButton.styleFrom(
           foregroundColor: AppConstants.background,
           backgroundColor: AppConstants.cyan,
-          minimumSize: const Size(48, 48),
-          shape: const CutCornerBorder(cut: 11),
+          minimumSize: const Size.square(AppSizes.control),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
+          ),
+          shape: const CutCornerBorder(cut: AppSpacing.sm),
           textStyle: const TextStyle(
             fontFamily: TrickleFonts.ui,
             fontWeight: FontWeight.w700,
-            letterSpacing: 0.1,
+            letterSpacing: 0,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          shape: const CutCornerBorder(cut: 11),
+          minimumSize: const Size.square(AppSizes.control),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
+          ),
+          shape: const CutCornerBorder(cut: AppSpacing.sm),
         ),
       ),
       iconButtonTheme: const IconButtonThemeData(
         style: ButtonStyle(
-          minimumSize: WidgetStatePropertyAll(Size.square(48)),
+          minimumSize: WidgetStatePropertyAll(Size.square(AppSizes.control)),
         ),
       ),
       switchTheme: SwitchThemeData(
@@ -260,7 +270,7 @@ abstract final class TrickleTheme {
       ),
       dividerTheme: const DividerThemeData(
         color: AppConstants.hairline,
-        thickness: 0.7,
+        thickness: 1,
         space: 1,
       ),
       dialogTheme: DialogThemeData(

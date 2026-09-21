@@ -13,6 +13,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/youtube_support.dart';
+import '../../features/player/trickle_audio_handler.dart';
 import '../../features/video/video_session.dart';
 import 'common.dart';
 import 'design_system.dart';
@@ -33,6 +34,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   WebViewController? _controller;
   Future<WebViewController>? _controllerInitialization;
   StreamSubscription<int>? _mediaPlaybackIntentSubscription;
+  late final TrickleAudioHandler _audioHandler;
   Future<void> _navigationTail = Future<void>.value();
   String? _loadedArticleId;
   Uri? _loadedUri;
@@ -73,12 +75,12 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (defaultTargetPlatform == TargetPlatform.android) {
       _platformChannel.setMethodCallHandler(_handlePlatformCall);
     }
-    _mediaPlaybackIntentSubscription = ref
-        .read(audioHandlerProvider)
-        .mediaPlaybackIntentStream
+    _audioHandler = ref.read(audioHandlerProvider);
+    _mediaPlaybackIntentSubscription = _audioHandler.mediaPlaybackIntentStream
         .listen((intent) {
+          if (!mounted) return;
           final session = ref.read(videoSessionProvider);
-          if (mounted && session != null && session.intentRevision != intent) {
+          if (session != null && session.intentRevision != intent) {
             unawaited(_close());
           }
         });
@@ -94,13 +96,10 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _loadTimeout?.cancel();
     _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
-    final session = ref.read(videoSessionProvider);
-    if (session != null) {
+    final intent = _loadedIntentRevision;
+    if (intent != null) {
       unawaited(
-        ref
-            .read(audioHandlerProvider)
-            .endWebVideoPlayback(session.intentRevision)
-            .catchError((Object _) {}),
+        _audioHandler.endWebVideoPlayback(intent).catchError((Object _) {}),
       );
     }
     super.dispose();
@@ -145,7 +144,22 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(videoSessionProvider);
+    final article = session == null
+        ? null
+        : ref.watch(articleProvider(session.articleId)).asData;
     if (session != null &&
+        article != null &&
+        !article.isLoading &&
+        article.value == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final current = ref.read(videoSessionProvider);
+        if (current?.articleId == session.articleId &&
+            current?.intentRevision == session.intentRevision) {
+          unawaited(_close());
+        }
+      });
+    } else if (session != null &&
         (session.articleId != _loadedArticleId ||
             session.playbackUri != _loadedUri ||
             session.intentRevision != _loadedIntentRevision)) {
@@ -219,7 +233,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                     articleId: session.articleId,
                     width: previewWidth,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -231,7 +245,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: AppSpacing.xs),
                         Text(
                           '${phase.label} · Picture in Picture',
                           maxLines: 1,
@@ -247,7 +261,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                     onPressed: _close,
                     icon: const Icon(Icons.close_rounded),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppSpacing.xs),
                 ],
               ),
             ),
@@ -413,7 +427,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 IconButton(
-                  tooltip: 'Minimize to Now Playing',
+                  tooltip: 'Minimize to Now playing',
                   onPressed: () =>
                       ref.read(videoSessionProvider.notifier).minimize(),
                   icon: const Icon(Icons.keyboard_arrow_down_rounded),
@@ -504,7 +518,10 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
             child: InkWell(
               onTap: () => ref.read(videoSessionProvider.notifier).expand(),
               child: Padding(
-                padding: const EdgeInsets.only(left: 12, right: 8),
+                padding: const EdgeInsets.only(
+                  left: AppSpacing.md,
+                  right: AppSpacing.sm,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -517,7 +534,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                         context,
                       ).textTheme.titleSmall?.copyWith(height: 1.2),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(
                       phase.label,
                       maxLines: 1,
@@ -551,7 +568,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           onPressed: _close,
           icon: const Icon(Icons.close_rounded),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: AppSpacing.xs),
       ],
     );
   }
@@ -576,7 +593,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
         // The WebView stays attached when the player collapses into the
-        // persistent Now Playing bar. WebKit can move the same media into
+        // persistent Now playing bar. WebKit can move the same media into
         // system Picture in Picture after the user requests it.
         allowsInlineMediaPlayback: true,
         mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
@@ -1716,8 +1733,8 @@ final class _PlayerMessage extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.md,
                   ),
                   child: Text(message, textAlign: TextAlign.center),
                 ),
@@ -1745,7 +1762,7 @@ final class _VideoError extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1754,13 +1771,13 @@ final class _VideoError extends StatelessWidget {
               color: AppConstants.secondaryText,
               size: 38,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             Wrap(
               alignment: WrapAlignment.center,
-              spacing: 10,
-              runSpacing: 10,
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
               children: [
                 FilledButton(
                   onPressed: onRetry,

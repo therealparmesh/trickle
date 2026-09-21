@@ -91,7 +91,12 @@ final class MiniPlayer extends ConsumerWidget {
     final height = _miniPlayerHeight(context);
     return SafeArea(
       top: false,
-      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      minimum: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        0,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
       child: Center(
         heightFactor: 1,
         child: ConstrainedBox(
@@ -117,21 +122,21 @@ final class MiniPlayer extends ConsumerWidget {
                           child: Semantics(
                             button: true,
                             label:
-                                'Open Now Playing. ${item.title}${explicit ? ', explicit' : ''}. ${phase.semanticStatus}',
+                                'Open Now playing. ${item.title}${explicit ? ', explicit' : ''}. ${phase.semanticStatus}',
                             excludeSemantics: true,
                             onTap: () => context.push('/player'),
                             child: InkWell(
                               onTap: () => context.push('/player'),
                               child: Row(
                                 children: [
-                                  const SizedBox(width: 6),
+                                  const SizedBox(width: AppSpacing.sm),
                                   EpisodeArtworkById(
                                     episodeId: item.id,
                                     fallbackUrl: item.artUri?.toString(),
-                                    size: 54,
+                                    size: AppSizes.control,
                                     radius: 4,
                                   ),
-                                  const SizedBox(width: 11),
+                                  const SizedBox(width: AppSpacing.md),
                                   Expanded(
                                     child: Column(
                                       mainAxisAlignment:
@@ -147,7 +152,7 @@ final class MiniPlayer extends ConsumerWidget {
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        const SizedBox(height: 2),
+                                        const SizedBox(height: AppSpacing.xs),
                                         Text(
                                           phase.isError
                                               ? 'Couldn’t play'
@@ -187,7 +192,7 @@ final class MiniPlayer extends ConsumerWidget {
                               color: phase.isError
                                   ? AppConstants.danger
                                   : AppConstants.cyan,
-                              shape: const CutCornerBorder(cut: 9),
+                              shape: const CutCornerBorder(cut: AppSpacing.sm),
                               clipBehavior: Clip.antiAlias,
                               child: InkWell(
                                 onTap: canToggle
@@ -195,13 +200,13 @@ final class MiniPlayer extends ConsumerWidget {
                                           _togglePlayback(context, ref, playing)
                                     : null,
                                 child: SizedBox.square(
-                                  dimension: 52,
+                                  dimension: AppSizes.control,
                                   child: phase.isBusy
                                       ? Center(
                                           child: SizedBox.square(
                                             dimension: 22,
                                             child: CircularProgressIndicator(
-                                              strokeWidth: 2.5,
+                                              strokeWidth: 2,
                                               color: playing
                                                   ? AppConstants.background
                                                   : AppConstants.secondaryText,
@@ -222,7 +227,7 @@ final class MiniPlayer extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 7),
+                        const SizedBox(width: AppSpacing.sm),
                       ],
                     ),
                     Positioned(

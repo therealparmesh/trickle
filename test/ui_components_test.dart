@@ -517,9 +517,7 @@ void main() {
           overrides: [
             recentEpisodesProvider.overrideWith((_) => episodes.stream),
             feedsProvider.overrideWith((_) => feeds.stream),
-            readerUnreadArticlesProvider(
-              5,
-            ).overrideWith((_) => articles.stream),
+            recentArticlesProvider.overrideWith((_) => articles.stream),
             unreadArticleCountProvider.overrideWith((_) => counts.stream),
             currentMediaProvider.overrideWith((_) => media.stream),
           ],
@@ -572,7 +570,7 @@ void main() {
   );
 
   testWidgets(
-    'home places its library grid between episodes and unread items at large text sizes',
+    'home places its library grid between episodes and recent feed items at large text sizes',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(393, 3000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -583,9 +581,7 @@ void main() {
             feedsProvider.overrideWith((_) => Stream.value(const [])),
             newEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
             unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
-            readerUnreadArticlesProvider(
-              5,
-            ).overrideWith((_) => Stream.value(const [])),
+            recentArticlesProvider.overrideWith((_) => Stream.value(const [])),
           ],
           child: MaterialApp(
             theme: TrickleTheme.dark,
@@ -602,13 +598,13 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Up Next'), findsOneWidget);
+      expect(find.text('Up next'), findsOneWidget);
       expect(find.text('Downloads'), findsOneWidget);
       expect(find.text('Saved episodes'), findsOneWidget);
       expect(find.text('Library'), findsOneWidget);
       expect(find.text('Podcasts'), findsOneWidget);
-      expect(find.text('Sources'), findsOneWidget);
-      expect(find.text('Add YouTube'), findsOneWidget);
+      expect(find.text('Feeds'), findsOneWidget);
+      expect(find.text('Add YouTube feed'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('Library')).dy,
         greaterThan(
@@ -618,17 +614,17 @@ void main() {
         ),
       );
       expect(
-        tester.getTopLeft(find.text('Sources')).dy,
+        tester.getTopLeft(find.text('Feeds')).dy,
         greaterThan(tester.getBottomLeft(find.text('Podcasts')).dy),
       );
       await tester.scrollUntilVisible(
-        find.text('No unread feed items.'),
+        find.text('No feed items yet.'),
         400,
         scrollable: find.byType(Scrollable).first,
       );
       expect(
-        tester.getTopLeft(find.text('No unread feed items.')).dy,
-        greaterThan(tester.getBottomLeft(find.text('Add YouTube')).dy),
+        tester.getTopLeft(find.text('No feed items yet.')).dy,
+        greaterThan(tester.getBottomLeft(find.text('Add YouTube feed')).dy),
       );
       expect(tester.takeException(), isNull);
     },
@@ -698,9 +694,7 @@ void main() {
         overrides: [
           recentEpisodesProvider.overrideWith((_) => Stream.value(episodes)),
           feedsProvider.overrideWith((_) => Stream.value([feed, readerFeed])),
-          readerUnreadArticlesProvider(
-            5,
-          ).overrideWith((_) => Stream.value([article])),
+          recentArticlesProvider.overrideWith((_) => Stream.value([article])),
           unreadArticleCountProvider.overrideWith((_) => Stream.value(1)),
           newEpisodeCountProvider.overrideWith((_) => Stream.value(2)),
           currentMediaProvider.overrideWith((_) => media.stream),
@@ -735,16 +729,16 @@ void main() {
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
     expect(find.bySemanticsLabel('Podcasts, 2 items'), findsOneWidget);
-    expect(find.bySemanticsLabel('Up Next, 1 item'), findsNothing);
+    expect(find.bySemanticsLabel('Up next, 1 item'), findsNothing);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
-    expect(find.text('NEW'), findsNothing);
+    expect(find.text('New'), findsWidgets);
     media.add(const MediaItem(id: 'episode-0', title: 'Episode 1'));
     for (final (processingState, playing, label) in [
-      (AudioProcessingState.loading, false, 'LOADING'),
-      (AudioProcessingState.buffering, false, 'BUFFERING'),
-      (AudioProcessingState.ready, true, 'PLAYING'),
-      (AudioProcessingState.ready, false, 'PAUSED'),
-      (AudioProcessingState.error, false, 'PLAYBACK ERROR'),
+      (AudioProcessingState.loading, false, 'Loading'),
+      (AudioProcessingState.buffering, false, 'Buffering'),
+      (AudioProcessingState.ready, true, 'Playing'),
+      (AudioProcessingState.ready, false, 'Paused'),
+      (AudioProcessingState.error, false, 'Playback error'),
     ]) {
       states.add(
         PlaybackState(processingState: processingState, playing: playing),
@@ -752,26 +746,100 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text(label), findsOneWidget);
-      if (label != 'PAUSED') expect(find.text('PAUSED'), findsNothing);
+      if (label != 'Paused') expect(find.text('Paused'), findsNothing);
     }
 
     await tester.scrollUntilVisible(
-      find.text('Sources'),
+      find.text('Feeds'),
       400,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.bySemanticsLabel('Sources, 1 item'), findsOneWidget);
+    expect(find.bySemanticsLabel('Feeds, 1 item'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Home article'),
       400,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(_dotWithColor(AppConstants.cyan), findsNothing);
-    expect(find.bySemanticsLabel(RegExp('Unread article')), findsNothing);
+    expect(_dotWithColor(AppConstants.cyan), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Unread article')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('home See all actions open episodes and unread feed items', (
+  test(
+    'home keeps the latest 20 items regardless of read or played state',
+    () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(database)],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await database.close();
+      });
+      final now = DateTime.utc(2026, 9, 21);
+      for (final kind in FeedKind.values) {
+        await database
+            .into(database.feeds)
+            .insert(
+              FeedsCompanion.insert(
+                id: kind.name,
+                title: kind.name,
+                feedUrl: 'https://example.test/${kind.name}',
+                kind: Value(kind.index),
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+      }
+      await database.batch((batch) {
+        batch.insertAll(database.episodes, [
+          for (var index = 0; index < 25; index++)
+            EpisodesCompanion.insert(
+              id: 'episode-$index',
+              feedId: FeedKind.podcast.name,
+              title: 'Episode $index',
+              enclosureUrl: 'https://example.test/$index.mp3',
+              discoveredAt: now,
+              publishedAt: Value(now.subtract(Duration(hours: index))),
+              played: Value(index.isEven),
+            ),
+        ]);
+        batch.insertAll(database.articles, [
+          for (var index = 0; index < 25; index++)
+            ArticlesCompanion.insert(
+              id: 'article-$index',
+              feedId: FeedKind.reader.name,
+              title: 'Article $index',
+              discoveredAt: now,
+              publishedAt: Value(now.subtract(Duration(hours: index))),
+              readAt: Value(index.isEven ? now : null),
+            ),
+        ]);
+      });
+      container.listen(recentEpisodesProvider, (_, _) {});
+      container.listen(recentArticlesProvider, (_, _) {});
+      final episodes = await container.read(recentEpisodesProvider.future);
+      final articles = await container.read(recentArticlesProvider.future);
+      expect(episodes.map((item) => item.id), [
+        for (var index = 0; index < 20; index++) 'episode-$index',
+      ]);
+      expect(articles.map((item) => item.id), [
+        for (var index = 0; index < 20; index++) 'article-$index',
+      ]);
+      await (database.update(database.articles)
+            ..where((row) => row.id.equals('article-1')))
+          .write(ArticlesCompanion(readAt: Value(now)));
+      container.invalidate(recentArticlesProvider);
+      final afterReading = await container.read(recentArticlesProvider.future);
+      expect(
+        afterReading.map((item) => item.id),
+        articles.map((item) => item.id),
+      );
+      expect(afterReading[1].readAt?.toUtc(), now);
+    },
+  );
+
+  testWidgets('home See all actions open episodes and recent feed items', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(393, 3000));
@@ -781,7 +849,9 @@ void main() {
         GoRoute(path: '/', builder: (_, _) => const HomePage()),
         GoRoute(
           path: '/reader',
-          builder: (_, _) => const Scaffold(body: Text('Complete reader')),
+          builder: (_, state) => Scaffold(
+            body: Text('Feed items: ${state.uri.queryParameters['filter']}'),
+          ),
         ),
         GoRoute(
           path: '/podcasts',
@@ -795,9 +865,7 @@ void main() {
         overrides: [
           recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
           feedsProvider.overrideWith((_) => Stream.value(const [])),
-          readerUnreadArticlesProvider(
-            5,
-          ).overrideWith((_) => Stream.value(const [])),
+          recentArticlesProvider.overrideWith((_) => Stream.value(const [])),
         ],
         child: MaterialApp.router(
           theme: TrickleTheme.dark,
@@ -813,10 +881,10 @@ void main() {
     expect(find.text('All episodes'), findsOneWidget);
     router.pop();
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('See all unread feed items'));
+    await tester.tap(find.bySemanticsLabel('See all feed items'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Complete reader'), findsOneWidget);
+    expect(find.text('Feed items: all'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -860,9 +928,6 @@ void main() {
       ProviderScope(
         overrides: [
           feedsProvider.overrideWith((_) => Stream.value(feeds)),
-          readerUnreadArticlesProvider(
-            100,
-          ).overrideWith((_) => Stream.value(const [])),
           unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
           remoteImagesProvider.overrideWith((_) => Stream.value(false)),
         ],
@@ -950,9 +1015,6 @@ void main() {
         overrides: [
           feedsProvider.overrideWith((_) => Stream.value(feeds)),
           feedRepositoryProvider.overrideWithValue(repository),
-          readerUnreadArticlesProvider(
-            100,
-          ).overrideWith((_) => Stream.value(const [])),
           unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
           remoteImagesProvider.overrideWith((_) => Stream.value(false)),
         ],
@@ -997,7 +1059,7 @@ void main() {
     expect((await database.feedById('science-one'))?.category, 'Culture');
     expect((await database.feedById('science-two'))?.category, 'Culture');
     expect(find.text('Merged 2 feeds into Culture'), findsOneWidget);
-    expect(find.text('Feeds'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Feeds'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1064,7 +1126,7 @@ void main() {
     await tester.tap(find.text('Science · 2 unread'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Sources'));
+    await tester.tap(find.widgetWithText(Tab, 'Feeds'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Organize feeds'));
     await tester.pumpAndSettle();
@@ -1196,7 +1258,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('No new episodes'), findsOneWidget);
 
-    await tester.tap(find.text('In Progress'));
+    await tester.tap(find.text('In progress'));
     await tester.pumpAndSettle();
     expect(find.text('Nothing in progress'), findsOneWidget);
 
@@ -1792,7 +1854,7 @@ void main() {
     );
   });
 
-  testWidgets('Up Next distinguishes loading and failure from an empty queue', (
+  testWidgets('Up next distinguishes loading and failure from an empty queue', (
     tester,
   ) async {
     final queue = StreamController<List<MediaItem>>();
@@ -1808,15 +1870,15 @@ void main() {
     );
 
     expect(find.byType(LoadingView), findsOneWidget);
-    expect(find.text('Nothing is Up Next'), findsNothing);
+    expect(find.text('Nothing is Up next'), findsNothing);
 
     queue.addError(StateError('unavailable'));
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Couldn’t load Up Next'), findsOneWidget);
+    expect(find.text('Couldn’t load Up next'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
-    expect(find.text('Nothing is Up Next'), findsNothing);
+    expect(find.text('Nothing is Up next'), findsNothing);
   });
 
   testWidgets('explicit badge leads a truncated title', (tester) async {
@@ -1907,13 +1969,13 @@ void main() {
                   children: [
                     LibraryShortcut(
                       icon: Icons.download_rounded,
-                      label: 'Sources',
+                      label: 'Feeds',
                       badge: 1234,
                       onTap: _noop,
                     ),
                     LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
-                      label: 'Feeds',
+                      label: 'Saved articles',
                       badge: 0,
                       onTap: _noop,
                     ),
@@ -1940,16 +2002,16 @@ void main() {
           .hasAction(SemanticsAction.tap),
       isTrue,
     );
-    expect(find.bySemanticsLabel('Sources, 1234 items'), findsOneWidget);
+    expect(find.bySemanticsLabel('Feeds, 1234 items'), findsOneWidget);
     expect(find.text('1234'), findsOneWidget);
     expect(find.text('0'), findsNothing);
     expect(
-      tester.getTopLeft(find.text('Feeds')).dy,
-      greaterThan(tester.getBottomLeft(find.text('Sources')).dy),
+      tester.getTopLeft(find.text('Saved articles')).dy,
+      greaterThan(tester.getBottomLeft(find.text('Feeds')).dy),
     );
     expect(find.bySemanticsLabel('Loading'), findsOneWidget);
     final shortcut = tester.getSemantics(
-      find.bySemanticsLabel('Sources, 1234 items'),
+      find.bySemanticsLabel('Feeds, 1234 items'),
     );
     expect(shortcut.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byType(GlassIconButton));
@@ -1981,15 +2043,15 @@ void main() {
                     children: [
                       for (final label in [
                         'Podcasts',
-                        'Up Next',
+                        'Up next',
                         'Downloads',
                         'Saved episodes',
                         'Add podcast',
                         'Add podcast URL',
-                        'Sources',
+                        'Feeds',
                         'Saved articles',
                         'Add feed',
-                        'Add YouTube',
+                        'Add YouTube feed',
                       ])
                         LibraryShortcut(
                           icon: Icons.podcasts_rounded,
@@ -2022,7 +2084,10 @@ void main() {
           expect(rect.left, greaterThanOrEqualTo(16));
           expect(rect.right, lessThanOrEqualTo(width - 16));
         }
-        expect(rects[columns].top - rects[0].bottom, closeTo(8, 0.01));
+        expect(
+          rects[columns].top - rects[0].bottom,
+          closeTo(AppSpacing.xs, 0.01),
+        );
         if (columns > 1) {
           expect(rects[0].top, rects[1].top);
           expect(rects[1].left - rects[0].right, closeTo(8, 0.01));
@@ -2094,7 +2159,7 @@ void main() {
     await tester.pump();
 
     final open = find.bySemanticsLabel(
-      RegExp(r'^Open Now Playing\. Episode title\.'),
+      RegExp(r'^Open Now playing\. Episode title\.'),
     );
     final pause = find.bySemanticsLabel('Pause');
     expect(open, findsOneWidget);
@@ -2309,10 +2374,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.textContaining('In Progress'), findsOneWidget);
+    expect(find.textContaining('In progress'), findsOneWidget);
     expect(
       find.bySemanticsLabel(
-        RegExp(r'In Progress episode Partially played episode'),
+        RegExp(r'In progress episode Partially played episode'),
       ),
       findsOneWidget,
     );

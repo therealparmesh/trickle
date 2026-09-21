@@ -76,16 +76,19 @@ final class LibraryShortcutGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final columns = ((constraints.maxWidth + 8) / (72 * textScale + 8))
-              .floor()
-              .clamp(1, 4);
-          final width = (constraints.maxWidth - (columns - 1) * 8) / columns;
+          final columns =
+              ((constraints.maxWidth + AppSpacing.sm) /
+                      (72 * textScale + AppSpacing.sm))
+                  .floor()
+                  .clamp(1, 4);
+          final width =
+              (constraints.maxWidth - (columns - 1) * AppSpacing.sm) / columns;
           return Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
             children: [
               for (final child in children)
                 SizedBox(width: width, child: child),
@@ -133,7 +136,7 @@ final class EpisodeTitle extends StatelessWidget {
         children: [
           if (explicit)
             Padding(
-              padding: EdgeInsets.only(right: 5, top: badgeTop),
+              padding: EdgeInsets.only(right: AppSpacing.xs, top: badgeTop),
               child: const _ExplicitBadge(),
             ),
           Flexible(
@@ -359,7 +362,9 @@ final class PlaybackSpeedSelector extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(
-                right: index == AppConstants.allowedSpeeds.length - 1 ? 0 : 6,
+                right: index == AppConstants.allowedSpeeds.length - 1
+                    ? 0
+                    : AppSpacing.sm,
               ),
               child: _SpeedCell(
                 value: AppConstants.allowedSpeeds[index],
@@ -413,10 +418,10 @@ final class AdaptiveDropdownField<T> extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(label),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         field,
         if (helperText case final helper?) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             helper,
             style: Theme.of(
@@ -468,7 +473,7 @@ final class AdaptiveSwitchTile extends StatelessWidget {
       child: InkWell(
         onTap: enabled ? () => onChanged!(!value) : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -477,13 +482,13 @@ final class AdaptiveSwitchTile extends StatelessWidget {
                 children: [
                   if (secondary != null) ...[
                     SizedBox.square(dimension: 24, child: secondary),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                   ],
                   Expanded(child: Text(title)),
                 ],
               ),
               if (subtitle != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 DefaultTextStyle.merge(
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppConstants.secondaryText,
@@ -657,8 +662,18 @@ final class SectionHeader extends StatelessWidget {
       header: true,
       child: Padding(
         padding: compact
-            ? const EdgeInsets.fromLTRB(18, 14, 10, 8)
-            : const EdgeInsets.fromLTRB(18, 26, 10, 10),
+            ? const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.xs,
+              )
+            : const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.sm,
+                AppSpacing.sm,
+              ),
         child: stackAction
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -666,21 +681,21 @@ final class SectionHeader extends StatelessWidget {
                   Row(
                     children: [
                       _SectionSignal(accent),
-                      const SizedBox(width: 9),
+                      const SizedBox(width: AppSpacing.sm),
                       Expanded(child: titleWidget),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppSpacing.xs),
                   Align(alignment: Alignment.centerRight, child: actionWidget),
                 ],
               )
             : Row(
                 children: [
                   _SectionSignal(accent),
-                  const SizedBox(width: 9),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(child: titleWidget),
                   if (actionWidget != null) ...[
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     actionWidget,
                   ],
                 ],
@@ -700,7 +715,7 @@ final class _SectionSignal extends StatelessWidget {
     child: Column(
       children: [
         Container(width: 3, height: 13, color: accent),
-        const SizedBox(height: 2),
+        const SizedBox(height: AppSpacing.xs),
         Container(
           width: 3,
           height: 5,
@@ -733,7 +748,7 @@ final class AdaptiveTabBar extends StatelessWidget
       textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 2),
       indicatorSize: TabBarIndicatorSize.tab,
       indicatorWeight: 3,
-      indicatorPadding: const EdgeInsets.symmetric(horizontal: 14),
+      indicatorPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       overlayColor: WidgetStatePropertyAll(
         AppConstants.cyan.withValues(alpha: 0.06),
       ),
@@ -745,7 +760,7 @@ final class AdaptiveTabBar extends StatelessWidget
 final class AppCard extends StatelessWidget {
   const AppCard({
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(AppSpacing.lg),
     this.onTap,
     this.accent,
     super.key,
@@ -810,18 +825,22 @@ final class LibraryShortcut extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  SignalIcon(icon: icon, color: color, size: 48),
+                  SignalIcon(
+                    icon: icon,
+                    color: color,
+                    size: AppSizes.shortcutIcon,
+                  ),
                   if (badgeText case final text?)
                     Positioned(
-                      top: -5,
-                      right: -7,
+                      top: -AppSpacing.xs,
+                      right: -AppSpacing.sm,
                       child: MediaQuery.withNoTextScaling(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
@@ -830,8 +849,8 @@ final class LibraryShortcut extends StatelessWidget {
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 3,
+                              horizontal: AppSpacing.sm,
+                              vertical: AppSpacing.xs,
                             ),
                             child: Text(
                               text,
@@ -849,7 +868,7 @@ final class LibraryShortcut extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.xs),
               SizedBox(
                 height: labelHeight,
                 child: Align(
@@ -878,9 +897,9 @@ final class Artwork extends ConsumerWidget {
   const Artwork({
     this.url,
     this.headers = const {},
-    this.size = 56,
+    this.size = AppSizes.artwork,
     this.aspectRatio = 1,
-    this.radius = 9,
+    this.radius = 8,
     this.icon = Icons.graphic_eq_rounded,
     this.fallback,
     super.key,
@@ -953,8 +972,8 @@ final class Artwork extends ConsumerWidget {
 final class EpisodeArtwork extends ConsumerWidget {
   const EpisodeArtwork({
     required this.episode,
-    this.size = 56,
-    this.radius = 9,
+    this.size = AppSizes.artwork,
+    this.radius = 8,
     super.key,
   });
 
@@ -981,8 +1000,8 @@ final class EpisodeArtworkById extends ConsumerWidget {
   const EpisodeArtworkById({
     required this.episodeId,
     this.fallbackUrl,
-    this.size = 56,
-    this.radius = 9,
+    this.size = AppSizes.artwork,
+    this.radius = 8,
     super.key,
   });
 
@@ -1008,9 +1027,9 @@ final class EpisodeArtworkById extends ConsumerWidget {
 final class ArticleArtwork extends ConsumerWidget {
   const ArticleArtwork({
     required this.article,
-    this.size = 56,
+    this.size = AppSizes.artwork,
     this.aspectRatio = 1,
-    this.radius = 9,
+    this.radius = 8,
     super.key,
   }) : assert(aspectRatio > 0);
 
@@ -1057,8 +1076,8 @@ final class ArticleArtwork extends ConsumerWidget {
 final class FeedArtwork extends StatelessWidget {
   const FeedArtwork({
     required this.feed,
-    this.size = 56,
-    this.radius = 9,
+    this.size = AppSizes.artwork,
+    this.radius = 8,
     super.key,
   });
 
@@ -1212,8 +1231,8 @@ final class EmptyState extends StatelessWidget {
       builder: (context, constraints) {
         final content = Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: 30,
-            vertical: compact ? 20 : 42,
+            horizontal: AppSpacing.xxl,
+            vertical: compact ? AppSpacing.lg : 42,
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
@@ -1232,14 +1251,14 @@ final class EmptyState extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   message,
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppConstants.secondaryText),
                 ),
                 if (action != null) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: AppSpacing.lg),
                   FilledButton(onPressed: onAction, child: Text(action!)),
                 ],
               ],
@@ -1309,7 +1328,7 @@ final class ErrorView extends StatelessWidget {
 final class InlineLoadingView extends StatelessWidget {
   const InlineLoadingView({
     this.label = 'Loading',
-    this.padding = const EdgeInsets.symmetric(vertical: 18),
+    this.padding = const EdgeInsets.symmetric(vertical: AppSpacing.lg),
     super.key,
   });
 
@@ -1347,7 +1366,7 @@ final class InlineErrorView extends StatelessWidget {
       container: true,
       liveRegion: true,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1355,13 +1374,13 @@ final class InlineErrorView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Padding(
-                  padding: EdgeInsets.only(top: 2),
+                  padding: EdgeInsets.only(top: AppSpacing.xs),
                   child: Icon(
                     Icons.warning_amber_rounded,
                     color: AppConstants.danger,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1370,7 +1389,7 @@ final class InlineErrorView extends StatelessWidget {
                         title,
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
                         message,
                         style: const TextStyle(

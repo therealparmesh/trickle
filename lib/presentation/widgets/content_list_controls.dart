@@ -62,7 +62,12 @@ final class ContentListControls<T extends Object> extends StatelessWidget {
     );
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -86,17 +91,17 @@ final class ContentListControls<T extends Object> extends StatelessWidget {
             smartQuotesType: SmartQuotesType.disabled,
             onChanged: onSearchChanged,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.sm),
           if (largeText) ...[
             filters,
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpacing.sm),
             Align(alignment: Alignment.centerLeft, child: sortButton),
           ] else
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: filters),
-                const SizedBox(width: 10),
+                const SizedBox(width: AppSpacing.sm),
                 sortButton,
               ],
             ),

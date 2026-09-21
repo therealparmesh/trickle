@@ -86,7 +86,7 @@ final class FeedCategoryField extends StatelessWidget {
                 ),
                 child: ListView.builder(
                   shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                   itemCount: categories.length,
                   itemBuilder: (context, index) {
                     final category = categories[index];
@@ -100,8 +100,8 @@ final class FeedCategoryField extends StatelessWidget {
                               : Colors.transparent,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm,
                             ),
                             child: Align(
                               alignment: Alignment.centerLeft,
@@ -124,9 +124,9 @@ final class FeedCategoryField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text('Category'),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         field,
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpacing.sm),
         Text(
           helperText,
           style: Theme.of(

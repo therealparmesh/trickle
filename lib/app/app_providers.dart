@@ -111,7 +111,7 @@ final recentFeedImageProvider = StreamProvider.autoDispose
       (ref, id) => ref.watch(databaseProvider).watchRecentFeedImage(id),
     );
 final recentEpisodesProvider = StreamProvider<List<Episode>>(
-  (ref) => ref.watch(databaseProvider).watchRecentEpisodes(limit: 8),
+  (ref) => ref.watch(databaseProvider).watchRecentEpisodes(limit: 20),
 );
 final newEpisodeCountProvider = StreamProvider.autoDispose<int>(
   (ref) => ref.watch(databaseProvider).watchNewEpisodeCount(),
@@ -134,11 +134,15 @@ final podcastEpisodesProvider = StreamProvider.autoDispose
         ),
       };
     });
-final readerUnreadArticlesProvider = StreamProvider.autoDispose
-    .family<List<Article>, int>(
-      (ref, limit) =>
-          ref.watch(databaseProvider).watchUnreadArticles(limit: limit),
-    );
+final recentArticlesProvider = StreamProvider<List<Article>>(
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchFilteredArticles(
+        limit: 20,
+        sort: ContentSort.newest,
+        filter: ArticleFeedFilter.all,
+      ),
+);
 final starredArticlesPageProvider = StreamProvider.autoDispose
     .family<List<Article>, int>(
       (ref, limit) =>
@@ -271,7 +275,7 @@ final playbackProgressesProvider =
     StreamProvider<Map<String, PlaybackProgressesData>>(
       (ref) => ref
           .watch(databaseProvider)
-          .watchIncompletePlaybackProgresses()
+          .watchEpisodeStatusProgresses()
           .map((items) => {for (final item in items) item.episodeId: item}),
     );
 final episodeProgressSnapshotProvider = Provider.autoDispose

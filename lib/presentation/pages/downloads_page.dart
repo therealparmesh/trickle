@@ -33,7 +33,7 @@ final class _DownloadsPageState extends ConsumerState<DownloadsPage> {
         actions: [
           if (_busy)
             const Padding(
-              padding: EdgeInsets.all(14),
+              padding: EdgeInsets.all(AppSpacing.md),
               child: SizedBox.square(
                 dimension: 20,
                 child: CircularProgressIndicator(strokeWidth: 2),
@@ -69,7 +69,12 @@ final class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                   data: (episodes) => IgnorePointer(
                     ignoring: _busy,
                     child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md,
+                        AppSpacing.sm,
+                        AppSpacing.md,
+                        AppSpacing.xxl,
+                      ),
                       itemCount: items.length + 1,
                       itemBuilder: (context, index) {
                         if (index == 0) return _StorageSummary(items);
@@ -168,13 +173,13 @@ final class _StorageSummary extends StatelessWidget {
               : download.bytesDownloaded),
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: AppCard(
         accent: AppConstants.cyan,
         child: Row(
           children: [
             const Icon(Icons.storage_rounded, color: AppConstants.cyan),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Text(
                 '${downloads.length} ${downloads.length == 1 ? 'download' : 'downloads'} · ${formatBytes(bytes)}',
@@ -227,7 +232,7 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
         children: [
           Text(_stateLabel(state, download)),
           if (progress != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpacing.sm),
             LinearProgressIndicator(value: progress, minHeight: 3),
           ],
         ],

@@ -81,7 +81,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           controller: _tabs,
           tabs: const [
             Tab(text: 'Feed items'),
-            Tab(text: 'Sources'),
+            Tab(text: 'Feeds'),
           ],
         ),
         actions: [
@@ -97,7 +97,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   : const Icon(Icons.drive_file_move_outline),
             ),
           IconButton(
-            tooltip: 'Add source',
+            tooltip: 'Add feed',
             onPressed: _showAddSourceSheet,
             icon: const Icon(Icons.add_rounded),
           ),
@@ -166,7 +166,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               children: [
                 if (categories.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.md,
+                      AppSpacing.lg,
+                      AppSpacing.sm,
+                    ),
                     child: AdaptiveDropdownField<String>(
                       label: 'Category',
                       initialValue: selectedCategory ?? '',
@@ -218,7 +223,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 ),
                 if (_filter == _ReaderFilter.unread && total > 0)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      0,
+                      AppSpacing.lg,
+                      AppSpacing.sm,
+                    ),
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
@@ -289,7 +299,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           if (articles.value case final items? when items.length < total)
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  AppSpacing.xs,
+                ),
                 child: OutlinedButton.icon(
                   onPressed: () => setState(() => _limit += _pageSize),
                   icon: const Icon(Icons.expand_more_rounded),
@@ -297,7 +312,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 ),
               ),
             ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+          const SliverPadding(padding: EdgeInsets.only(bottom: AppSpacing.xl)),
         ],
       ),
     );
@@ -436,7 +451,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       context: context,
       builder: (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.xs,
+            AppSpacing.md,
+            AppSpacing.md,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -489,7 +509,7 @@ final class _FeedListState extends ConsumerState<_FeedList> {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        const SliverPadding(padding: EdgeInsets.only(top: 12)),
+        const SliverPadding(padding: EdgeInsets.only(top: AppSpacing.md)),
         for (final group in groups) ...[
           if (showHeaders)
             SliverToBoxAdapter(
@@ -506,11 +526,11 @@ final class _FeedListState extends ConsumerState<_FeedList> {
               ),
             ),
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             sliver: SliverList.builder(
               itemCount: group.feeds.length,
               itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: _FeedRow(
                   group.feeds[index],
                   unreadCount: widget.unreadCounts[group.feeds[index].id] ?? 0,
@@ -519,7 +539,7 @@ final class _FeedListState extends ConsumerState<_FeedList> {
             ),
           ),
         ],
-        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+        const SliverPadding(padding: EdgeInsets.only(bottom: AppSpacing.lg)),
       ],
     );
   }
@@ -790,7 +810,7 @@ final class _OrganizeFeedsSheetState extends State<_OrganizeFeedsSheet> {
                   color: AppConstants.secondaryText,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               Expanded(
                 child: ListView.builder(
                   itemCount: widget.feeds.length,
@@ -822,17 +842,17 @@ final class _OrganizeFeedsSheetState extends State<_OrganizeFeedsSheet> {
                   },
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               FeedCategoryField(
                 controller: _category,
                 focusNode: _categoryFocus,
                 options: options,
                 helperText: 'Choose a category or clear it for Uncategorized.',
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               OverflowBar(
                 alignment: MainAxisAlignment.end,
-                spacing: 8,
+                spacing: AppSpacing.sm,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -888,8 +908,11 @@ final class _FeedRow extends StatelessWidget {
       padding: EdgeInsets.zero,
       child: ListTile(
         onTap: () => context.push('/feed/${feed.id}'),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        leading: FeedArtwork(feed: feed, size: 54, radius: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
+        leading: FeedArtwork(feed: feed, size: AppSizes.artwork, radius: 12),
         title: Text(
           feed.title,
           maxLines: 2,

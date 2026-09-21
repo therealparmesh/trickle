@@ -61,6 +61,9 @@ Future<bool> confirmUnsubscribe(BuildContext context, Feed feed) async {
 
 Future<void> removeSubscription(WidgetRef ref, Feed feed) async {
   final database = ref.read(databaseProvider);
+  final repository = ref.read(feedRepositoryProvider);
+  final audioHandler = ref.read(audioHandlerProvider);
+  final downloads = ref.read(downloadCoordinatorProvider);
   final episodeIds =
       await (database.selectOnly(database.episodes)
             ..addColumns([database.episodes.id])
@@ -80,7 +83,7 @@ Future<void> removeSubscription(WidgetRef ref, Feed feed) async {
   var removedDownloads = const <MediaDownload>[];
   await deleteSubscriptionThenCleanup(
     deleteSubscription: () async {
-      await ref.read(feedRepositoryProvider).deleteFeed(feed.id);
+      await repository.deleteFeed(feed.id);
       final retainedEpisodeIds =
           (await (database.selectOnly(database.episodes)
                     ..addColumns([database.episodes.id])
@@ -99,14 +102,10 @@ Future<void> removeSubscription(WidgetRef ref, Feed feed) async {
     cleanupOperations: [
       () => removedEpisodeIds.isEmpty
           ? Future<void>.value()
-          : ref
-                .read(audioHandlerProvider)
-                .removeEpisodesFromLibrary(removedEpisodeIds),
+          : audioHandler.removeEpisodesFromLibrary(removedEpisodeIds),
       () => removedDownloads.isEmpty
           ? Future<void>.value()
-          : ref
-                .read(downloadCoordinatorProvider)
-                .discardTasksForDeletedEpisodes(removedDownloads),
+          : downloads.discardTasksForDeletedEpisodes(removedDownloads),
     ],
   );
 }

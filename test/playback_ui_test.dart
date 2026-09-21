@@ -6,18 +6,192 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/playback_source_resolver.dart';
+import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/settings_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/features/player/trickle_audio_handler.dart';
+import 'package:trickle/features/downloads/download_coordinator.dart';
+import 'package:trickle/features/video/video_session.dart';
 import 'package:trickle/presentation/playback_presentation.dart';
+import 'package:trickle/presentation/subscription_actions.dart';
+import 'package:trickle/presentation/widgets/video_player_host.dart';
+
+import 'support/unused_downloader.dart';
 
 void main() {
+  testWidgets(
+    'unsubscribe finishes playback cleanup after leaving the screen',
+    (tester) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      final harness = _createPlaybackHarness();
+      final database = harness.database;
+      final downloads = DownloadCoordinator(
+        downloader: UnusedDownloader(),
+        database: database,
+        sources: PlaybackSourceResolver(
+          database,
+          PrivateFeedStore(),
+          harness.network,
+        ),
+        settings: SettingsRepository(database),
+      );
+      final repository = FeedRepository(
+        database: database,
+        network: harness.network,
+        privateFeeds: PrivateFeedStore(),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+          audioHandlerProvider.overrideWithValue(harness.handler),
+          downloadCoordinatorProvider.overrideWithValue(downloads),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await downloads.dispose();
+        await _disposePlaybackHarness(harness);
+      });
+      final now = DateTime.utc(2026, 9, 21);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'feed',
+              title: 'Feed',
+              feedUrl: 'https://example.test/feed',
+              kind: Value(FeedKind.podcast.index),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: 'episode',
+              feedId: 'feed',
+              title: 'Episode',
+              enclosureUrl: 'https://example.test/audio.mp3',
+              discoveredAt: now,
+            ),
+          );
+      final feed = (await database.feedById('feed'))!;
+      harness.handler.mediaItem.add(
+        const MediaItem(id: 'episode', title: 'Episode'),
+      );
+      late WidgetRef screenRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: Consumer(
+            builder: (_, ref, _) {
+              screenRef = ref;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      final removal = removeSubscription(screenRef, feed);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      await removal;
+      expect(await database.feedById('feed'), isNull);
+      expect(await database.episodeById('episode'), isNull);
+      expect(harness.handler.mediaItem.value, isNull);
+      expect(tester.takeException(), isNull);
+      final disposal = harness.handler.disposeHandler();
+      await tester.pumpAndSettle();
+      await disposal;
+    },
+  );
+
+  testWidgets(
+    'deleting a video item closes its session in every presentation',
+    (tester) async {
+      final harness = _createPlaybackHarness();
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(harness.database),
+          audioHandlerProvider.overrideWithValue(harness.handler),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await _disposePlaybackHarness(harness);
+      });
+      final now = DateTime.utc(2026, 9, 21);
+      await harness.database
+          .into(harness.database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'feed',
+              title: 'Feed',
+              feedUrl: 'https://example.test/feed',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: VideoPlayerHost(child: SizedBox())),
+        ),
+      );
+      for (final presentation in VideoPresentation.values) {
+        await harness.database
+            .into(harness.database.articles)
+            .insert(
+              ArticlesCompanion.insert(
+                id: 'video',
+                feedId: 'feed',
+                title: 'Video',
+                discoveredAt: now,
+              ),
+            );
+        final intent = harness.handler.beginWebVideoPlayback();
+        final notifier = container.read(videoSessionProvider.notifier);
+        notifier.open(
+          intentRevision: intent,
+          articleId: 'video',
+          title: 'Video',
+          sourceUri: Uri.parse('https://example.test/video.mp4'),
+          playbackUri: Uri.parse('https://example.test/video.mp4'),
+        );
+        if (presentation == VideoPresentation.minimized) notifier.minimize();
+        if (presentation == VideoPresentation.pictureInPicture) {
+          notifier.enterPictureInPicture();
+        }
+        await tester.pumpAndSettle();
+        expect(
+          container.read(videoSessionProvider)?.presentation,
+          presentation,
+        );
+        await (harness.database.delete(
+          harness.database.articles,
+        )..where((row) => row.id.equals('video'))).go();
+        await tester.pumpAndSettle();
+        expect(container.read(videoSessionProvider), isNull);
+        expect(harness.handler.isWebVideoPlaybackCurrent(intent), isFalse);
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpWidget(const SizedBox());
+      final disposal = harness.handler.disposeHandler();
+      await tester.pumpAndSettle();
+      await disposal;
+    },
+  );
+
   group('playback presentation', () {
     test('distinguishes new, partially played, and completed episodes', () {
       final now = DateTime.utc(2026, 7, 24);
@@ -63,6 +237,14 @@ void main() {
         EpisodeListeningState.played,
       );
       expect(episodeProgressFraction(episode, completed), isNull);
+      expect(
+        episodeProgressFraction(episode.copyWith(played: true), partial),
+        isNull,
+      );
+      expect(
+        episodeListeningState(episode, partial.copyWith(positionMs: 0)),
+        EpisodeListeningState.newEpisode,
+      );
     });
 
     test('maps every engine state to one presentation phase', () {
@@ -125,6 +307,91 @@ void main() {
       expect(PlaybackUiPhase.loading.canToggle(playing: false), isFalse);
     });
   });
+
+  test(
+    'last unfinished audio restores paused and survives queue clearing but not removal',
+    () async {
+      final harness = _createPlaybackHarness();
+      final database = harness.database;
+      final handler = harness.handler;
+      addTearDown(() => _disposePlaybackHarness(harness));
+      final now = DateTime.utc(2026, 9, 21);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'feed',
+              title: 'Feed',
+              feedUrl: 'https://example.test/feed',
+              kind: Value(FeedKind.podcast.index),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      for (final (id, played, completed, position, age) in [
+        ('old', false, false, 30000, 3),
+        ('latest', false, false, 5000, 2),
+        ('played', true, false, 40000, 1),
+        ('completed', false, true, 60000, 0),
+      ]) {
+        await database
+            .into(database.episodes)
+            .insert(
+              EpisodesCompanion.insert(
+                id: id,
+                feedId: 'feed',
+                title: id,
+                enclosureUrl: 'https://example.test/$id.mp3',
+                durationMs: const Value(60000),
+                played: Value(played),
+                discoveredAt: now,
+              ),
+            );
+        await database
+            .into(database.playbackProgresses)
+            .insert(
+              PlaybackProgressesCompanion.insert(
+                episodeId: id,
+                positionMs: Value(position),
+                durationMs: const Value(60000),
+                completed: Value(completed),
+                updatedAt: now.subtract(Duration(minutes: age)),
+              ),
+            );
+      }
+      await handler.restoreLastPlayback();
+      expect(handler.mediaItem.value?.id, 'latest');
+      expect(handler.playbackState.value.playing, isFalse);
+      expect(
+        handler.playbackState.value.processingState,
+        AudioProcessingState.idle,
+      );
+      expect(await handler.positionStream.first, const Duration(seconds: 5));
+      await handler.seek(const Duration(seconds: 8));
+      await handler.clearQueue();
+      expect(handler.mediaItem.value?.id, 'latest');
+      expect(
+        handler.playbackState.value.updatePosition,
+        const Duration(seconds: 8),
+      );
+      await handler.setEpisodePlayed('latest', false);
+      expect(handler.mediaItem.value, isNull);
+      expect(
+        (await database.watchPlaybackProgressForEpisode('latest').first)
+            ?.positionMs,
+        0,
+      );
+      await handler.restoreLastPlayback();
+      expect(handler.mediaItem.value?.id, 'old');
+      await handler.removeEpisodesFromLibrary(['old']);
+      await (database.delete(
+        database.episodes,
+      )..where((row) => row.id.equals('old'))).go();
+      expect(handler.mediaItem.value, isNull);
+      await handler.restoreLastPlayback();
+      expect(handler.mediaItem.value, isNull);
+    },
+  );
 
   test('playback UI ignores buffer-only and unrelated state changes', () async {
     final states = StreamController<PlaybackState>.broadcast();

@@ -65,7 +65,7 @@ bool shouldRecoverUnexpectedPlaybackStop({
 ///
 /// Some native backends report `completed` while they still have no source or
 /// while a new source is opening. Treating that as a real episode completion
-/// would mark an untouched episode played and remove it from Up Next.
+/// would mark an untouched episode played and remove it from Up next.
 bool shouldHandlePlayerCompletion({
   required bool completed,
   required bool loadingMedia,

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../core/constants.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -35,7 +37,7 @@ final class ArticleAttachmentsView extends ConsumerWidget {
                   children: [
                     for (final attachment in attachments)
                       _Attachment(article: article, attachment: attachment),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: AppSpacing.sm),
                   ],
                 ),
         );
@@ -70,7 +72,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
     if (_isAudio(attachment)) return _audio(context);
     if (_isVideo(attachment)) return _video(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: OutlinedButton.icon(
         onPressed: _busy ? null : _open,
         icon: const Icon(Icons.open_in_new_rounded),
@@ -86,7 +88,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
     final isCurrent = playback.isCurrent;
     final playing = playback.playing;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: FilledButton.tonalIcon(
         onPressed: _busy ? null : () => _toggleAudio(isCurrent, playing),
         icon: _busy
@@ -113,7 +115,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
         active?.articleId == widget.article.id &&
         active?.sourceUri.toString() == widget.attachment.url;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

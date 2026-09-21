@@ -531,7 +531,7 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<Episode>> watchRecentEpisodes({int limit = 50}) {
     return (select(episodes)
-          ..where((_) => _subscribedPodcast())
+          ..where((_) => _podcastEpisode())
           ..orderBy([
             (row) => OrderingTerm.desc(row.publishedAt),
             (row) => OrderingTerm.desc(row.discoveredAt),
@@ -541,12 +541,14 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
-  Expression<bool> _subscribedPodcast() => existsQuery(
+  Expression<bool> _podcastEpisode({bool subscribedOnly = true}) => existsQuery(
     selectOnly(feeds)
       ..addColumns([feeds.id])
       ..where(
         feeds.id.equalsExp(episodes.feedId) &
-            feeds.subscribed.equals(true) &
+            (subscribedOnly
+                ? feeds.subscribed.equals(true)
+                : const Constant(true)) &
             feeds.kind.equals(FeedKind.podcast.index),
       ),
   );
@@ -564,7 +566,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Expression<bool> _newEpisode() =>
-      _subscribedPodcast() &
+      _podcastEpisode() &
       episodes.played.equals(false) &
       notExistsQuery(
         selectOnly(playbackProgresses)
@@ -585,6 +587,17 @@ class AppDatabase extends _$AppDatabase {
         .map((row) => row.read(count) ?? 0);
   }
 
+  Expression<bool> _unplayedEpisode() =>
+      episodes.played.equals(false) &
+      notExistsQuery(
+        selectOnly(playbackProgresses)
+          ..addColumns([playbackProgresses.episodeId])
+          ..where(
+            playbackProgresses.episodeId.equalsExp(episodes.id) &
+                playbackProgresses.completed.equals(true),
+          ),
+      );
+
   Stream<List<Episode>> watchInProgressEpisodes({int limit = 50}) {
     final query =
         select(episodes).join([
@@ -595,7 +608,7 @@ class AppDatabase extends _$AppDatabase {
             ),
           ])
           ..where(
-            _subscribedPodcast() &
+            _podcastEpisode(subscribedOnly: false) &
                 episodes.played.equals(false) &
                 playbackProgresses.completed.equals(false) &
                 playbackProgresses.positionMs.isBiggerThanValue(0),
@@ -611,13 +624,6 @@ class AppDatabase extends _$AppDatabase {
       (rows) => rows.map((row) => row.readTable(episodes)).toList(),
     );
   }
-
-  Stream<List<Article>> watchUnreadArticles({int limit = 50}) =>
-      watchFilteredArticles(
-        limit: limit,
-        sort: ContentSort.newest,
-        filter: ArticleFeedFilter.unread,
-      );
 
   Stream<List<Article>> watchStarredArticles({required int limit}) {
     return customSelect(
@@ -801,12 +807,23 @@ class AppDatabase extends _$AppDatabase {
     )..where((row) => row.episodeId.equals(episodeId))).watchSingleOrNull();
   }
 
-  Stream<List<PlaybackProgressesData>> watchIncompletePlaybackProgresses() {
-    return (select(playbackProgresses)..where(
-          (row) =>
-              row.completed.equals(false) & row.positionMs.isBiggerThanValue(0),
+  Stream<List<PlaybackProgressesData>> watchEpisodeStatusProgresses() {
+    return (select(playbackProgresses).join([
+          innerJoin(
+            episodes,
+            episodes.id.equalsExp(playbackProgresses.episodeId),
+            useColumns: false,
+          ),
+        ])..where(
+          episodes.played.equals(false) &
+              (playbackProgresses.positionMs.isBiggerThanValue(0) |
+                  playbackProgresses.completed.equals(true)),
         ))
-        .watch();
+        .watch()
+        .map(
+          (rows) =>
+              rows.map((row) => row.readTable(playbackProgresses)).toList(),
+        );
   }
 
   Future<Feed?> feedById(String id) {
@@ -906,7 +923,7 @@ class AppDatabase extends _$AppDatabase {
     }
     statement.where(switch (filter) {
       EpisodeFeedFilter.all => const Constant(true),
-      EpisodeFeedFilter.unplayed => episodes.played.equals(false),
+      EpisodeFeedFilter.unplayed => _unplayedEpisode(),
       EpisodeFeedFilter.inProgress =>
         episodes.played.equals(false) &
             playbackProgresses.completed.equals(false) &
@@ -962,7 +979,7 @@ class AppDatabase extends _$AppDatabase {
     }
     statement.where(switch (filter) {
       EpisodeFeedFilter.all => const Constant(true),
-      EpisodeFeedFilter.unplayed => episodes.played.equals(false),
+      EpisodeFeedFilter.unplayed => _unplayedEpisode(),
       EpisodeFeedFilter.inProgress =>
         episodes.played.equals(false) &
             playbackProgresses.completed.equals(false) &

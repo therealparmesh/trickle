@@ -58,7 +58,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 48),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.sm,
+                AppSpacing.lg,
+                48,
+              ),
               children: [
                 if (settingsError != null)
                   InlineErrorView(
@@ -73,13 +78,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text('Playback speed'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: AppSpacing.sm),
                       PlaybackSpeedSelector(
                         selected: speed,
                         onSelected: (value) =>
                             _runSilent(() => audio.setSpeed(value / 100)),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpacing.lg),
                       AdaptiveDropdownField<AutoDeletePolicy>(
                         initialValue: autoDelete,
                         label: 'Remove played downloads',
@@ -131,7 +136,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           );
                         },
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       AdaptiveSwitchTile(
                         value: images,
                         onChanged: (value) =>
@@ -140,7 +145,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         subtitle:
                             'Loads artwork, reader images, show-note images, and link previews from publishers.',
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.sm),
                       AdaptiveDropdownField<int>(
                         initialValue: readerScale,
                         label: 'Reader text size',
@@ -338,7 +343,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 AppCard(
                   onTap: () => showLicensePage(
                     context: context,
@@ -348,13 +353,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   child: const Row(
                     children: [
                       Icon(Icons.balance_rounded, color: AppConstants.cyan),
-                      SizedBox(width: 14),
+                      SizedBox(width: AppSpacing.md),
                       Expanded(child: Text('Open-source licenses')),
                       Icon(Icons.chevron_right_rounded),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xl),
                 Text(
                   'trickle ${package?.version ?? ''} (${package?.buildNumber ?? ''})',
                   textAlign: TextAlign.center,
@@ -474,7 +479,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
               onTap: () => Navigator.pop(context, OpmlScope.allSubscriptions),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.sm),
           ],
         ),
       ),
@@ -519,7 +524,7 @@ final class _ActionTile extends StatelessWidget {
         child: InkWell(
           onTap: effectiveOnTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -527,17 +532,17 @@ final class _ActionTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(icon),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Text(
                         title,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     if (busy)
                       const Padding(
-                        padding: EdgeInsets.only(top: 2),
+                        padding: EdgeInsets.only(top: AppSpacing.xs),
                         child: SizedBox.square(
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -545,7 +550,7 @@ final class _ActionTile extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(

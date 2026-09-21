@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../app/app_providers.dart';
 import '../core/constants.dart';
 import '../data/database/app_database.dart';
+import 'playback_presentation.dart';
 
 enum EpisodeAction {
   playNow,
@@ -82,9 +83,16 @@ Future<void> performEpisodeAction(
           .read(feedRepositoryProvider)
           .starEpisode(episode.id, starred: !episode.starred);
     case EpisodeAction.togglePlayed:
-      await ref
-          .read(audioHandlerProvider)
-          .setEpisodePlayed(episode.id, !episode.played);
+      final audio = ref.read(audioHandlerProvider);
+      final progress = await ref
+          .read(databaseProvider)
+          .watchPlaybackProgressForEpisode(episode.id)
+          .first;
+      await audio.setEpisodePlayed(
+        episode.id,
+        episodeListeningState(episode, progress) !=
+            EpisodeListeningState.played,
+      );
   }
 }
 

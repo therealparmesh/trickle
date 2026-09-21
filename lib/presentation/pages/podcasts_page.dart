@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -85,7 +87,7 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          const SliverPadding(padding: EdgeInsets.only(top: 8)),
+          const SliverPadding(padding: EdgeInsets.only(top: AppSpacing.sm)),
           feeds.when(
             data: (items) => items.isEmpty
                 ? SliverToBoxAdapter(
@@ -111,7 +113,7 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
               ),
             ),
           ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+          const SliverPadding(padding: EdgeInsets.only(bottom: AppSpacing.xl)),
         ],
       ),
     );
@@ -130,14 +132,19 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.md,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
               child: AdaptiveFilterControl<PodcastEpisodeFilter>(
                 value: _filter,
                 options: const [
                   AdaptiveFilterOption(PodcastEpisodeFilter.newEpisodes, 'New'),
                   AdaptiveFilterOption(
                     PodcastEpisodeFilter.inProgress,
-                    'In Progress',
+                    'In progress',
                   ),
                   AdaptiveFilterOption(PodcastEpisodeFilter.all, 'All'),
                 ],
@@ -191,7 +198,7 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
           if ((episodes.value?.length ?? 0) > _limit)
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 child: TextButton.icon(
                   onPressed: () => setState(() => _limit += _pageSize),
                   icon: const Icon(Icons.expand_more_rounded),
@@ -199,7 +206,7 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
                 ),
               ),
             ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+          const SliverPadding(padding: EdgeInsets.only(bottom: AppSpacing.xl)),
         ],
       ),
     );

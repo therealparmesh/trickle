@@ -92,7 +92,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                 const Text(
                   'Paste a public YouTube channel or playlist. trickle finds its feed automatically.',
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
               ],
               TextField(
                 controller: _url,
@@ -115,7 +115,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                 ),
               ),
               if (!widget.podcastIntent) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpacing.md),
                 FeedCategoryField(
                   controller: _category,
                   focusNode: _categoryFocus,
@@ -146,7 +146,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                     labelText: 'Username (Basic auth)',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpacing.sm),
                 TextField(
                   controller: _password,
                   enabled: !_busy,
@@ -157,7 +157,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                   decoration: const InputDecoration(labelText: 'Password'),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                   child: Text(
                     'OR',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -177,7 +177,7 @@ class _AddFeedDialogState extends ConsumerState<AddFeedDialog> {
                 ),
               ],
               if (_error != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 InlineErrorView(_error!, title: 'Couldn’t subscribe'),
               ],
             ],

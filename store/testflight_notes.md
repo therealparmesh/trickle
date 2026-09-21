@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Home has a simpler Library grid between recent episodes and unread feed items. Search your library from the top corner, or use Add podcast to search Apple's catalog. Add podcasts and feeds by URL with automatic type detection. OPML imports and exports preserve podcast and feed types. Article previews now also use pictures embedded in feed content. Includes fixes for private-feed matching, downloads, and reader updates.
+Requires iOS 17 or later. Home keeps your 20 latest episodes and 20 latest feed items, including those you have played or read. Your last unfinished audio returns paused in the mini player when you reopen trickle. This update also makes controls more compact and labels and status indicators more consistent.
 
 ## What to test
 
@@ -12,27 +12,29 @@ Please test the combined podcast and feed flow:
 - Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - Swipe back from search, podcast details, episode details, and the reader on iOS; complete and cancel the gesture. Check Android system Back. The previous page should retain its position and the glitch should wait until navigation settles
-- On Home, play and resume episodes directly from the two-row shelf. Loading and buffering must not briefly appear as Paused. New/unread markers should be absent on Home and remain in other lists. Check that the non-scrolling four-column Library grid sits between episodes and unread items, keeps podcast actions cyan and feed actions magenta, and adapts without clipping at larger text sizes. Each See all action should open its full list
-- Check Podcasts' new-episode badge and Sources' unread-item badge. Starting an episode removes it from the new count; marking an article read removes it from the unread count. Zero counts have no badge
+- On Home, play and resume episodes directly from the two-row shelf. Loading and buffering must not briefly appear as Paused. Status markers should agree across Home and other lists. Reading or playing an item must not remove it from Home. Check that the non-scrolling four-column Library grid sits between episodes and recent feed items, keeps podcast actions cyan and feed actions magenta, and adapts without clipping at larger text sizes. Each See all action should open its full list
+- Check Podcasts' new-episode badge and Feeds' unread-item badge. Starting an episode removes it from the new count; marking an article read removes it from the unread count. Zero counts have no badge
 - Search from Home and confirm results are local. Use Add podcast for Apple catalog results. Add a regular feed through Add podcast URL, then a podcast through Add feed; each should explain and use the correct collection
-- Verify the Podcasts episode filters: New contains untouched episodes, In Progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
+- Verify the Podcasts episode filters: New contains untouched episodes, In progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
+- Unsubscribe while an episode or video is open, then immediately leave the details screen. Unfinished episodes must still appear in In progress, and queued episodes must remain in Up next. Removed items must disappear from their player, including minimized video and Picture in Picture; saved articles and their videos must remain available
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
 - With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
 - While audio buffers or changes between playing and paused, scroll a long episode list; unrelated rows should remain stable and responsive
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Type a lowercase podcast query, then allow autocorrect or capitalization to change only its letter case; results must remain visible without a new loading flash
 - Open a podcast result and verify its description, art, dates, durations, and summaries appear before subscription and after unsubscribing
-- Partially play an episode; verify lists change from New to In Progress, show saved progress and Resume, then change to Played after completion
+- Partially play an episode; verify lists change from New to In progress, show saved progress and Resume, then change to Played after completion
 - Compare explicit episodes with one-line and wrapped titles; the E marker should remain immediately before the first title line
 - Verify a failed audio source shows a clear message and Retry action; retry after restoring the network
 - Play a podcast, leave trickle, lock the phone for at least 30 seconds, and confirm playback and its saved position continue. Return to trickle and verify the controls still match the native player
-- Add episodes to Up Next, reorder the queue, and verify it survives relaunch
+- Add episodes to Up next, reorder the queue, and verify it survives relaunch
+- Pause an unfinished episode and relaunch; the mini player must restore it paused at the saved position without fetching audio. Resume it, then clear Up next; it should remain available in the mini player. Mark it unplayed and confirm its progress resets. Remove it from the library and confirm it no longer restores
 - Let an episode finish while pressing Pause or selecting another episode; the completed item must not restart playback or replace the newer selection
 - Start one video, immediately choose another, then start a podcast; only the latest selection may remain visible or audible
 - Download an episode, use it offline, and test automatic cleanup after playback
 - Open Downloads and verify its item count and storage total, Remove played downloads keeps items marked Keep, and Remove all downloads cancels active work before clearing the list
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds
-- With automatic queueing enabled, let a background refresh add episodes while Up Next is open or playing; each episode should appear once after the existing queue
+- With automatic queueing enabled, let a background refresh add episodes while Up next is open or playing; each episode should appear once after the existing queue
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, change text size, close and reopen it, share it, and open it in the browser. Save the article, go offline, and verify its readable text remains available while remote media is clearly network-dependent
 - Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add feed appears with an editable address and canceling makes no subscription change
@@ -41,23 +43,23 @@ Please test the combined podcast and feed flow:
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
 - Open YouTube entries from both a YouTube feed and a post attachment; both should use the same initial player path and keep any official-source fallback inside that player
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed
-- Rapidly alternate Play and Pause while expanded, minimized, and buffering; Now Playing must match the active video
-- During Picture in Picture, verify Now Playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading
+- Rapidly alternate Play and Pause while expanded, minimized, and buffering; Now playing must match the active video
+- During Picture in Picture, verify Now playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading
 - Start Picture in Picture, lock the phone without closing the system window, wait at least 15 seconds, and verify audio and playback position continue before and after unlocking
 - Try Picture in Picture on a video or device where it is unavailable; the request should end with a clear message and immediately restore usable controls
 - With trickle visible, close Picture in Picture with its system X; the same live video and timestamp must continue in the minimized player
 - With trickle backgrounded or locked, close Picture in Picture with its system X; playback and the stored video session must end
 - With VoiceOver or TalkBack on the minimized video, verify only the visible expand, play or pause, and close controls are reachable; controls inside the compact page preview must not receive focus
-- Close the in-app Now Playing bar with its X; it must discard the player so reopening starts fresh
+- Close the in-app Now playing bar with its X; it must discard the player so reopening starts fresh
 - Background, lock, restore, and fully exit from expanded, minimized, and Picture in Picture video; only Picture in Picture may continue and none may crash
 - Check square podcast art and landscape article and video previews; images should crop without stretching
-- Compare source artwork in Sources and source details, including YouTube channels and playlists without a source image. A recent item image should appear in both. Check item images in Home, Feed items, Saved, and source timelines; a failed item image should fall back to source artwork. Content-warning images must not appear as source artwork, and disabling Remote images must suppress image loading and previews
+- Compare source artwork in Feeds and source details, including YouTube channels and playlists without a source image. A recent item image should appear in both. Check item images in Home, Feed items, Saved, and source timelines; a failed item image should fall back to source artwork. Content-warning images must not appear as source artwork, and disabling Remote images must suppress image loading and previews
 - Fail the initial video page and verify the same player loads the official source URL without opening a second player
 - Block both playback sources or go offline and verify Try again and Open original remain available
 - Open the OPML importer and select a standard `.opml` or `.xml` file; verify UTF-8 and UTF-16 files import, including large podcast lists
 - Import a public podcast through OPML and search for it; its catalog row should show Subscribed. A private URL or different authentication must remain a separate subscription, even if its title matches
 - Import a podcast feed containing an announcement without audio; confirm the subscription appears only in Podcasts and does not create an article
-- Assign categories while adding RSS, YouTube, and Nostr sources; verify the field suggests previous categories case-insensitively and accepts a new category. Change a category from the source page, then use Feeds > Sources > Organize feeds to move several sources at once. Rename a category and verify every matching source moves together; merging into an existing category must ask first. In Feed items, verify category unread counts, choose a category, search and sort it, then mark it read. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
+- Assign categories while adding RSS, YouTube, and Nostr sources; verify the field suggests previous categories case-insensitively and accepts a new category. Change a category from the source page, then use the Feeds tab > Organize feeds to move several sources at once. Rename a category and verify every matching source moves together; merging into an existing category must ask first. In Feed items, verify category unread counts, choose a category, search and sort it, then mark it read. Podcasts must not offer categories, and clearing the field returns a source to Uncategorized
 - During refresh, OPML import, or local backup restore, confirm the active row reports progress, Settings remains usable, and Back works immediately
 - During an active import, reopen Settings and tap Import OPML; it should rejoin the operation rather than open another picker
 - Import and export each OPML scope: Podcasts, Feeds, and All subscriptions. Reimport a mixed export and verify each source appears once in the correct collection with its category. Empty podcast feeds must remain podcasts on refresh
@@ -68,6 +70,6 @@ Please test the combined podcast and feed flow:
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views
-- Cold-launch the app with an empty library and an existing library, including a restored Now Playing item. The logo should stay centered on the dark background until Home appears, followed by one brief glitch. Background during startup and return; the effect should wait until the app is active. After the effect has finished, backgrounding and returning must not replay it. Repeat offline and with Reduce Motion enabled; reduced motion must suppress the effect
+- Cold-launch the app with an empty library and an existing library, including a restored Now playing item. The logo should stay centered on the dark background until Home appears, followed by one brief glitch. Background during startup and return; the effect should wait until the app is active. After the effect has finished, backgrounding and returning must not replay it. Repeat offline and with Reduce Motion enabled; reduced motion must suppress the effect
 
 Report the device model, OS version, network state, and affected feed or episode. Never include private-feed credentials or complete private-feed URLs.

@@ -29,9 +29,9 @@ Do not include private-feed passwords, bearer tokens, authorization headers, or 
 
 Home’s Search button searches your library. Use Add podcast in Library to search Apple’s podcast catalog, or Add podcast URL to paste an RSS URL. Add feed accepts RSS, Atom, JSON Feed, website, and Nostr profile addresses. If a podcast URL is entered under Add feed, or a regular feed under Add podcast URL, trickle explains the mismatch and adds it to the right collection.
 
-Home previews eight recent episodes and five unread feed items. The Library grid sits between them: cyan shortcuts are for podcasts, magenta shortcuts are for feeds. It shows four columns at normal phone widths and fewer with larger text, without scrolling separately. See all above the episode shelf opens the full episode list. See all above unread feed items opens Feeds. The full lists have Load more controls for older items.
+Home shows your 20 most recent episodes and 20 most recent feed items, including items you have played or read. Opening an article marks it read but leaves it on Home. See all opens the full list with All selected. Full lists have Load more controls for older items. The Library grid sits between the two lists, with cyan podcast actions and magenta feed actions. It has four columns at normal text sizes and fewer with larger text.
 
-Podcasts has a badge for new episodes you have not started. Sources has a badge for unread feed items. Both show the full count and disappear at zero. In-progress and completed episodes are not included in the Podcasts badge.
+Podcasts has a badge for new episodes you have not started. Feeds has a badge for unread feed items. Both show the full count and disappear at zero. In-progress and completed episodes are not included in the Podcasts badge.
 
 Article thumbnails come from the feed's image, an image in its content, or the linked webpage. Some publishers provide no usable picture or block previews. In those cases, trickle shows source artwork or a placeholder. Turn on Remote images in Settings to load pictures.
 
@@ -43,9 +43,9 @@ If a refresh finishes with failed feeds, open the affected subscription to see i
 
 ### Feed categories
 
-Choose an existing category or enter a new one while adding a feed. To change it later, tap the category on the source page or open Feed settings. Clear the Category field to move a source back to Uncategorized. Podcasts do not use categories.
+Choose an existing category or enter a new one while adding a feed. To change it later, tap the category in feed details or open Feed settings. Clear the Category field to move a feed back to Uncategorized. Podcasts do not use categories.
 
-To move several sources at once, open Feeds > Sources and choose Organize feeds. Rename changes every source in a category; renaming to an existing category asks before merging them.
+To move several feeds at once, open the Feeds tab and choose Organize feeds. Rename changes every feed in a category; renaming to an existing category asks before merging them.
 
 The Feed items tab can show one category at a time, with unread counts in the category picker. Search, filter, sort, or mark the selected category read from the same screen.
 
@@ -53,7 +53,9 @@ The Feed items tab can show one category at a time, with unread counts in the ca
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
-Episodes are marked New, In Progress, or Played. An episode becomes In Progress after 10 seconds. Position is checkpointed every 15 seconds and when playback is paused, changed, or closed.
+Episodes are marked New until they have saved listening progress, In progress while unfinished, and Played after completion or Mark played. Position is saved every 15 seconds and when playback is paused, changed, or closed. The last unfinished audio returns paused in the footer when you reopen trickle. Clearing Up next keeps it available to resume; removing it from your library removes it from the player.
+
+Open Podcasts, choose Episodes, then In progress to find unfinished episodes, including those kept after unsubscribing. Removing an unsaved video item also closes its player; saved items remain available after unsubscribing.
 
 If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
 
@@ -61,7 +63,7 @@ If the operating system stops an episode that was still playing, trickle tries o
 
 ### Video feeds
 
-Use Add YouTube to add a public channel, playlist, or YouTube Atom feed. Private and members-only feeds are not supported.
+Use Add YouTube feed to add a public channel, playlist, or YouTube Atom feed. Private and members-only feeds are not supported.
 
 Video requires a network connection. Public YouTube videos play without ads when supported. If that player fails, trickle tries the official source. If neither works, choose Try again or Open original. Minimize the player to keep watching while using trickle.
 
@@ -83,7 +85,7 @@ Enable notifications for trickle in system settings, then enable notifications f
 
 ### Transcripts
 
-Open Transcript in Now Playing. Search works for every supplied transcript. Timed VTT, SRT, and Podcasting 2.0 JSON segments can be tapped to seek; plain-text transcripts remain selectable but cannot seek without publisher timing.
+Open Transcript in Now playing. Search works for every supplied transcript. Timed VTT, SRT, and Podcasting 2.0 JSON segments can be tapped to seek; plain-text transcripts remain selectable but cannot seek without publisher timing.
 
 ### Storage
 
