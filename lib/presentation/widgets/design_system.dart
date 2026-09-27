@@ -8,7 +8,10 @@ import '../../core/constants.dart';
 /// lists stay on the continuous page canvas so the interface does not become a
 /// wall of outlined boxes.
 final class CutCornerBorder extends OutlinedBorder {
-  const CutCornerBorder({this.cut = 12, super.side = BorderSide.none});
+  const CutCornerBorder({
+    this.cut = AppCuts.medium,
+    super.side = BorderSide.none,
+  });
 
   final double cut;
 
@@ -94,36 +97,9 @@ final class SignalPanel extends StatelessWidget {
     );
     return Material(
       color: color,
-      shape: const CutCornerBorder(cut: 14),
+      shape: const CutCornerBorder(cut: AppCuts.medium),
       clipBehavior: Clip.antiAlias,
       child: onTap == null ? content : InkWell(onTap: onTap, child: content),
-    );
-  }
-}
-
-final class SignalIcon extends StatelessWidget {
-  const SignalIcon({
-    required this.icon,
-    this.color = AppConstants.cyan,
-    this.size = AppSizes.control,
-    super.key,
-  });
-
-  final IconData icon;
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: Material(
-        color: color.withValues(alpha: 0.12),
-        shape: const CutCornerBorder(cut: AppSpacing.sm),
-        child: SizedBox.square(
-          dimension: size,
-          child: Icon(icon, color: color, size: AppSizes.icon),
-        ),
-      ),
     );
   }
 }
@@ -137,7 +113,7 @@ final class SignalMediaFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppConstants.surface,
-      shape: const CutCornerBorder(cut: 16),
+      shape: const CutCornerBorder(cut: AppCuts.large),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [

@@ -15,11 +15,10 @@ import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/content_list_controls.dart';
 import '../widgets/feed_category_field.dart';
+import '../widgets/add_feed_sheet.dart';
 import '../widgets/add_feed_dialog.dart';
 
 enum _ReaderFilter { unread, all, starred }
-
-enum _AddSourceType { feed, youtube }
 
 final class ReaderPage extends ConsumerStatefulWidget {
   const ReaderPage({
@@ -91,14 +90,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               onPressed: _organizingFeeds ? null : _organizeFeeds,
               icon: _organizingFeeds
                   ? const SizedBox.square(
-                      dimension: 20,
+                      dimension: AppSizes.progressIndicator,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.drive_file_move_outline),
             ),
           IconButton(
             tooltip: 'Add feed',
-            onPressed: _showAddSourceSheet,
+            onPressed: () => showAddFeedSheet(context),
             icon: const Icon(Icons.add_rounded),
           ),
         ],
@@ -237,7 +236,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                             : () => _markAllRead(selectedCategory),
                         icon: _markingAllRead
                             ? const SizedBox.square(
-                                dimension: 18,
+                                dimension: AppSizes.progressIndicator,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                 ),
@@ -445,48 +444,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       if (mounted) setState(() => _markingAllRead = false);
     }
   }
-
-  Future<void> _showAddSourceSheet() async {
-    final type = await showModalBottomSheet<_AddSourceType>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.xs,
-            AppSpacing.md,
-            AppSpacing.md,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.add_link_rounded),
-                title: const Text('Add feed'),
-                subtitle: const Text(
-                  'RSS, Atom, JSON Feed, website, or Nostr profile',
-                ),
-                onTap: () => Navigator.pop(context, _AddSourceType.feed),
-              ),
-              ListTile(
-                leading: const Icon(Icons.video_call_outlined),
-                title: const Text('Add YouTube feed'),
-                subtitle: const Text('Public channel or playlist'),
-                onTap: () => Navigator.pop(context, _AddSourceType.youtube),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (!mounted || type == null) return;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => type == _AddSourceType.youtube
-          ? const AddFeedDialog.youtube()
-          : const AddFeedDialog(),
-    );
-  }
 }
 
 final class _FeedList extends ConsumerStatefulWidget {
@@ -526,7 +483,7 @@ final class _FeedListState extends ConsumerState<_FeedList> {
               ),
             ),
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             sliver: SliverList.builder(
               itemCount: group.feeds.length,
               itemBuilder: (context, index) => Padding(
@@ -774,10 +731,10 @@ final class _OrganizeFeedsSheetState extends State<_OrganizeFeedsSheet> {
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,
         padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          16 + MediaQuery.viewInsetsOf(context).bottom,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: FractionallySizedBox(
           heightFactor: 0.9,
@@ -909,10 +866,10 @@ final class _FeedRow extends StatelessWidget {
       child: ListTile(
         onTap: () => context.push('/feed/${feed.id}'),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
+          horizontal: AppSpacing.sm,
           vertical: AppSpacing.sm,
         ),
-        leading: FeedArtwork(feed: feed, size: AppSizes.artwork, radius: 12),
+        leading: FeedArtwork(feed: feed, size: AppSizes.artwork, radius: 4),
         title: Text(
           feed.title,
           maxLines: 2,

@@ -162,7 +162,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                                 episodeId: item.id,
                                 fallbackUrl: item.artUri?.toString(),
                                 size: 380,
-                                radius: 5,
+                                radius: AppSpacing.xs,
                               ),
                             ),
                           ),
@@ -624,14 +624,14 @@ final class _PrimaryPlaybackButton extends ConsumerWidget {
           backgroundColor: phase.isError ? AppConstants.danger : null,
           minimumSize: const Size.square(64),
           padding: EdgeInsets.zero,
-          shape: const CutCornerBorder(cut: 15),
+          shape: const CutCornerBorder(cut: AppCuts.large),
         ),
         onPressed: onPressed,
         child: Tooltip(
           message: actionLabel,
           child: phase.isBusy
               ? SizedBox.square(
-                  dimension: 27,
+                  dimension: 32,
                   child: CircularProgressIndicator(
                     strokeWidth: 2.5,
                     color: enabled

@@ -374,8 +374,8 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                         ),
                         label: Text(
                           article.readAt == null
-                              ? 'Mark watched'
-                              : 'Mark unwatched',
+                              ? 'Mark opened'
+                              : 'Mark unopened',
                         ),
                       ),
                     ],
@@ -699,7 +699,7 @@ final class _ReaderFallbackNotice extends StatelessWidget {
         decoration: const ShapeDecoration(
           color: AppConstants.elevated,
           shape: CutCornerBorder(
-            cut: 12,
+            cut: AppCuts.medium,
             side: BorderSide(color: AppConstants.hairline),
           ),
         ),

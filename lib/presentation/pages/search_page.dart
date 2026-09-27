@@ -407,6 +407,7 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
                     Artwork(
                       url: widget.result.artworkUrl?.toString(),
                       size: AppSizes.artwork,
+                      radius: 4,
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
@@ -430,7 +431,11 @@ class _CatalogResultRowState extends ConsumerState<_CatalogResultRow> {
       );
     }
     return ListTile(
-      leading: Artwork(url: widget.result.artworkUrl?.toString(), size: 54),
+      leading: Artwork(
+        url: widget.result.artworkUrl?.toString(),
+        size: AppSizes.artwork,
+        radius: 4,
+      ),
       title: title,
       subtitle: subtitle,
       trailing: action,
@@ -520,7 +525,7 @@ final class _CatalogSubscriptionButton extends StatelessWidget {
         onPressed: busy ? null : onPressed,
         child: busy
             ? const SizedBox.square(
-                dimension: 18,
+                dimension: AppSizes.progressIndicator,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : Text(label),

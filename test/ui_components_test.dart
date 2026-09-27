@@ -32,6 +32,7 @@ import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/pages/reader_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
+import 'package:trickle/presentation/widgets/add_feed_dialog.dart';
 import 'package:trickle/presentation/widgets/content_list_controls.dart';
 import 'package:trickle/presentation/widgets/content_tiles.dart';
 import 'package:trickle/presentation/widgets/design_system.dart';
@@ -604,7 +605,8 @@ void main() {
       expect(find.text('Library'), findsOneWidget);
       expect(find.text('Podcasts'), findsOneWidget);
       expect(find.text('Feeds'), findsOneWidget);
-      expect(find.text('Add YouTube feed'), findsOneWidget);
+      expect(find.text('Add'), findsOneWidget);
+      expect(find.text('Add YouTube feed'), findsNothing);
       expect(
         tester.getTopLeft(find.text('Library')).dy,
         greaterThan(
@@ -618,14 +620,16 @@ void main() {
         greaterThan(tester.getBottomLeft(find.text('Podcasts')).dy),
       );
       await tester.scrollUntilVisible(
-        find.text('No feed items yet.'),
+        find.text('Add a feed to start reading'),
         400,
         scrollable: find.byType(Scrollable).first,
       );
       expect(
-        tester.getTopLeft(find.text('No feed items yet.')).dy,
-        greaterThan(tester.getBottomLeft(find.text('Add YouTube feed')).dy),
+        tester.getTopLeft(find.text('Add a feed to start reading')).dy,
+        greaterThan(tester.getBottomLeft(find.text('Saved articles')).dy),
       );
+      expect(find.text('See all episodes'), findsNothing);
+      expect(find.text('See all feed items'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -661,6 +665,8 @@ void main() {
         title: 'Episode ${index + 1}',
         enclosureUrl: 'https://example.test/$index.mp3',
         discoveredAt: now.subtract(Duration(hours: index)),
+        publishedAt: now.subtract(Duration(hours: index)),
+        durationMs: 2520000,
         explicit: false,
         played: false,
         starred: false,
@@ -684,6 +690,8 @@ void main() {
     );
     final media = StreamController<MediaItem?>.broadcast();
     final states = StreamController<PlaybackState>.broadcast();
+    final textScale = ValueNotifier(1.0);
+    addTearDown(textScale.dispose);
     addTearDown(() async {
       await media.close();
       await states.close();
@@ -699,7 +707,8 @@ void main() {
           newEpisodeCountProvider.overrideWith((_) => Stream.value(2)),
           currentMediaProvider.overrideWith((_) => media.stream),
           playbackStateProvider.overrideWith((_) => states.stream),
-          feedProvider.overrideWith((_, _) => Stream.value(feed)),
+          feedSnapshotProvider.overrideWith((_, _) => feed),
+          downloadForEpisodeProvider.overrideWith((_, _) => null),
           playbackProgressesProvider.overrideWith(
             (_) => Stream.value(const {}),
           ),
@@ -707,11 +716,14 @@ void main() {
         ],
         child: MaterialApp(
           theme: TrickleTheme.dark,
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: const TextScaler.linear(3.2)),
-            child: child!,
+          builder: (context, child) => ValueListenableBuilder(
+            valueListenable: textScale,
+            builder: (context, scale, _) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
           ),
           home: const HomePage(),
         ),
@@ -728,10 +740,25 @@ void main() {
     expect(second.dy, greaterThan(first.dy));
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
-    expect(find.bySemanticsLabel('Podcasts, 2 items'), findsOneWidget);
+    expect(find.bySemanticsLabel('Podcasts, 2 new episodes'), findsOneWidget);
     expect(find.bySemanticsLabel('Up next, 1 item'), findsNothing);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
-    expect(find.text('New'), findsWidgets);
+    expect(find.textContaining('New ·'), findsWidgets);
+    expect(find.textContaining('42m'), findsWidgets);
+    expect(find.text('Example Podcast'), findsWidgets);
+    await tester.tap(find.byTooltip('Episode actions').first);
+    await tester.pumpAndSettle();
+    for (final action in [
+      'Play next',
+      'Add to Up next',
+      'Download',
+      'Save',
+      'Mark played',
+    ]) {
+      expect(find.text(action), findsOneWidget);
+    }
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
     media.add(const MediaItem(id: 'episode-0', title: 'Episode 1'));
     for (final (processingState, playing, label) in [
       (AudioProcessingState.loading, false, 'Loading'),
@@ -745,16 +772,26 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(find.text(label), findsOneWidget);
-      if (label != 'Paused') expect(find.text('Paused'), findsNothing);
+      expect(find.textContaining('$label ·'), findsOneWidget);
+      if (label != 'Paused') {
+        expect(find.textContaining('Paused ·'), findsNothing);
+      }
     }
+
+    textScale.value = 3.2;
+    await tester.pump();
+    final largeFirst = tester.getTopLeft(card('Episode 1'));
+    final largeSecond = tester.getTopLeft(card('Episode 2'));
+    expect(largeSecond.dx, greaterThan(largeFirst.dx));
+    expect(largeSecond.dy, closeTo(largeFirst.dy, 1));
+    expect(tester.takeException(), isNull);
 
     await tester.scrollUntilVisible(
       find.text('Feeds'),
       400,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.bySemanticsLabel('Feeds, 1 item'), findsOneWidget);
+    expect(find.bySemanticsLabel('Feeds, 1 unread item'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Home article'),
       400,
@@ -839,33 +876,69 @@ void main() {
     },
   );
 
-  testWidgets('home See all actions open episodes and recent feed items', (
+  testWidgets('home shortcuts and See all actions keep their destinations', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(393, 3000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final now = DateTime.utc(2026, 9, 27);
+    final episode = Episode(
+      id: 'episode',
+      feedId: 'podcast',
+      title: 'Episode',
+      enclosureUrl: 'https://example.test/episode.mp3',
+      discoveredAt: now,
+      explicit: false,
+      played: false,
+      starred: false,
+      automationApplied: false,
+    );
+    final article = Article(
+      id: 'article',
+      feedId: 'reader',
+      title: 'Article',
+      discoveredAt: now,
+      contentFormat: 0,
+      mediaKind: 0,
+      starred: false,
+    );
     final router = GoRouter(
       routes: [
         GoRoute(path: '/', builder: (_, _) => const HomePage()),
         GoRoute(
           path: '/reader',
-          builder: (_, state) => Scaffold(
-            body: Text('Feed items: ${state.uri.queryParameters['filter']}'),
-          ),
+          builder: (_, state) => Scaffold(body: Text(state.uri.toString())),
         ),
         GoRoute(
           path: '/podcasts',
-          builder: (_, _) => const Scaffold(body: Text('All episodes')),
+          builder: (_, state) => Scaffold(body: Text(state.uri.toString())),
         ),
+        for (final path in ['/queue', '/downloads', '/saved'])
+          GoRoute(
+            path: path,
+            builder: (_, state) => Scaffold(body: Text(state.uri.toString())),
+          ),
       ],
     );
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+          recentEpisodesProvider.overrideWith((_) => Stream.value([episode])),
           feedsProvider.overrideWith((_) => Stream.value(const [])),
-          recentArticlesProvider.overrideWith((_) => Stream.value(const [])),
+          recentArticlesProvider.overrideWith((_) => Stream.value([article])),
+          feedSnapshotProvider.overrideWith((_, _) => null),
+          downloadForEpisodeProvider.overrideWith((_, _) => null),
+          playbackProgressesProvider.overrideWith(
+            (_) => Stream.value(const {}),
+          ),
+          currentMediaProvider.overrideWith((_) => Stream.value(null)),
+          playbackStateProvider.overrideWith(
+            (_) => Stream.value(PlaybackState()),
+          ),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+          newEpisodeCountProvider.overrideWith((_) => Stream.value(1)),
+          unreadArticleCountProvider.overrideWith((_) => Stream.value(1)),
         ],
         child: MaterialApp.router(
           theme: TrickleTheme.dark,
@@ -878,15 +951,107 @@ void main() {
     expect(find.text('Open'), findsNothing);
     await tester.tap(find.bySemanticsLabel('See all episodes'));
     await tester.pumpAndSettle();
-    expect(find.text('All episodes'), findsOneWidget);
+    expect(find.text('/podcasts'), findsOneWidget);
     router.pop();
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('See all feed items'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Feed items: all'), findsOneWidget);
+    expect(find.text('/reader?filter=all'), findsOneWidget);
+    router.pop();
+    await tester.pumpAndSettle();
+    for (final (label, path) in [
+      ('Podcasts', '/podcasts?tab=podcasts'),
+      ('Feeds', '/reader?tab=feeds'),
+      ('Up next', '/queue'),
+      ('Downloads', '/downloads'),
+      ('Saved episodes', '/saved'),
+      ('Saved articles', '/saved?tab=articles'),
+    ]) {
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      expect(find.text(path), findsOneWidget);
+      router.pop();
+      await tester.pumpAndSettle();
+    }
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'home Add menu opens each flow and cancels cleanly at large text',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(393, 852));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (_, _) => const HomePage()),
+          GoRoute(
+            path: '/podcast-search',
+            builder: (_, _) => const Scaffold(body: Text('Podcast search')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            recentEpisodesProvider.overrideWith((_) => Stream.value(const [])),
+            recentArticlesProvider.overrideWith((_) => Stream.value(const [])),
+            feedsProvider.overrideWith((_) => Stream.value(const [])),
+            newEpisodeCountProvider.overrideWith((_) => Stream.value(0)),
+            unreadArticleCountProvider.overrideWith((_) => Stream.value(0)),
+          ],
+          child: MaterialApp.router(
+            theme: TrickleTheme.dark,
+            routerConfig: router,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(3.2)),
+              child: child!,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Add'));
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.byType(HomePage), findsOneWidget);
+
+      for (final label in [
+        'Add podcast',
+        'Add podcast URL',
+        'Add feed',
+        'Add YouTube feed',
+      ]) {
+        await tester.tap(find.text('Add'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(label));
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+        expect(find.byType(BottomSheet), findsNothing);
+        if (label == 'Add podcast') {
+          expect(find.text('Podcast search'), findsOneWidget);
+          router.pop();
+        } else {
+          final dialog = tester.widget<AddFeedDialog>(
+            find.byType(AddFeedDialog),
+          );
+          expect(dialog.podcastIntent, label == 'Add podcast URL');
+          expect(dialog.youtubeOnly, label == 'Add YouTube feed');
+          await tester.tap(find.text('Cancel'));
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(HomePage), findsOneWidget);
+        expect(find.byType(AddFeedDialog), findsNothing);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testWidgets('reader sources group by category and leave podcasts out', (
     tester,
@@ -2021,13 +2186,14 @@ void main() {
   });
 
   testWidgets(
-    'library shortcuts wrap into aligned non-scrolling rows without truncating labels',
+    'library shortcuts stay aligned and readable across screen and text sizes',
     (tester) async {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       for (final (width, scale, columns) in [
-        (360.0, 1.0, 4),
-        (375.0, 1.0, 4),
-        (393.0, 1.3, 3),
+        (320.0, 1.0, 1),
+        (360.0, 1.0, 2),
+        (375.0, 1.0, 2),
+        (393.0, 1.3, 2),
         (393.0, 3.2, 1),
       ]) {
         await tester.binding.setSurfaceSize(Size(width, 852));
@@ -2043,19 +2209,16 @@ void main() {
                     children: [
                       for (final label in [
                         'Podcasts',
+                        'Feeds',
                         'Up next',
                         'Downloads',
                         'Saved episodes',
-                        'Add podcast',
-                        'Add podcast URL',
-                        'Feeds',
                         'Saved articles',
-                        'Add feed',
-                        'Add YouTube feed',
                       ])
                         LibraryShortcut(
                           icon: Icons.podcasts_rounded,
                           label: label,
+                          badge: label == 'Feeds' ? 1234 : null,
                           onTap: () => tapped = true,
                         ),
                     ],
@@ -2067,11 +2230,11 @@ void main() {
         );
         final shortcuts = find.byType(LibraryShortcut);
         final rects = [
-          for (var i = 0; i < 10; i++) tester.getRect(shortcuts.at(i)),
+          for (var i = 0; i < 6; i++) tester.getRect(shortcuts.at(i)),
         ];
         for (final rect in rects) {
           expect(rect.width, closeTo(rects.first.width, 0.01));
-          expect(rect.height, closeTo(rects.first.height, 0.01));
+          expect(rect.height, greaterThanOrEqualTo(AppSizes.control));
         }
         expect(
           find.descendant(
@@ -2086,15 +2249,18 @@ void main() {
         }
         expect(
           rects[columns].top - rects[0].bottom,
-          closeTo(AppSpacing.xs, 0.01),
+          closeTo(AppSpacing.sm, 0.01),
         );
         if (columns > 1) {
           expect(rects[0].top, rects[1].top);
           expect(rects[1].left - rects[0].right, closeTo(8, 0.01));
+          for (var i = 0; i < rects.length; i += columns) {
+            expect(rects[i].height, closeTo(rects[i + 1].height, 0.01));
+          }
         }
-        await tester.ensureVisible(find.text('Add podcast URL'));
+        await tester.ensureVisible(find.text('Saved articles'));
         await tester.pumpAndSettle();
-        expect(find.text('Add podcast URL').hitTestable(), findsOneWidget);
+        expect(find.text('Saved articles').hitTestable(), findsOneWidget);
         for (final text
             in find
                 .descendant(of: shortcuts, matching: find.byType(Text))
@@ -2106,7 +2272,7 @@ void main() {
             reason: 'width=$width scale=$scale text=${label.text}',
           );
         }
-        await tester.tap(find.text('Add podcast URL'));
+        await tester.tap(find.text('Saved articles'));
         expect(tapped, isTrue);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -2118,6 +2284,8 @@ void main() {
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
+    final states = StreamController<PlaybackState>();
+    addTearDown(states.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -2126,14 +2294,7 @@ void main() {
               const MediaItem(id: 'episode', title: 'Episode title'),
             ),
           ),
-          playbackStateProvider.overrideWith(
-            (_) => Stream.value(
-              PlaybackState(
-                playing: true,
-                processingState: AudioProcessingState.ready,
-              ),
-            ),
-          ),
+          playbackStateProvider.overrideWith((_) => states.stream),
           playbackPositionProvider.overrideWith(
             (_) => Stream.value(const Duration(minutes: 2)),
           ),
@@ -2154,6 +2315,9 @@ void main() {
           ),
         ),
       ),
+    );
+    states.add(
+      PlaybackState(playing: true, processingState: AudioProcessingState.ready),
     );
     await tester.pump();
     await tester.pump();
@@ -2179,6 +2343,17 @@ void main() {
       isTrue,
     );
     expect(tester.takeException(), isNull);
+    states.add(
+      PlaybackState(
+        playing: true,
+        processingState: AudioProcessingState.buffering,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+    expect(pause, findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     semantics.dispose();
   });
 
@@ -2420,7 +2595,8 @@ void main() {
     final article = Article(
       id: 'video',
       feedId: feed.id,
-      title: 'A useful video',
+      title:
+          'A useful video about building a calmer library and keeping it useful over time',
       canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       discoveredAt: now,
       contentFormat: ArticleContentFormat.html.index,
@@ -2431,7 +2607,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          feedProvider.overrideWith((_, _) => Stream.value(feed)),
+          feedSnapshotProvider.overrideWith((_, _) => feed),
           remoteImagesProvider.overrideWith((_) => Stream.value(false)),
         ],
         child: MaterialApp(
@@ -2441,7 +2617,9 @@ void main() {
               size: Size(320, 640),
               textScaler: TextScaler.linear(3.2),
             ),
-            child: Scaffold(body: ArticleTile(article)),
+            child: Scaffold(
+              body: SingleChildScrollView(child: ArticleTile(article)),
+            ),
           ),
         ),
       ),
@@ -2449,14 +2627,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.getSize(find.byType(ArticleArtwork)), const Size(112, 63));
+    final title = tester.renderObject<RenderParagraph>(
+      find.text(article.title),
+    );
+    expect(title.didExceedMaxLines, isFalse);
     expect(
-      find.bySemanticsLabel(RegExp(r'Unwatched video A useful video')),
+      find.bySemanticsLabel(RegExp(r'Unopened video A useful video')),
       findsOneWidget,
     );
     expect(find.byTooltip('Video actions'), findsOneWidget);
     await tester.tap(find.byTooltip('Video actions'));
     await tester.pumpAndSettle();
-    expect(find.text('Mark watched'), findsOneWidget);
+    expect(find.text('Mark opened'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tapAt(const Offset(8, 8));

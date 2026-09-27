@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
@@ -16,11 +17,15 @@ void showErrorSnackBar(BuildContext context, Object error) {
   showMessageSnackBar(context, friendlyError(error));
 }
 
-void showMessageSnackBar(BuildContext context, String message) {
+void showMessageSnackBar(
+  BuildContext context,
+  String message, {
+  SnackBarAction? action,
+}) {
   final messenger = ScaffoldMessenger.of(context);
   messenger
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+    ..showSnackBar(SnackBar(content: Text(message), action: action));
 }
 
 final class PageTitle extends StatelessWidget {
@@ -57,13 +62,78 @@ Future<void> refreshAllFeeds(
       final count = result.failedFeeds;
       showMessageSnackBar(
         context,
-        'Refresh finished with $count failed feed${count == 1 ? '' : 's'}',
+        'Couldn’t refresh $count feed${count == 1 ? '' : 's'}',
+        action: SnackBarAction(
+          label: 'Review',
+          onPressed: () async {
+            if (!context.mounted) return;
+            await showDialog<void>(
+              context: context,
+              builder: (_) => const _RefreshErrorsDialog(),
+            );
+          },
+        ),
       );
     } else if (announceSuccess) {
       showMessageSnackBar(context, 'Feeds refreshed');
     }
   } on Object catch (error) {
     if (context.mounted) showErrorSnackBar(context, error);
+  }
+}
+
+final class _RefreshErrorsDialog extends ConsumerWidget {
+  const _RefreshErrorsDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feeds = ref.watch(feedsProvider);
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Refresh errors'),
+      content: SizedBox(
+        width: 440,
+        height: MediaQuery.sizeOf(context).height / 2,
+        child: feeds.when(
+          data: (items) {
+            final failed = items
+                .where((feed) => feed.refreshError != null)
+                .toList();
+            if (failed.isEmpty) {
+              return const Center(child: Text('No feeds need attention.'));
+            }
+            return ListView.builder(
+              itemCount: failed.length,
+              itemBuilder: (context, index) {
+                final feed = failed[index];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(feed.title),
+                  subtitle: Text(feed.refreshError!),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    final router = GoRouter.of(context);
+                    Navigator.pop(context);
+                    await router.push<void>('/feed/${feed.id}');
+                  },
+                );
+              },
+            );
+          },
+          loading: () => const LoadingView(label: 'Loading feeds'),
+          error: (error, _) => ErrorView(
+            friendlyError(error),
+            onRetry: () => ref.invalidate(feedsProvider),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    );
   }
 }
 
@@ -79,19 +149,28 @@ final class LibraryShortcutGrid extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final columns =
-              ((constraints.maxWidth + AppSpacing.sm) /
-                      (72 * textScale + AppSpacing.sm))
-                  .floor()
-                  .clamp(1, 4);
-          final width =
-              (constraints.maxWidth - (columns - 1) * AppSpacing.sm) / columns;
-          return Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.xs,
+          final columns = textScale > 1.5 || constraints.maxWidth < 320 ? 1 : 2;
+          return Column(
             children: [
-              for (final child in children)
-                SizedBox(width: width, child: child),
+              for (var i = 0; i < children.length; i += columns) ...[
+                if (i > 0) const SizedBox(height: AppSpacing.sm),
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: children[i]),
+                      if (columns == 2) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: i + 1 < children.length
+                              ? children[i + 1]
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ],
           );
         },
@@ -305,13 +384,17 @@ final class GlassIconButton extends StatelessWidget {
         onTap: onPressed,
         child: Material(
           color: AppConstants.surface.withValues(alpha: 0.94),
-          shape: const CutCornerBorder(cut: 11),
+          shape: const CutCornerBorder(cut: AppCuts.small),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onPressed,
             child: SizedBox.square(
               dimension: 48,
-              child: Icon(icon, size: 23, color: AppConstants.primaryText),
+              child: Icon(
+                icon,
+                size: AppSizes.icon,
+                color: AppConstants.primaryText,
+              ),
             ),
           ),
         ),
@@ -336,7 +419,7 @@ final class PlaybackSpeedSelector extends StatelessWidget {
     if (textScale > 1.5) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          const spacing = 6.0;
+          const spacing = AppSpacing.sm;
           final width = (constraints.maxWidth - spacing) / 2;
           return Wrap(
             spacing: spacing,
@@ -589,7 +672,7 @@ final class _SpeedCell extends StatelessWidget {
             ? AppConstants.cyan.withValues(alpha: 0.18)
             : AppConstants.elevated,
         shape: CutCornerBorder(
-          cut: 9,
+          cut: AppCuts.small,
           side: BorderSide(
             color: selected
                 ? AppConstants.cyan
@@ -624,8 +707,11 @@ final class SectionHeader extends StatelessWidget {
     this.title, {
     this.action,
     this.onAction,
+    this.actionIcon,
+    this.actionSemanticLabel,
     this.accent = AppConstants.cyan,
     this.compact = false,
+    this.horizontalPadding = AppSpacing.lg,
     super.key,
   }) : assert(
          (action == null) == (onAction == null),
@@ -635,8 +721,11 @@ final class SectionHeader extends StatelessWidget {
   final String title;
   final String? action;
   final VoidCallback? onAction;
+  final IconData? actionIcon;
+  final String? actionSemanticLabel;
   final Color accent;
   final bool compact;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -645,31 +734,37 @@ final class SectionHeader extends StatelessWidget {
     final titleWidget = Text(
       title,
       style: compact
-          ? Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 17)
+          ? Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 16)
           : Theme.of(context).textTheme.titleLarge,
     );
     final actionWidget = action == null
         ? null
         : Semantics(
             container: true,
-            label: '$action $title',
+            label: actionSemanticLabel ?? '$action $title',
             button: true,
             onTap: onAction,
             excludeSemantics: true,
-            child: TextButton(onPressed: onAction, child: Text(action!)),
+            child: actionIcon == null
+                ? TextButton(onPressed: onAction, child: Text(action!))
+                : TextButton.icon(
+                    onPressed: onAction,
+                    icon: Icon(actionIcon),
+                    label: Text(action!),
+                  ),
           );
     return Semantics(
       header: true,
       child: Padding(
         padding: compact
-            ? const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
+            ? EdgeInsets.fromLTRB(
+                horizontalPadding,
                 AppSpacing.md,
                 AppSpacing.sm,
                 AppSpacing.xs,
               )
-            : const EdgeInsets.fromLTRB(
-                AppSpacing.lg,
+            : EdgeInsets.fromLTRB(
+                horizontalPadding,
                 AppSpacing.lg,
                 AppSpacing.sm,
                 AppSpacing.sm,
@@ -789,6 +884,7 @@ final class LibraryShortcut extends StatelessWidget {
     required this.onTap,
     this.color = AppConstants.cyan,
     this.badge,
+    this.badgeNoun = 'item',
     super.key,
   });
 
@@ -797,94 +893,45 @@ final class LibraryShortcut extends StatelessWidget {
   final VoidCallback onTap;
   final Color color;
   final int? badge;
+  final String badgeNoun;
 
   @override
   Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(
-      context,
-    ).scale(1).clamp(1.0, 3.2).toDouble();
-    final labelStyle = Theme.of(context).textTheme.labelMedium!;
-    final labelHeight =
-        (labelStyle.fontSize ?? 14) *
-        (labelStyle.height ?? 1.2) *
-        textScale *
-        2;
     final visibleBadge = switch (badge) {
       final count? when count > 0 => count,
       _ => null,
     };
-    final badgeText = visibleBadge?.toString();
     return Semantics(
       button: true,
       label: visibleBadge == null
           ? label
-          : '$label, $visibleBadge ${visibleBadge == 1 ? 'item' : 'items'}',
+          : '$label, $visibleBadge $badgeNoun${visibleBadge == 1 ? '' : 's'}',
       excludeSemantics: true,
       onTap: onTap,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+      child: SignalPanel(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40),
+          child: Row(
             children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  SignalIcon(
-                    icon: icon,
-                    color: color,
-                    size: AppSizes.shortcutIcon,
-                  ),
-                  if (badgeText case final text?)
-                    Positioned(
-                      top: -AppSpacing.xs,
-                      right: -AppSpacing.sm,
-                      child: MediaQuery.withNoTextScaling(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.sm,
-                              vertical: AppSpacing.xs,
-                            ),
-                            child: Text(
-                              text,
-                              style: const TextStyle(
-                                color: AppConstants.background,
-                                fontFamily: 'SpaceGrotesk',
-                                fontSize: 10,
-                                height: 1,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              SizedBox(
-                height: labelHeight,
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: MediaQuery.withClampedTextScaling(
-                    maxScaleFactor: 3.2,
-                    child: Text(
-                      label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: labelStyle,
-                    ),
-                  ),
+              Icon(icon, color: color, size: AppSizes.icon),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  label,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
+              if (visibleBadge != null) ...[
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  visibleBadge.toString(),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelMedium?.copyWith(color: color),
+                ),
+              ],
             ],
           ),
         ),

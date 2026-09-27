@@ -93,7 +93,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
         onPressed: _busy ? null : () => _toggleAudio(isCurrent, playing),
         icon: _busy
             ? const SizedBox.square(
-                dimension: 18,
+                dimension: AppSizes.progressIndicator,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
@@ -131,7 +131,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
             onPressed: _busy ? null : () => _playVideo(isActive),
             icon: _busy
                 ? const SizedBox.square(
-                    dimension: 18,
+                    dimension: AppSizes.progressIndicator,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.play_arrow_rounded),

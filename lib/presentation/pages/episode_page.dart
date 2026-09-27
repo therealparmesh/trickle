@@ -129,7 +129,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                     child: EpisodeArtwork(
                       episode: episode,
                       size: wide ? 228 : 208,
-                      radius: 7,
+                      radius: AppSpacing.sm,
                     ),
                   ),
                 ),
@@ -329,10 +329,10 @@ final class _ActionButtonFace extends StatelessWidget {
           onPressed: () {},
           icon: busy
               ? const SizedBox.square(
-                  dimension: 17,
+                  dimension: AppSizes.progressIndicator,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Icon(icon, size: 19),
+              : Icon(icon, size: AppSizes.smallIcon),
           label: Text(label),
         ),
       ),
@@ -367,10 +367,10 @@ final class _ActionButton extends StatelessWidget {
       onPressed: busy ? null : onPressed,
       icon: busy
           ? const SizedBox.square(
-              dimension: 18,
+              dimension: AppSizes.progressIndicator,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : Icon(icon, size: 19),
+          : Icon(icon, size: AppSizes.smallIcon),
       label: Text(label),
     );
   }

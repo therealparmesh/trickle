@@ -224,7 +224,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               color: AppConstants.elevated.withValues(alpha: 0.97),
               clipBehavior: Clip.antiAlias,
               shape: const CutCornerBorder(
-                cut: 14,
+                cut: AppCuts.medium,
                 side: BorderSide(color: AppConstants.hairline),
               ),
               child: Row(
@@ -307,7 +307,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               shape: expanded
                   ? const RoundedRectangleBorder()
                   : const CutCornerBorder(
-                      cut: 14,
+                      cut: AppCuts.medium,
                       side: BorderSide(color: AppConstants.hairline),
                     ),
               child: SafeArea(
@@ -388,7 +388,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                 ? compact
                       ? const Center(
                           child: SizedBox.square(
-                            dimension: 20,
+                            dimension: AppSizes.progressIndicator,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
@@ -558,7 +558,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               : null,
           icon: phase.isBusy
               ? const SizedBox.square(
-                  dimension: 20,
+                  dimension: AppSizes.progressIndicator,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Icon(phase.icon),
@@ -1728,7 +1728,7 @@ final class _PlayerMessage extends StatelessWidget {
               child: Material(
                 color: AppConstants.elevated.withValues(alpha: 0.98),
                 shape: const CutCornerBorder(
-                  cut: 10,
+                  cut: AppCuts.small,
                   side: BorderSide(color: AppConstants.hairline),
                 ),
                 child: Padding(

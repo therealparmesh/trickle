@@ -139,11 +139,13 @@ final class QueuePage extends ConsumerWidget {
                                 leading: episode == null
                                     ? Artwork(
                                         url: item.artUri?.toString(),
-                                        size: 50,
+                                        size: AppSizes.artwork,
+                                        radius: 4,
                                       )
                                     : EpisodeArtwork(
                                         episode: episode,
-                                        size: 50,
+                                        size: AppSizes.artwork,
+                                        radius: 4,
                                       ),
                                 title: EpisodeTitle(
                                   title: item.title,

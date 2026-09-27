@@ -84,7 +84,7 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
           onPressed: onPressed,
           icon: busy
               ? const SizedBox.square(
-                  dimension: 20,
+                  dimension: AppSizes.progressIndicator,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: AppConstants.background,
@@ -111,7 +111,7 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
               ? AppConstants.danger.withValues(alpha: 0.16)
               : AppConstants.cyan.withValues(alpha: 0.14),
           shape: CutCornerBorder(
-            cut: 10,
+            cut: AppCuts.small,
             side: BorderSide(
               color: failed
                   ? AppConstants.danger.withValues(alpha: 0.6)
@@ -126,7 +126,7 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
               child: Center(
                 child: busy
                     ? const SizedBox.square(
-                        dimension: 20,
+                        dimension: AppSizes.progressIndicator,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Icon(

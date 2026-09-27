@@ -879,14 +879,14 @@ final class _FeedCategoryChip extends StatelessWidget {
         child: MediaQuery.withClampedTextScaling(
           maxScaleFactor: 2,
           child: ActionChip(
-            avatar: const Icon(Icons.folder_outlined, size: 17),
+            avatar: const Icon(Icons.folder_outlined, size: AppSizes.smallIcon),
             label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
             onPressed: onPressed,
             backgroundColor: AppConstants.magenta.withValues(alpha: 0.08),
             side: BorderSide(
               color: AppConstants.magenta.withValues(alpha: 0.35),
             ),
-            shape: const CutCornerBorder(cut: 8),
+            shape: const CutCornerBorder(cut: AppCuts.small),
           ),
         ),
       ),
@@ -1036,7 +1036,7 @@ final class _SubscriptionControl extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: busy ? null : onPressed,
-            customBorder: const CutCornerBorder(cut: 8),
+            customBorder: const CutCornerBorder(cut: AppCuts.small),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               child: DecoratedBox(
@@ -1044,7 +1044,7 @@ final class _SubscriptionControl extends StatelessWidget {
                 decoration: ShapeDecoration(
                   color: color.withValues(alpha: 0.06),
                   shape: CutCornerBorder(
-                    cut: 8,
+                    cut: AppCuts.small,
                     side: BorderSide(color: color.withValues(alpha: 0.4)),
                   ),
                 ),
@@ -1180,10 +1180,10 @@ class _FeedSettingsSheetState extends ConsumerState<FeedSettingsSheet> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          20 + MediaQuery.viewInsetsOf(context).bottom,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: SingleChildScrollView(
           child: Column(

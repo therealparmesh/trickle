@@ -171,7 +171,7 @@ abstract final class TrickleTheme {
         backgroundColor: AppConstants.surface,
         selectedColor: AppConstants.cyan.withValues(alpha: 0.12),
         side: const BorderSide(color: AppConstants.hairline),
-        shape: const CutCornerBorder(cut: AppSpacing.sm),
+        shape: const CutCornerBorder(cut: AppCuts.small),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -188,11 +188,13 @@ abstract final class TrickleTheme {
           side: const WidgetStatePropertyAll(
             BorderSide(color: AppConstants.hairline),
           ),
-          shape: const WidgetStatePropertyAll(CutCornerBorder(cut: 8)),
+          shape: const WidgetStatePropertyAll(
+            CutCornerBorder(cut: AppCuts.small),
+          ),
           textStyle: const WidgetStatePropertyAll(
             TextStyle(
               fontFamily: TrickleFonts.ui,
-              fontSize: 13,
+              fontSize: 14,
               height: 1.25,
               fontWeight: FontWeight.w700,
               letterSpacing: 0,
@@ -213,7 +215,7 @@ abstract final class TrickleTheme {
             horizontal: AppSpacing.lg,
             vertical: AppSpacing.sm,
           ),
-          shape: const CutCornerBorder(cut: AppSpacing.sm),
+          shape: const CutCornerBorder(cut: AppCuts.small),
           textStyle: const TextStyle(
             fontFamily: TrickleFonts.ui,
             fontWeight: FontWeight.w700,
@@ -228,7 +230,7 @@ abstract final class TrickleTheme {
             horizontal: AppSpacing.lg,
             vertical: AppSpacing.sm,
           ),
-          shape: const CutCornerBorder(cut: AppSpacing.sm),
+          shape: const CutCornerBorder(cut: AppCuts.small),
         ),
       ),
       iconButtonTheme: const IconButtonThemeData(
@@ -265,7 +267,7 @@ abstract final class TrickleTheme {
           color: AppConstants.primaryText,
           fontFamily: TrickleFonts.ui,
         ),
-        shape: const CutCornerBorder(cut: 12),
+        shape: const CutCornerBorder(cut: AppCuts.medium),
         behavior: SnackBarBehavior.floating,
       ),
       dividerTheme: const DividerThemeData(
@@ -277,7 +279,7 @@ abstract final class TrickleTheme {
         backgroundColor: AppConstants.surface,
         surfaceTintColor: Colors.transparent,
         shape: const CutCornerBorder(
-          cut: 16,
+          cut: AppCuts.large,
           side: BorderSide(color: AppConstants.hairline),
         ),
       ),
@@ -286,12 +288,14 @@ abstract final class TrickleTheme {
         surfaceTintColor: Colors.transparent,
         showDragHandle: true,
         dragHandleColor: AppConstants.hairline,
+        shape: CutCornerBorder(cut: AppCuts.large),
+        clipBehavior: Clip.antiAlias,
       ),
       popupMenuTheme: PopupMenuThemeData(
         color: AppConstants.elevated,
         surfaceTintColor: Colors.transparent,
         shape: const CutCornerBorder(
-          cut: 11,
+          cut: AppCuts.small,
           side: BorderSide(color: AppConstants.hairline),
         ),
       ),
@@ -305,7 +309,9 @@ abstract final class TrickleTheme {
         side: const WidgetStatePropertyAll(
           BorderSide(color: AppConstants.hairline),
         ),
-        shape: const WidgetStatePropertyAll(CutCornerBorder(cut: 12)),
+        shape: const WidgetStatePropertyAll(
+          CutCornerBorder(cut: AppCuts.medium),
+        ),
         hintStyle: const WidgetStatePropertyAll(
           TextStyle(color: AppConstants.secondaryText),
         ),
@@ -321,10 +327,13 @@ abstract final class TrickleTheme {
       listTileTheme: const ListTileThemeData(
         iconColor: AppConstants.secondaryText,
         textColor: AppConstants.primaryText,
-        minVerticalPadding: 8,
+        minVerticalPadding: AppSpacing.sm,
+        horizontalTitleGap: AppSpacing.md,
+        minLeadingWidth: AppSizes.icon,
         subtitleTextStyle: TextStyle(
           color: AppConstants.secondaryText,
           fontSize: 12,
+          height: 1.25,
         ),
       ),
     );

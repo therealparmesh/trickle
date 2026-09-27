@@ -4,7 +4,7 @@ title: trickle Support
 
 # trickle support
 
-_Last updated: September 20, 2026_
+_Last updated: September 27, 2026_
 
 ## Contact
 
@@ -27,9 +27,11 @@ Do not include private-feed passwords, bearer tokens, authorization headers, or 
 
 ### Finding and adding content
 
-Home’s Search button searches your library. Use Add podcast in Library to search Apple’s podcast catalog, or Add podcast URL to paste an RSS URL. Add feed accepts RSS, Atom, JSON Feed, website, and Nostr profile addresses. If a podcast URL is entered under Add feed, or a regular feed under Add podcast URL, trickle explains the mismatch and adds it to the right collection.
+Home’s Search button searches your library. Tap Add next to Library, then Add podcast to search Apple’s podcast catalog, or Add podcast URL to paste an RSS URL. The same menu has Add feed for RSS, Atom, JSON Feed, website, and Nostr profile addresses, and Add YouTube feed for public channels and playlists. If a podcast URL is entered under Add feed, or a regular feed under Add podcast URL, trickle explains the mismatch and adds it to the right collection.
 
-Home shows your 20 most recent episodes and 20 most recent feed items, including items you have played or read. Opening an article marks it read but leaves it on Home. See all opens the full list with All selected. Full lists have Load more controls for older items. The Library grid sits between the two lists, with cyan podcast actions and magenta feed actions. It has four columns at normal text sizes and fewer with larger text.
+Home shows your 20 most recent episodes and 20 most recent feed items, including items you have played or read. Opening an article marks it read but leaves it on Home. See all episodes and See all feed items open the full lists with All selected. Full lists have Load more controls for older items. Episode cards show their podcast, date, duration, and status; their actions menu offers queueing, downloads, saving, and Mark played.
+
+Library sits between the two lists, with six shortcuts in two columns. Cyan identifies podcast actions and magenta identifies feed actions. On narrow screens or at accessibility text sizes, the shortcuts become full-width rows. At accessibility text sizes, the episode shelf also changes to one wider row and article thumbnails move above the text. The Add menu scrolls when needed.
 
 Podcasts has a badge for new episodes you have not started. Feeds has a badge for unread feed items. Both show the full count and disappear at zero. In-progress and completed episodes are not included in the Podcasts badge.
 
@@ -39,7 +41,7 @@ Article thumbnails come from the feed's image, an image in its content, or the l
 
 Confirm the feed uses HTTPS and opens in a browser. For a private feed, verify its URL and authorization values in the feed settings.
 
-If a refresh finishes with failed feeds, open the affected subscription to see its stored refresh error and try again. Other subscriptions and existing items remain available.
+If a refresh finishes with failed feeds, tap Review in the message to see the affected subscriptions. Open one to see its refresh error and try again. Other subscriptions and existing items remain available.
 
 ### Feed categories
 
@@ -64,6 +66,8 @@ If the operating system stops an episode that was still playing, trickle tries o
 ### Video feeds
 
 Use Add YouTube feed to add a public channel, playlist, or YouTube Atom feed. Private and members-only feeds are not supported.
+
+Video items use Opened and Unopened instead of Watched: opening an item does not mean you finished watching it. Unopened videos count toward the Feeds badge. The item menu can change this status manually.
 
 Video requires a network connection. Public YouTube videos play without ads when supported. If that player fails, trickle tries the official source. If neither works, choose Try again or Open original. Minimize the player to keep watching while using trickle.
 

@@ -107,7 +107,7 @@ final class MiniPlayer extends ConsumerWidget {
             child: Material(
               color: AppConstants.elevated.withValues(alpha: 0.98),
               shape: const CutCornerBorder(
-                cut: 14,
+                cut: AppCuts.medium,
                 side: BorderSide(color: AppConstants.hairline),
               ),
               clipBehavior: Clip.antiAlias,
@@ -192,7 +192,7 @@ final class MiniPlayer extends ConsumerWidget {
                               color: phase.isError
                                   ? AppConstants.danger
                                   : AppConstants.cyan,
-                              shape: const CutCornerBorder(cut: AppSpacing.sm),
+                              shape: const CutCornerBorder(cut: AppCuts.small),
                               clipBehavior: Clip.antiAlias,
                               child: InkWell(
                                 onTap: canToggle
@@ -201,15 +201,14 @@ final class MiniPlayer extends ConsumerWidget {
                                     : null,
                                 child: SizedBox.square(
                                   dimension: AppSizes.control,
-                                  child: phase.isBusy
-                                      ? Center(
+                                  child: phase.isBusy && !playing
+                                      ? const Center(
                                           child: SizedBox.square(
-                                            dimension: 22,
+                                            dimension:
+                                                AppSizes.progressIndicator,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2,
-                                              color: playing
-                                                  ? AppConstants.background
-                                                  : AppConstants.secondaryText,
+                                              color: AppConstants.background,
                                             ),
                                           ),
                                         )

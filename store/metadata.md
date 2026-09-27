@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.3.1
-- Build: 63
+- Version: 1.3.2
+- Build: 64
 
 ## Name
 
@@ -84,7 +84,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-The checked-in 1320×2868 iPhone images were recaptured and visually verified against 1.3.1 on September 21, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
+The checked-in 1320×2868 iPhone images were recaptured and visually verified against 1.3.2 on September 27, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
 
 1. Home
 2. Podcast
@@ -99,9 +99,9 @@ The checked-in 1320×2868 iPhone images were recaptured and visually verified ag
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.3.1 release notes
+## Version 1.3.2 release notes
 
-Home puts your 20 latest episodes, a compact Library grid, and 20 latest feed items in one place. Read and played items stay visible with their status. Your last unfinished audio is ready to resume in the mini player when you reopen trickle. Podcasts shows how many new episodes you have; Feeds shows unread items. Search your library from the top corner, find shows with Add podcast, or paste a feed URL. Controls have more consistent spacing and clearer labels.
+A cleaner Library layout and one Add menu make podcasts and feeds easier to reach. Home episode cards now show the podcast, date, duration, and an actions menu. Spacing, artwork, and controls are more consistent, including at larger text sizes. Refresh errors now link to the affected feeds, and Pause stays available while audio buffers.
 
 ## Privacy declarations
 

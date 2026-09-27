@@ -9,13 +9,14 @@ import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
-import '../episode_actions.dart';
 import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
 import '../widgets/design_system.dart';
 import '../widgets/episode_playback_button.dart';
+import '../widgets/episode_actions_button.dart';
 import '../widgets/add_feed_dialog.dart';
+import '../widgets/add_feed_sheet.dart';
 
 final class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -26,6 +27,9 @@ final class HomePage extends ConsumerWidget {
     final articles = ref.watch(recentArticlesProvider);
     final newEpisodeCount = ref.watch(newEpisodeCountProvider).value;
     final unreadFeedItemCount = ref.watch(unreadArticleCountProvider).value;
+    final hasPodcasts =
+        ref.watch(podcastFeedsProvider).value?.isNotEmpty == true;
+    final hasFeeds = ref.watch(readerFeedsProvider).value?.isNotEmpty == true;
     return Scaffold(
       body: AppBackdrop(
         child: RefreshIndicator(
@@ -34,57 +38,56 @@ final class HomePage extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(child: _HomeToolbar()),
-              SliverToBoxAdapter(
-                child: _SeeAll(
-                  label: 'See all episodes',
-                  onPressed: () => context.push('/podcasts'),
+              if (episodes.value?.isNotEmpty == true)
+                SliverToBoxAdapter(
+                  child: _SeeAll(
+                    label: 'See all episodes',
+                    onPressed: () => context.push('/podcasts'),
+                  ),
                 ),
-              ),
               episodes.when(
                 data: (items) => items.isEmpty
                     ? SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppSpacing.lg,
-                            AppSpacing.md,
-                            AppSpacing.lg,
-                            AppSpacing.xs,
-                          ),
-                          child: AppCard(
-                            onTap: () => context.push('/podcast-search'),
-                            child: const Row(
-                              children: [
-                                Icon(
-                                  Icons.add_circle_outline_rounded,
-                                  color: AppConstants.cyan,
-                                ),
-                                SizedBox(width: AppSpacing.md),
-                                Expanded(
-                                  child: Text(
-                                    'Find a podcast to start listening',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                Icon(Icons.chevron_right_rounded),
-                              ],
-                            ),
+                        child: _HomeEmptyCard(
+                          message: hasPodcasts
+                              ? 'No episodes yet. Check your podcasts for refresh errors.'
+                              : 'Find a podcast to start listening',
+                          color: AppConstants.cyan,
+                          icon: hasPodcasts
+                              ? Icons.podcasts_rounded
+                              : Icons.add_circle_outline_rounded,
+                          onTap: () => context.push(
+                            hasPodcasts
+                                ? '/podcasts?tab=podcasts'
+                                : '/podcast-search',
                           ),
                         ),
                       )
                     : SliverToBoxAdapter(child: _RecentStrip(episodes: items)),
                 loading: () => const SliverToBoxAdapter(
-                  child: SizedBox(height: 176, child: LoadingView()),
+                  child: SizedBox(
+                    height: 272,
+                    child: LoadingView(label: 'Loading episodes'),
+                  ),
                 ),
                 error: (error, _) => SliverToBoxAdapter(
                   child: ErrorView(
                     friendlyError(error),
+                    title: 'Couldn’t load episodes',
                     onRetry: () => ref.invalidate(recentEpisodesProvider),
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SectionHeader('Library')),
+              SliverToBoxAdapter(
+                child: SectionHeader(
+                  'Library',
+                  action: 'Add',
+                  actionIcon: Icons.add_rounded,
+                  actionSemanticLabel: 'Add to library',
+                  onAction: () =>
+                      showAddFeedSheet(context, includePodcasts: true),
+                ),
+              ),
               SliverToBoxAdapter(
                 child: LibraryShortcutGrid(
                   children: [
@@ -92,7 +95,16 @@ final class HomePage extends ConsumerWidget {
                       icon: Icons.podcasts_rounded,
                       label: 'Podcasts',
                       badge: newEpisodeCount,
+                      badgeNoun: 'new episode',
                       onTap: () => context.push('/podcasts?tab=podcasts'),
+                    ),
+                    LibraryShortcut(
+                      icon: Icons.dynamic_feed_outlined,
+                      label: 'Feeds',
+                      badge: unreadFeedItemCount,
+                      badgeNoun: 'unread item',
+                      color: AppConstants.magenta,
+                      onTap: () => context.push('/reader?tab=feeds'),
                     ),
                     LibraryShortcut(
                       icon: Icons.queue_music_rounded,
@@ -110,72 +122,42 @@ final class HomePage extends ConsumerWidget {
                       onTap: () => context.push('/saved'),
                     ),
                     LibraryShortcut(
-                      icon: Icons.add_circle_outline_rounded,
-                      label: 'Add podcast',
-                      onTap: () => context.push('/podcast-search'),
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.add_link_rounded,
-                      label: 'Add podcast URL',
-                      onTap: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => const AddFeedDialog.podcast(),
-                      ),
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.dynamic_feed_outlined,
-                      label: 'Feeds',
-                      badge: unreadFeedItemCount,
-                      color: AppConstants.magenta,
-                      onTap: () => context.push('/reader?tab=feeds'),
-                    ),
-                    LibraryShortcut(
                       icon: Icons.bookmark_outline_rounded,
                       label: 'Saved articles',
                       color: AppConstants.magenta,
                       onTap: () => context.push('/saved?tab=articles'),
                     ),
-                    LibraryShortcut(
-                      icon: Icons.add_link_rounded,
-                      label: 'Add feed',
-                      color: AppConstants.magenta,
-                      onTap: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => const AddFeedDialog(),
-                      ),
-                    ),
-                    LibraryShortcut(
-                      icon: Icons.video_call_outlined,
-                      label: 'Add YouTube feed',
-                      color: AppConstants.magenta,
-                      onTap: () => showDialog<void>(
-                        context: context,
-                        builder: (_) => const AddFeedDialog.youtube(),
-                      ),
-                    ),
                   ],
                 ),
               ),
-              SliverToBoxAdapter(
-                child: _SeeAll(
-                  label: 'See all feed items',
-                  onPressed: () => context.push('/reader?filter=all'),
+              if (articles.value?.isNotEmpty == true)
+                SliverToBoxAdapter(
+                  child: _SeeAll(
+                    label: 'See all feed items',
+                    onPressed: () => context.push('/reader?filter=all'),
+                  ),
                 ),
-              ),
               articles.when(
                 data: (items) => items.isEmpty
-                    ? const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            AppSpacing.lg,
-                            AppSpacing.xs,
-                            AppSpacing.lg,
-                            AppSpacing.sm,
-                          ),
-                          child: Text(
-                            'No feed items yet.',
-                            style: TextStyle(color: AppConstants.secondaryText),
-                          ),
+                    ? SliverToBoxAdapter(
+                        child: _HomeEmptyCard(
+                          message: hasFeeds
+                              ? 'No feed items yet. Check your feeds for refresh errors.'
+                              : 'Add a feed to start reading',
+                          color: AppConstants.magenta,
+                          icon: hasFeeds
+                              ? Icons.dynamic_feed_outlined
+                              : Icons.add_circle_outline_rounded,
+                          onTap: () async {
+                            if (hasFeeds) {
+                              await context.push<void>('/reader?tab=feeds');
+                            } else {
+                              await showDialog<void>(
+                                context: context,
+                                builder: (_) => const AddFeedDialog(),
+                              );
+                            }
+                          },
                         ),
                       )
                     : SliverList.builder(
@@ -184,11 +166,15 @@ final class HomePage extends ConsumerWidget {
                             ArticleTile(items[index]),
                       ),
                 loading: () => const SliverToBoxAdapter(
-                  child: SizedBox(height: 100, child: LoadingView()),
+                  child: SizedBox(
+                    height: 100,
+                    child: LoadingView(label: 'Loading feed items'),
+                  ),
                 ),
                 error: (error, _) => SliverToBoxAdapter(
                   child: ErrorView(
                     friendlyError(error),
+                    title: 'Couldn’t load feed items',
                     onRetry: () => ref.invalidate(recentArticlesProvider),
                   ),
                 ),
@@ -204,6 +190,45 @@ final class HomePage extends ConsumerWidget {
   }
 }
 
+final class _HomeEmptyCard extends StatelessWidget {
+  const _HomeEmptyCard({
+    required this.message,
+    required this.color,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String message;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: AppSpacing.lg,
+      vertical: AppSpacing.md,
+    ),
+    child: AppCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          const Icon(Icons.chevron_right_rounded),
+        ],
+      ),
+    ),
+  );
+}
+
 final class _HomeToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -217,10 +242,10 @@ final class _HomeToolbar extends StatelessWidget {
           AppSpacing.sm,
         ),
         child: SizedBox(
-          height: 50,
+          height: AppSizes.control,
           child: Row(
             children: [
-              const ExcludeSemantics(child: TrickleMark(size: 34)),
+              const ExcludeSemantics(child: TrickleMark(size: 32)),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: MediaQuery.withClampedTextScaling(
@@ -261,33 +286,58 @@ final class _RecentStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 3.2);
-    final rowHeight = math.max(80.0, 48 * textScale + AppSpacing.xl);
+    final scaler = MediaQuery.textScalerOf(context);
+    final largeText = scaler.scale(1) > 1.5;
+    final titleHeight = scaler.scale(14) * 1.25 * (largeText ? 4 : 2);
+    final sourceHeight = scaler.scale(12) * 1.25 * (largeText ? 2 : 1);
+    final metadataHeight = scaler.scale(12) * 1.25 * 2;
+    final rowHeight =
+        AppSpacing.lg +
+        AppSpacing.sm +
+        (largeText
+            ? math.max(AppSizes.control, sourceHeight) +
+                  AppSpacing.sm +
+                  titleHeight
+            : math.max(
+                AppSizes.control,
+                titleHeight + AppSpacing.xs + sourceHeight,
+              )) +
+        math.max(AppSizes.control, metadataHeight);
+    final rows = largeText ? 1 : 2;
     return SizedBox(
-      height: rowHeight * 2 + AppSpacing.xl,
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.sm,
+      height: rowHeight * rows + AppSpacing.lg + (rows - 1) * AppSpacing.sm,
+      child: LayoutBuilder(
+        builder: (context, constraints) => GridView.builder(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            AppSpacing.sm,
+          ),
+          scrollDirection: Axis.horizontal,
+          itemCount: episodes.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: rows,
+            mainAxisExtent: largeText
+                ? math
+                      .max(240, constraints.maxWidth - AppSpacing.xxl)
+                      .toDouble()
+                : 336,
+            mainAxisSpacing: AppSpacing.sm,
+            crossAxisSpacing: AppSpacing.sm,
+          ),
+          itemBuilder: (context, index) => _RecentEpisodeCard(
+            episodes[index],
+            key: ValueKey(episodes[index].id),
+          ),
         ),
-        scrollDirection: Axis.horizontal,
-        itemCount: episodes.length,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisExtent: textScale > 1.5 ? 352 : 304,
-          mainAxisSpacing: AppSpacing.sm,
-          crossAxisSpacing: AppSpacing.sm,
-        ),
-        itemBuilder: (context, index) => _RecentEpisodeCard(episodes[index]),
       ),
     );
   }
 }
 
 final class _RecentEpisodeCard extends ConsumerWidget {
-  const _RecentEpisodeCard(this.episode);
+  const _RecentEpisodeCard(this.episode, {super.key});
 
   final Episode episode;
 
@@ -304,10 +354,31 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     );
     final status = isCurrent ? playbackPhase.label : listeningState.label;
     final metadata = metadataLine([
-      if (feed?.title.isNotEmpty == true) feed!.title,
+      status,
       relativeDate(episode.publishedAt),
       compactDuration(episode.durationMs),
     ]);
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final source = Text(
+      feed?.title ?? '',
+      maxLines: largeText ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: AppConstants.secondaryText),
+    );
+    final title = EpisodeTitle(
+      title: episode.title,
+      explicit: episode.explicit,
+      maxLines: largeText ? 4 : 2,
+      style: TextStyle(
+        color: listeningState == EpisodeListeningState.played && !isCurrent
+            ? AppConstants.secondaryText
+            : AppConstants.primaryText,
+        fontWeight: FontWeight.w700,
+        height: 1.25,
+      ),
+    );
     return SignalPanel(
       accent: isCurrent
           ? AppConstants.acid
@@ -317,104 +388,88 @@ final class _RecentEpisodeCard extends ConsumerWidget {
       padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
               child: Semantics(
                 button: true,
                 excludeSemantics: true,
                 onTap: () => context.push('/episode/${episode.id}'),
-                onLongPress: () => _showActions(context, ref),
                 label:
-                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}. $status${metadata.isEmpty ? '' : '. $metadata'}',
-                hint: 'Long press for playback options',
+                    'Open episode ${episode.title}${episode.explicit ? ', explicit' : ''}. ${feed?.title ?? ''}. $metadata',
                 child: InkWell(
                   onTap: () => context.push('/episode/${episode.id}'),
-                  onLongPress: () => _showActions(context, ref),
-                  child: Row(
-                    children: [
-                      EpisodeArtwork(episode: episode, size: 64, radius: 4),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  child: largeText
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              status,
-                              maxLines: 1,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: isCurrent
-                                        ? playbackPhase.color
-                                        : listeningState.color,
-                                    letterSpacing: 0.5,
-                                  ),
+                            Row(
+                              children: [
+                                EpisodeArtwork(
+                                  episode: episode,
+                                  size: AppSizes.control,
+                                  radius: 4,
+                                ),
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(child: source),
+                              ],
                             ),
-                            const SizedBox(height: AppSpacing.xs),
-                            EpisodeTitle(
-                              title: episode.title,
-                              explicit: episode.explicit,
-                              maxLines: 2,
-                              style: TextStyle(
-                                color:
-                                    listeningState ==
-                                            EpisodeListeningState.played &&
-                                        !isCurrent
-                                    ? AppConstants.secondaryText
-                                    : AppConstants.primaryText,
-                                fontWeight: FontWeight.w700,
-                                height: 1.25,
+                            const SizedBox(height: AppSpacing.sm),
+                            title,
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            EpisodeArtwork(
+                              episode: episode,
+                              size: AppSizes.control,
+                              radius: 4,
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  title,
+                                  const SizedBox(height: AppSpacing.xs),
+                                  source,
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
-            const SizedBox(width: AppSpacing.sm),
-            EpisodePlaybackButton(episode: episode, progress: progress),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
-    final action = await showModalBottomSheet<EpisodeAction>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.play_arrow_rounded),
-              title: const Text('Play'),
-              onTap: () => Navigator.pop(context, EpisodeAction.playNow),
-            ),
-            ListTile(
-              leading: const Icon(Icons.playlist_play_rounded),
-              title: const Text('Play next'),
-              onTap: () => Navigator.pop(context, EpisodeAction.playNext),
-            ),
-            ListTile(
-              leading: const Icon(Icons.queue_music_rounded),
-              title: const Text('Add to Up next'),
-              onTap: () => Navigator.pop(context, EpisodeAction.addToUpNext),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    metadata,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isCurrent
+                          ? playbackPhase.color
+                          : listeningState.color,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                EpisodePlaybackButton(episode: episode, progress: progress),
+                EpisodeActionsButton(
+                  key: ValueKey(episode.id),
+                  episode: episode,
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
-    if (action == null) return;
-    try {
-      await performEpisodeAction(ref, episode, action);
-    } on Object catch (error) {
-      if (context.mounted) showErrorSnackBar(context, error);
-    }
   }
 }
 
@@ -435,7 +490,7 @@ final class _SeeAll extends StatelessWidget {
           button: true,
           excludeSemantics: true,
           onTap: onPressed,
-          child: TextButton(onPressed: onPressed, child: const Text('See all')),
+          child: TextButton(onPressed: onPressed, child: Text(label)),
         ),
       ),
     );

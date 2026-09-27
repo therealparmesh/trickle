@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. Home keeps your 20 latest episodes and 20 latest feed items, including those you have played or read. Your last unfinished audio returns paused in the mini player when you reopen trickle. This update also makes controls more compact and labels and status indicators more consistent.
+Requires iOS 17 or later. This update reorganizes Library into compact rows with one Add menu, adds podcast details and actions to Home episode cards, and makes spacing, artwork, and controls more consistent. Large text layouts are improved. Refresh errors link to affected feeds, and Pause stays available while audio buffers.
 
 ## What to test
 
@@ -12,7 +12,10 @@ Please test the combined podcast and feed flow:
 - Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - Swipe back from search, podcast details, episode details, and the reader on iOS; complete and cancel the gesture. Check Android system Back. The previous page should retain its position and the glitch should wait until navigation settles
-- On Home, play and resume episodes directly from the two-row shelf. Loading and buffering must not briefly appear as Paused. Status markers should agree across Home and other lists. Reading or playing an item must not remove it from Home. Check that the non-scrolling four-column Library grid sits between episodes and recent feed items, keeps podcast actions cyan and feed actions magenta, and adapts without clipping at larger text sizes. Each See all action should open its full list
+- On Home, play and resume episodes directly from the shelf. Check the podcast name, date, duration, and episode actions menu. Loading and buffering must not briefly appear as Paused, and Pause must stay visible while playing audio buffers. Reading or playing an item must not remove it from Home. Library should have six shortcuts, with cyan podcast actions and magenta feed actions. See all episodes and See all feed items should open their respective full lists and stay hidden when those sections are empty
+- Open Add next to Library and check all four choices: Add podcast, Add podcast URL, Add feed, and Add YouTube feed. Dismissing the sheet or canceling a dialog should return to Home without opening another screen. The Feeds screen’s Add button offers the same feed and YouTube choices
+- At accessibility text sizes, check the wider single-row episode shelf, full-width Library rows, readable count badges, scrollable Add menu, and article thumbnails above their text. At normal sizes, the shelf should have two rows and Library two columns
+- After a refresh with failed feeds, tap Review, open an affected subscription, and retry it. Existing items must remain usable
 - Check Podcasts' new-episode badge and Feeds' unread-item badge. Starting an episode removes it from the new count; marking an article read removes it from the unread count. Zero counts have no badge
 - Search from Home and confirm results are local. Use Add podcast for Apple catalog results. Add a regular feed through Add podcast URL, then a podcast through Add feed; each should explain and use the correct collection
 - Verify the Podcasts episode filters: New contains untouched episodes, In progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
@@ -42,6 +45,7 @@ Please test the combined podcast and feed flow:
 - Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
 - Open YouTube entries from both a YouTube feed and a post attachment; both should use the same initial player path and keep any official-source fallback inside that player
+- Video items should change from Unopened to Opened when opened, without claiming playback completed. Mark opened and Mark unopened should update the item and Feeds count consistently
 - Minimize a video, navigate between tabs, expand it, then close and reopen it; playback should persist without reloading until closed
 - Rapidly alternate Play and Pause while expanded, minimized, and buffering; Now playing must match the active video
 - During Picture in Picture, verify Now playing shows the entry thumbnail; restore it and verify the live minimized player returns without reloading

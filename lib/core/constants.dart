@@ -10,10 +10,17 @@ abstract final class AppSpacing {
 }
 
 abstract final class AppSizes {
+  static const smallIcon = 20.0;
   static const icon = 24.0;
-  static const shortcutIcon = 40.0;
+  static const progressIndicator = 20.0;
   static const control = 48.0;
   static const artwork = 56.0;
+}
+
+abstract final class AppCuts {
+  static const small = 8.0;
+  static const medium = 12.0;
+  static const large = 16.0;
 }
 
 abstract final class AppConstants {

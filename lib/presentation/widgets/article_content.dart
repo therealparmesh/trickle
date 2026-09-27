@@ -1092,7 +1092,7 @@ final class ArticleImage extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                 child: ClipPath(
                   clipper: ShapeBorderClipper(
-                    shape: const CutCornerBorder(cut: 8),
+                    shape: const CutCornerBorder(cut: AppCuts.small),
                   ),
                   child: Image.file(
                     File(localPath),
@@ -1111,7 +1111,7 @@ final class ArticleImage extends ConsumerWidget {
         ? image
         : InkWell(
             onTap: onTap,
-            customBorder: const CutCornerBorder(cut: 8),
+            customBorder: const CutCornerBorder(cut: AppCuts.small),
             child: image,
           );
     if (onTap != null) {
@@ -1191,7 +1191,9 @@ final class ArticleImage extends ConsumerWidget {
         return Align(
           alignment: Alignment.centerLeft,
           child: ClipPath(
-            clipper: ShapeBorderClipper(shape: const CutCornerBorder(cut: 8)),
+            clipper: ShapeBorderClipper(
+              shape: const CutCornerBorder(cut: AppCuts.small),
+            ),
             child: SizedBox(
               key: keyed ? ValueKey('article-image:$source') : null,
               width: width,

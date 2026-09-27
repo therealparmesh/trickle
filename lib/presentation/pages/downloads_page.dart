@@ -35,7 +35,7 @@ final class _DownloadsPageState extends ConsumerState<DownloadsPage> {
             const Padding(
               padding: EdgeInsets.all(AppSpacing.md),
               child: SizedBox.square(
-                dimension: 20,
+                dimension: AppSizes.progressIndicator,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             )
@@ -70,9 +70,9 @@ final class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                     ignoring: _busy,
                     child: ListView.builder(
                       padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.md,
+                        AppSpacing.lg,
                         AppSpacing.sm,
-                        AppSpacing.md,
+                        AppSpacing.lg,
                         AppSpacing.xxl,
                       ),
                       itemCount: items.length + 1,
@@ -218,10 +218,11 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
         ? null
         : (download.bytesDownloaded / total).clamp(0.0, 1.0);
     Widget row(Episode? value, {String? fallbackTitle}) => ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
       onTap: value == null ? null : () => context.push('/episode/${value.id}'),
       leading: value == null
-          ? const Artwork(size: 52)
-          : EpisodeArtwork(episode: value, size: 52),
+          ? const Artwork(size: AppSizes.artwork, radius: 4)
+          : EpisodeArtwork(episode: value, size: AppSizes.artwork, radius: 4),
       title: EpisodeTitle(
         title: value?.title ?? fallbackTitle ?? 'Unavailable episode',
         explicit: value?.explicit ?? false,
@@ -246,7 +247,7 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
             enabled: !_busy,
             icon: _busy
                 ? const SizedBox.square(
-                    dimension: 20,
+                    dimension: AppSizes.progressIndicator,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.more_vert_rounded),

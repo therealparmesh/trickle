@@ -8,7 +8,6 @@ import '../data/database/app_database.dart';
 import 'playback_presentation.dart';
 
 enum EpisodeAction {
-  playNow,
   playNext,
   addToUpNext,
   download,
@@ -66,8 +65,6 @@ Future<void> performEpisodeAction(
   EpisodeAction action,
 ) async {
   switch (action) {
-    case EpisodeAction.playNow:
-      await ref.read(audioHandlerProvider).playEpisode(episode.id);
     case EpisodeAction.playNext:
       await ref.read(audioHandlerProvider).playNextEpisode(episode.id);
     case EpisodeAction.addToUpNext:

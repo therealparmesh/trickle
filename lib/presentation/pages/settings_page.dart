@@ -71,7 +71,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     title: 'Couldn’t load settings',
                     onRetry: _reloadSettings,
                   ),
-                const SectionHeader('Playback'),
+                const SectionHeader('Playback', horizontalPadding: 0),
                 AppCard(
                   accent: AppConstants.cyan,
                   child: Column(
@@ -111,7 +111,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ],
                   ),
                 ),
-                const SectionHeader('Feeds'),
+                const SectionHeader('Feeds', horizontalPadding: 0),
                 AppCard(
                   accent: AppConstants.magenta,
                   child: Column(
@@ -225,7 +225,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ],
                   ),
                 ),
-                const SectionHeader('Import and export'),
+                const SectionHeader('Import and export', horizontalPadding: 0),
                 AppCard(
                   accent: AppConstants.acid,
                   child: Column(
@@ -332,7 +332,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ],
                   ),
                 ),
-                const SectionHeader('Privacy'),
+                const SectionHeader('Privacy', horizontalPadding: 0),
                 const AppCard(
                   accent: AppConstants.magenta,
                   child: Text(
@@ -544,7 +544,7 @@ final class _ActionTile extends StatelessWidget {
                       const Padding(
                         padding: EdgeInsets.only(top: AppSpacing.xs),
                         child: SizedBox.square(
-                          dimension: 20,
+                          dimension: AppSizes.progressIndicator,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       ),
@@ -577,7 +577,7 @@ final class _ActionTile extends StatelessWidget {
         subtitle: Text(subtitle),
         trailing: busy
             ? const SizedBox.square(
-                dimension: 20,
+                dimension: AppSizes.progressIndicator,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.chevron_right_rounded),

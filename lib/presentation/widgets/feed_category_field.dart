@@ -75,7 +75,7 @@ final class FeedCategoryField extends StatelessWidget {
               color: AppConstants.elevated,
               elevation: 8,
               shape: const CutCornerBorder(
-                cut: 10,
+                cut: AppCuts.small,
                 side: BorderSide(color: AppConstants.hairline),
               ),
               clipBehavior: Clip.antiAlias,
