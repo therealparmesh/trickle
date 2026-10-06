@@ -634,7 +634,7 @@ void main() {
     },
   );
 
-  testWidgets('home shelf keeps playback and read states clear', (
+  testWidgets('home keeps section spacing and playback states consistent', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
@@ -740,6 +740,34 @@ void main() {
     expect(second.dy, greaterThan(first.dy));
     expect(third.dx, greaterThan(first.dx));
     expect(third.dy, closeTo(first.dy, 1));
+    Rect action(String label) => tester.getRect(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((widget) => widget is TextButton),
+      ),
+    );
+    final episodesAction = action('See all episodes');
+    final libraryAction = action('Add');
+    final articlesAction = action('See all feed items');
+    final library = tester.getRect(find.byType(LibraryShortcutGrid));
+    for (final (button, previousBottom, contentTop) in [
+      (
+        episodesAction,
+        tester.getBottomRight(find.byType(GlassIconButton).last).dy,
+        first.dy,
+      ),
+      (libraryAction, tester.getBottomLeft(card('Episode 2')).dy, library.top),
+      (
+        articlesAction,
+        library.bottom,
+        tester.getTopLeft(find.byType(ArticleTile)).dy,
+      ),
+    ]) {
+      expect(button.top - previousBottom, closeTo(AppSpacing.lg, 0.01));
+      expect(contentTop - button.bottom, closeTo(AppSpacing.sm, 0.01));
+      expect(button.right, closeTo(episodesAction.right, 0.01));
+      expect(button.height, greaterThanOrEqualTo(AppSizes.control));
+    }
     expect(find.bySemanticsLabel('Podcasts, 2 new episodes'), findsOneWidget);
     expect(find.bySemanticsLabel('Up next, 1 item'), findsNothing);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);

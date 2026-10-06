@@ -2,13 +2,14 @@
 
 ## What's new
 
-Requires iOS 17 or later. This update reorganizes Library into compact rows with one Add menu, adds podcast details and actions to Home episode cards, and makes spacing, artwork, and controls more consistent. Large text layouts are improved. Refresh errors link to affected feeds, and Pause stays available while audio buffers.
+Requires iOS 17 or later. More consistent spacing on Home. Fixed missing podcast artwork from some feeds.
 
 ## What to test
 
 Please test the combined podcast and feed flow:
 
-- Check the cyberpunk visual hierarchy; rows should stay aligned and readable without unnecessary boxes or dividers
+- Check spacing above and below Home's section actions, with populated and empty lists and at large text sizes; rows should stay aligned and readable
+- Check artwork in Podcasts, podcast details, and episode lists, including existing subscriptions whose image servers use a generic binary content type
 - Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - Swipe back from search, podcast details, episode details, and the reader on iOS; complete and cancel the gesture. Check Android system Back. The previous page should retain its position and the glitch should wait until navigation settles

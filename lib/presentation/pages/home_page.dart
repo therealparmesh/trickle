@@ -205,9 +205,11 @@ final class _HomeEmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(
-      horizontal: AppSpacing.lg,
-      vertical: AppSpacing.md,
+    padding: const EdgeInsets.fromLTRB(
+      AppSpacing.lg,
+      AppSpacing.lg,
+      AppSpacing.lg,
+      0,
     ),
     child: AppCard(
       onTap: onTap,
@@ -239,7 +241,7 @@ final class _HomeToolbar extends StatelessWidget {
           AppSpacing.lg,
           AppSpacing.md,
           AppSpacing.lg,
-          AppSpacing.sm,
+          0,
         ),
         child: SizedBox(
           height: AppSizes.control,
@@ -305,15 +307,10 @@ final class _RecentStrip extends StatelessWidget {
         math.max(AppSizes.control, metadataHeight);
     final rows = largeText ? 1 : 2;
     return SizedBox(
-      height: rowHeight * rows + AppSpacing.lg + (rows - 1) * AppSpacing.sm,
+      height: rowHeight * rows + (rows - 1) * AppSpacing.sm,
       child: LayoutBuilder(
         builder: (context, constraints) => GridView.builder(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            AppSpacing.sm,
-            AppSpacing.lg,
-            AppSpacing.sm,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           scrollDirection: Axis.horizontal,
           itemCount: episodes.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -482,7 +479,12 @@ final class _SeeAll extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
       child: Align(
         alignment: Alignment.centerRight,
         child: Semantics(

@@ -473,7 +473,11 @@ final safeImageFileProvider = FutureProvider.autoDispose
             .first
             .trim()
             .toLowerCase();
-        if (contentType != null && !contentType.startsWith('image/')) {
+        // Some image CDNs use the generic binary type; decoding still verifies
+        // the bytes and the artwork widget handles invalid images.
+        if (contentType != null &&
+            contentType != 'application/octet-stream' &&
+            !contentType.startsWith('image/')) {
           return stalePath;
         }
         final extension = switch (contentType) {
