@@ -84,6 +84,9 @@ void main() {
       SELECT 'a'||x,'reader','Article '||x,replace(hex(zeroblob(3000)),'0','x'),
         'https://example.test/article/'||x,x,CASE WHEN x=9000 THEN x ELSE NULL END,x=9000 FROM n
     ''');
+      await database.customStatement(
+        "UPDATE articles SET reader_html='<p>Saved offline article</p>', reader_fetched_at=100 WHERE id='a9000'",
+      );
       await database
           .into(database.appSettings)
           .insert(
@@ -120,6 +123,8 @@ void main() {
               ))
               .getSingle();
       expect(last.contentHtml, 'x' * 6000);
+      expect(last.readerHtml, '<p>Saved offline article</p>');
+      expect(last.readerFetchedAt, DateTime.fromMillisecondsSinceEpoch(100000));
       expect(last.starred, isTrue);
       expect(last.readAt, isNotNull);
       expect(

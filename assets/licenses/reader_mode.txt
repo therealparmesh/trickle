@@ -1,0 +1,17 @@
+reader_mode 0.2.3 includes a Dart port of Mozilla Readability and JSDOMParser.
+The unmodified source is available at:
+https://pub.dev/packages/reader_mode/versions/0.2.3
+https://github.com/mortezaPRK/readability
+
+Mozilla JSDOMParser
+Copyright: Mozilla Foundation and contributors
+Original source: https://github.com/mozilla/readability
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this file,
+You can obtain one at https://mozilla.org/MPL/2.0/.
+
+Mozilla Readability.js
+Original work Copyright (c) 2010 Arc90 Inc
+Original source: https://github.com/mozilla/readability
+License: Apache License 2.0 (included with reader_mode's package license).

@@ -171,6 +171,8 @@ INSERT INTO articles (
   1
 );
 
+UPDATE articles SET reader_html = content_html, reader_fetched_at = unixepoch('now');
+
 INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES
   ('remote_images', 'true', unixepoch('now')),
   ('refresh_interval', 'weekly', unixepoch('now'));

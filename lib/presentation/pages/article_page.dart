@@ -149,106 +149,130 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                     warning?.isNotEmpty != true ||
                     _revealedContentWarning == warning;
                 return SelectionArea(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.xl,
-                      AppSpacing.lg,
-                      AppSpacing.xl,
-                      64,
-                    ),
-                    children: [
-                      Align(
-                        alignment: Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 720),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Semantics(
-                                header: true,
-                                child: Text(
-                                  value.title,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .displaySmall
-                                      ?.copyWith(fontSize: 38 * scale),
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.md),
-                              _metadata(value, feed?.title),
-                              const SizedBox(height: AppSpacing.xl),
-                              if (extracted?.readerFallback == true) ...[
-                                _ReaderFallbackNotice(
-                                  onRetry: () => _refreshContent(value),
-                                  onOpenInBrowser: value.canonicalUrl == null
-                                      ? null
-                                      : () => _openInBrowser(value),
-                                ),
-                                const SizedBox(height: AppSpacing.lg),
-                              ],
-                              if (!revealContent)
-                                _ContentWarningGate(
-                                  warning: warning!,
-                                  onReveal: () => setState(
-                                    () => _revealedContentWarning = warning,
-                                  ),
-                                )
-                              else ...[
-                                ArticleAttachmentsView(article: value),
-                                ArticleContent(
-                                  html: html,
-                                  scale: scale,
-                                  privateSecret: secret,
-                                  allowRemoteImages: allowRemoteImages,
-                                  leadingTitleToOmit: value.title,
-                                ),
-                              ],
-                              const SizedBox(height: AppSpacing.xxl),
-                              Wrap(
-                                spacing: AppSpacing.sm,
-                                runSpacing: AppSpacing.sm,
-                                children: [
-                                  FilledButton.tonalIcon(
-                                    onPressed: () =>
-                                        _runAction(() => _setSaved(value)),
-                                    icon: Icon(
-                                      value.starred
-                                          ? Icons.bookmark_rounded
-                                          : Icons.bookmark_border_rounded,
-                                    ),
-                                    label: Text(
-                                      value.starred
-                                          ? 'Remove from Saved'
-                                          : 'Save',
-                                    ),
-                                  ),
-                                  FilledButton.tonalIcon(
-                                    onPressed: () => _runAction(
-                                      () => ref
-                                          .read(feedRepositoryProvider)
-                                          .markArticleRead(
-                                            value.id,
-                                            read: value.readAt == null,
-                                          ),
-                                    ),
-                                    icon: Icon(
-                                      value.readAt == null
-                                          ? Icons.mark_email_read_outlined
-                                          : Icons.mark_email_unread_outlined,
-                                    ),
-                                    label: Text(
-                                      value.readAt == null
-                                          ? 'Mark read'
-                                          : 'Mark unread',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: 720 + AppSpacing.xl * 2,
                       ),
-                    ],
+                      child: CustomScrollView(
+                        key: PageStorageKey(value.id),
+                        slivers: [
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.xl,
+                              AppSpacing.lg,
+                              AppSpacing.xl,
+                              64,
+                            ),
+                            sliver: SliverMainAxisGroup(
+                              slivers: [
+                                SliverToBoxAdapter(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Semantics(
+                                        header: true,
+                                        child: Text(
+                                          value.title,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .displaySmall
+                                              ?.copyWith(fontSize: 38 * scale),
+                                        ),
+                                      ),
+                                      const SizedBox(height: AppSpacing.md),
+                                      _metadata(value, feed?.title),
+                                      const SizedBox(height: AppSpacing.xl),
+                                      if (extracted?.readerFallback ==
+                                          true) ...[
+                                        _ReaderFallbackNotice(
+                                          onRetry: () => _refreshContent(value),
+                                          onOpenInBrowser:
+                                              value.canonicalUrl == null
+                                              ? null
+                                              : () => _openInBrowser(value),
+                                        ),
+                                        const SizedBox(height: AppSpacing.lg),
+                                      ],
+                                      if (!revealContent)
+                                        _ContentWarningGate(
+                                          warning: warning!,
+                                          onReveal: () => setState(
+                                            () => _revealedContentWarning =
+                                                warning,
+                                          ),
+                                        )
+                                      else
+                                        ArticleAttachmentsView(article: value),
+                                    ],
+                                  ),
+                                ),
+                                if (revealContent)
+                                  ArticleContent(
+                                    html: html,
+                                    scale: scale,
+                                    privateSecret: secret,
+                                    allowRemoteImages: allowRemoteImages,
+                                    leadingTitleToOmit: value.title,
+                                    sliver: true,
+                                  ),
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(
+                                      top: AppSpacing.xxl,
+                                    ),
+                                    child: Wrap(
+                                      spacing: AppSpacing.sm,
+                                      runSpacing: AppSpacing.sm,
+                                      children: [
+                                        FilledButton.tonalIcon(
+                                          onPressed: () => _runAction(
+                                            () => _setSaved(value),
+                                          ),
+                                          icon: Icon(
+                                            value.starred
+                                                ? Icons.bookmark_rounded
+                                                : Icons.bookmark_border_rounded,
+                                          ),
+                                          label: Text(
+                                            value.starred
+                                                ? 'Remove from Saved'
+                                                : 'Save',
+                                          ),
+                                        ),
+                                        FilledButton.tonalIcon(
+                                          onPressed: () => _runAction(
+                                            () => ref
+                                                .read(feedRepositoryProvider)
+                                                .markArticleRead(
+                                                  value.id,
+                                                  read: value.readAt == null,
+                                                ),
+                                          ),
+                                          icon: Icon(
+                                            value.readAt == null
+                                                ? Icons.mark_email_read_outlined
+                                                : Icons
+                                                      .mark_email_unread_outlined,
+                                          ),
+                                          label: Text(
+                                            value.readAt == null
+                                                ? 'Mark read'
+                                                : 'Mark unread',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               },
@@ -611,7 +635,7 @@ ExtractedArticle _renderStoredArticle(({int format, String content}) input) {
           .join(),
     ArticleContentFormat.html => input.content,
   };
-  return ExtractedArticle(html: html, text: input.content);
+  return sanitizeArticleHtml(html);
 }
 
 String _linkPlainText(String input) {
@@ -719,7 +743,7 @@ final class _ReaderFallbackNotice extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               const Text(
-                'Showing the feed summary instead.',
+                'Showing previously saved or feed content instead.',
                 style: TextStyle(color: AppConstants.secondaryText),
               ),
               const SizedBox(height: AppSpacing.sm),

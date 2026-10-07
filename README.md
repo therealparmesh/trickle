@@ -91,7 +91,7 @@ The unsigned build commands verify compilation without requiring publisher crede
 
 ### Data and refresh
 
-The SQLite database uses schema version 6, WAL mode, foreign keys, indexed timeline queries, and FTS5 search backed by stable document IDs. Upgrades preserve existing content and search text; legacy feed repairs run only during migration. Refresh reads are limited to incoming items and explicit Nostr deletion targets. Older refresh results cannot replace newer content or settings. Background automation stages Up next additions, and the audio handler acknowledges them only after merging them into the active queue.
+The SQLite database uses schema version 7, WAL mode, foreign keys, indexed timeline queries, and FTS5 search backed by stable document IDs. Upgrades preserve library data and search text; legacy feed repairs run only during migration. Feed HTML and downloaded reader HTML are stored separately. The reader builds its own cache without converting old article content. Cache timestamps prevent stale downloads from replacing newer text. Refresh reads are limited to incoming items and explicit Nostr deletion targets. Older refresh results cannot replace newer content or settings. Background automation stages Up next additions, and the audio handler acknowledges them only after merging them into the active queue.
 
 Catalog subscriptions and typed OPML imports carry an explicit feed type. Untyped manual and mixed OPML adds use podcast metadata or an all-audio entry list to identify podcasts. Once stored, a subscription keeps its type across refreshes, including empty feeds and text-only announcements. Subscription identity uses the complete normalized URL and authorization headers; token differences do not merge different feeds. OPML exports record the type in an optional namespaced attribute while retaining standard RSS outlines and category folders.
 
@@ -105,7 +105,11 @@ The latest audio or video selection owns playback. Native player commands are or
 
 Artwork uses the same fallback rules across lists and detail views. An unavailable item image falls back to source artwork. Feeds without usable artwork can use an image from their 20 most recent items, excluding content warnings. This is a bounded local query using the existing feed/date index; it does not fetch publisher pages. Refresh preserves existing source artwork when a feed omits it. Images served with a generic binary content type are decoded normally; invalid images still use the fallback. Remote images can be disabled in Settings, and private-feed headers are sent only to the matching origin.
 
-Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit cached reader HTML. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists are lazy, reader content is revealed in bounded fragments, and artwork uses bounded, aspect-preserving decoding. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
+Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit HTML bodies. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists and reader blocks render lazily, and artwork uses bounded, aspect-preserving decoding. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
+
+### Reader
+
+`reader_mode` extracts web articles using a Dart port of Mozilla Readability. `flutter_widget_from_html_core` renders sanitized HTML, including tables, nested lists, links, and code blocks. The app supplies typography, safe image loading, and external link handling; it does not implement a second HTML layout engine. The reader uses a sliver list; podcast show notes use the same renderer inside their existing page layout. Scripts, embeds, and publisher styling are removed. Private headers remain restricted to the feed's origin. Unavailable pages fall back to saved or feed content, with retry and browser actions.
 
 ### Time limits
 

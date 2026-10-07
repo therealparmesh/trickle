@@ -1244,13 +1244,16 @@ final class FeedRepository {
             title: parsedArticle.title,
             author: Value(parsedArticle.author),
             summary: Value(parsedArticle.summary),
-            contentHtml: Value(
-              existing?.canonicalUrl ==
-                          parsedArticle.canonicalUrl?.toString() &&
-                      (existing?.contentHtml?.length ?? 0) >
-                          (parsedArticle.contentHtml?.length ?? 0)
-                  ? existing?.contentHtml
-                  : parsedArticle.contentHtml,
+            contentHtml: Value(parsedArticle.contentHtml),
+            readerHtml: Value(
+              existing?.canonicalUrl == parsedArticle.canonicalUrl?.toString()
+                  ? existing?.readerHtml
+                  : null,
+            ),
+            readerFetchedAt: Value(
+              existing?.canonicalUrl == parsedArticle.canonicalUrl?.toString()
+                  ? existing?.readerFetchedAt
+                  : null,
             ),
             canonicalUrl: Value(parsedArticle.canonicalUrl?.toString()),
             imageUrl: Value(
@@ -1278,8 +1281,7 @@ final class FeedRepository {
               title: parsedArticle.title,
               body: prepared.articleBodies[articleIndex],
               feedTitle: parsed.title,
-              preserveBody:
-                  articleUpdate.contentHtml.value != parsedArticle.contentHtml,
+              preserveBody: articleUpdate.readerHtml.value != null,
             ),
           );
         }

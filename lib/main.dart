@@ -31,11 +31,11 @@ import 'services/sync_coordinator.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  _registerBundledFontLicenses();
+  _registerBundledLicenses();
   runApp(const _TrickleBootstrap());
 }
 
-void _registerBundledFontLicenses() {
+void _registerBundledLicenses() {
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(const [
       'Space Grotesk',
@@ -43,6 +43,9 @@ void _registerBundledFontLicenses() {
     yield LicenseEntryWithLineBreaks(const [
       'Chakra Petch',
     ], await rootBundle.loadString('assets/fonts/OFL-ChakraPetch.txt'));
+    yield LicenseEntryWithLineBreaks(const [
+      'reader_mode',
+    ], await rootBundle.loadString('assets/licenses/reader_mode.txt'));
   });
 }
 

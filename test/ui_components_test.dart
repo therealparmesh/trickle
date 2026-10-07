@@ -2816,7 +2816,10 @@ void main() {
     expect(find.text('Signal Podcast'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
     expect(find.text('Show notes'), findsOneWidget);
-    expect(find.text('Readable show notes.'), findsOneWidget);
+    expect(
+      find.text('Readable show notes.', findRichText: true),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());

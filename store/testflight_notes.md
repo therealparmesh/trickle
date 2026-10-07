@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. More consistent spacing on Home. Fixed missing podcast artwork from some feeds.
+Requires iOS 17 or later. More consistent spacing on Home. Fixed missing podcast artwork from some feeds. Improved article reading, including tables, lists, and saved text for offline use.
 
 ## What to test
 
@@ -41,6 +41,7 @@ Please test the combined podcast and feed flow:
 - With automatic queueing enabled, let a background refresh add episodes while Up next is open or playing; each episode should appear once after the existing queue
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, change text size, close and reopen it, share it, and open it in the browser. Save the article, go offline, and verify its readable text remains available while remote media is clearly network-dependent
+- Check articles and podcast show notes with nested lists, tables, links, and code blocks. Long articles should scroll smoothly. Disable Remote images and confirm that no article images load. Retry an unavailable page and confirm that saved or feed text remains visible
 - Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add feed appears with an editable address and canceling makes no subscription change
 - Add a Nostr profile by `npub` and `nprofile`; verify only signed root posts appear, replies and reposts are absent, content warnings require a reveal, Markdown is readable, images keep their aspect ratio, native audio saves progress, and direct video can be minimized
 - Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content

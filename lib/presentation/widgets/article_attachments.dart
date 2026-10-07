@@ -10,7 +10,7 @@ import '../../app/app_providers.dart';
 import '../../core/errors.dart';
 import '../../data/database/app_database.dart';
 import '../../features/video/video_session.dart';
-import 'article_content.dart';
+import 'article_image.dart';
 import 'common.dart';
 
 final class ArticleAttachmentsView extends ConsumerWidget {

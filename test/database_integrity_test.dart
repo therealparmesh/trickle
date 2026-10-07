@@ -148,6 +148,12 @@ void main() {
       'INSERT INTO search_index SELECT entity_id,kind,title,body,feed_title FROM search_documents',
     );
     await database.customStatement('DROP TABLE search_documents');
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN reader_html',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN reader_fetched_at',
+    );
     await database.close();
     underlying.userVersion = 5;
     database = AppDatabase.forTesting(
@@ -158,6 +164,8 @@ void main() {
     expect(article?.starred, isTrue);
     expect(article?.readAt, isNotNull);
     expect(article?.contentHtml, '<p>Offline content</p>');
+    expect(article?.readerHtml, isNull);
+    expect(article?.readerFetchedAt, isNull);
     await database.customStatement(
       "DELETE FROM search_documents WHERE kind='article' AND entity_id='article'",
     );
@@ -772,6 +780,12 @@ void main() {
             ),
           );
       await database.customStatement('DROP TABLE pending_queue_adds');
+      await database.customStatement(
+        'ALTER TABLE articles DROP COLUMN reader_html',
+      );
+      await database.customStatement(
+        'ALTER TABLE articles DROP COLUMN reader_fetched_at',
+      );
       await database.close();
       underlying.userVersion = 4;
 
@@ -806,6 +820,12 @@ void main() {
           ),
         );
     await database.customStatement('ALTER TABLE feeds DROP COLUMN category');
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN reader_html',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN reader_fetched_at',
+    );
     await database.close();
     underlying.userVersion = 3;
 
@@ -908,6 +928,12 @@ void main() {
     );
     await database.customStatement(
       'CREATE INDEX idx_feeds_last_refresh ON feeds(last_refresh)',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN reader_html',
+    );
+    await database.customStatement(
+      'ALTER TABLE articles DROP COLUMN reader_fetched_at',
     );
     await database.close();
     underlying.userVersion = 1;

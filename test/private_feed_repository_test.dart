@@ -66,7 +66,8 @@ void main() {
         ArticlesCompanion(
           starred: const Value(true),
           readAt: Value(DateTime.utc(2026, 9, 8)),
-          contentHtml: const Value('<p>Cached reader text</p>'),
+          readerHtml: const Value('<p>Cached reader text</p>'),
+          readerFetchedAt: Value(DateTime.utc(2026, 9, 8)),
         ),
       );
       await database.customStatement(
@@ -96,7 +97,8 @@ void main() {
       final refreshed = await database.articleById(article.id);
       expect(refreshed?.starred, isTrue);
       expect(refreshed?.readAt, isNotNull);
-      expect(refreshed?.contentHtml, '<p>Cached reader text</p>');
+      expect(refreshed?.contentHtml, article.contentHtml);
+      expect(refreshed?.readerHtml, '<p>Cached reader text</p>');
       expect(await database.search('cached reader'), hasLength(1));
       expect(
         await database.customSelect('SELECT * FROM changed_articles').get(),

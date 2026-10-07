@@ -2438,6 +2438,29 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _readerHtmlMeta = const VerificationMeta(
+    'readerHtml',
+  );
+  @override
+  late final GeneratedColumn<String> readerHtml = GeneratedColumn<String>(
+    'reader_html',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _readerFetchedAtMeta = const VerificationMeta(
+    'readerFetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> readerFetchedAt =
+      GeneratedColumn<DateTime>(
+        'reader_fetched_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _canonicalUrlMeta = const VerificationMeta(
     'canonicalUrl',
   );
@@ -2572,6 +2595,8 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     author,
     summary,
     contentHtml,
+    readerHtml,
+    readerFetchedAt,
     canonicalUrl,
     imageUrl,
     contentFormat,
@@ -2641,6 +2666,21 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         contentHtml.isAcceptableOrUnknown(
           data['content_html']!,
           _contentHtmlMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reader_html')) {
+      context.handle(
+        _readerHtmlMeta,
+        readerHtml.isAcceptableOrUnknown(data['reader_html']!, _readerHtmlMeta),
+      );
+    }
+    if (data.containsKey('reader_fetched_at')) {
+      context.handle(
+        _readerFetchedAtMeta,
+        readerFetchedAt.isAcceptableOrUnknown(
+          data['reader_fetched_at']!,
+          _readerFetchedAtMeta,
         ),
       );
     }
@@ -2770,6 +2810,14 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         DriftSqlType.string,
         data['${effectivePrefix}content_html'],
       ),
+      readerHtml: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reader_html'],
+      ),
+      readerFetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}reader_fetched_at'],
+      ),
       canonicalUrl: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}canonical_url'],
@@ -2831,6 +2879,8 @@ class Article extends DataClass implements Insertable<Article> {
   final String? author;
   final String? summary;
   final String? contentHtml;
+  final String? readerHtml;
+  final DateTime? readerFetchedAt;
   final String? canonicalUrl;
   final String? imageUrl;
   final int contentFormat;
@@ -2850,6 +2900,8 @@ class Article extends DataClass implements Insertable<Article> {
     this.author,
     this.summary,
     this.contentHtml,
+    this.readerHtml,
+    this.readerFetchedAt,
     this.canonicalUrl,
     this.imageUrl,
     required this.contentFormat,
@@ -2879,6 +2931,12 @@ class Article extends DataClass implements Insertable<Article> {
     }
     if (!nullToAbsent || contentHtml != null) {
       map['content_html'] = Variable<String>(contentHtml);
+    }
+    if (!nullToAbsent || readerHtml != null) {
+      map['reader_html'] = Variable<String>(readerHtml);
+    }
+    if (!nullToAbsent || readerFetchedAt != null) {
+      map['reader_fetched_at'] = Variable<DateTime>(readerFetchedAt);
     }
     if (!nullToAbsent || canonicalUrl != null) {
       map['canonical_url'] = Variable<String>(canonicalUrl);
@@ -2923,6 +2981,12 @@ class Article extends DataClass implements Insertable<Article> {
       contentHtml: contentHtml == null && nullToAbsent
           ? const Value.absent()
           : Value(contentHtml),
+      readerHtml: readerHtml == null && nullToAbsent
+          ? const Value.absent()
+          : Value(readerHtml),
+      readerFetchedAt: readerFetchedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(readerFetchedAt),
       canonicalUrl: canonicalUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(canonicalUrl),
@@ -2964,6 +3028,8 @@ class Article extends DataClass implements Insertable<Article> {
       author: serializer.fromJson<String?>(json['author']),
       summary: serializer.fromJson<String?>(json['summary']),
       contentHtml: serializer.fromJson<String?>(json['contentHtml']),
+      readerHtml: serializer.fromJson<String?>(json['readerHtml']),
+      readerFetchedAt: serializer.fromJson<DateTime?>(json['readerFetchedAt']),
       canonicalUrl: serializer.fromJson<String?>(json['canonicalUrl']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       contentFormat: serializer.fromJson<int>(json['contentFormat']),
@@ -2988,6 +3054,8 @@ class Article extends DataClass implements Insertable<Article> {
       'author': serializer.toJson<String?>(author),
       'summary': serializer.toJson<String?>(summary),
       'contentHtml': serializer.toJson<String?>(contentHtml),
+      'readerHtml': serializer.toJson<String?>(readerHtml),
+      'readerFetchedAt': serializer.toJson<DateTime?>(readerFetchedAt),
       'canonicalUrl': serializer.toJson<String?>(canonicalUrl),
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'contentFormat': serializer.toJson<int>(contentFormat),
@@ -3010,6 +3078,8 @@ class Article extends DataClass implements Insertable<Article> {
     Value<String?> author = const Value.absent(),
     Value<String?> summary = const Value.absent(),
     Value<String?> contentHtml = const Value.absent(),
+    Value<String?> readerHtml = const Value.absent(),
+    Value<DateTime?> readerFetchedAt = const Value.absent(),
     Value<String?> canonicalUrl = const Value.absent(),
     Value<String?> imageUrl = const Value.absent(),
     int? contentFormat,
@@ -3029,6 +3099,10 @@ class Article extends DataClass implements Insertable<Article> {
     author: author.present ? author.value : this.author,
     summary: summary.present ? summary.value : this.summary,
     contentHtml: contentHtml.present ? contentHtml.value : this.contentHtml,
+    readerHtml: readerHtml.present ? readerHtml.value : this.readerHtml,
+    readerFetchedAt: readerFetchedAt.present
+        ? readerFetchedAt.value
+        : this.readerFetchedAt,
     canonicalUrl: canonicalUrl.present ? canonicalUrl.value : this.canonicalUrl,
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
     contentFormat: contentFormat ?? this.contentFormat,
@@ -3058,6 +3132,12 @@ class Article extends DataClass implements Insertable<Article> {
       contentHtml: data.contentHtml.present
           ? data.contentHtml.value
           : this.contentHtml,
+      readerHtml: data.readerHtml.present
+          ? data.readerHtml.value
+          : this.readerHtml,
+      readerFetchedAt: data.readerFetchedAt.present
+          ? data.readerFetchedAt.value
+          : this.readerFetchedAt,
       canonicalUrl: data.canonicalUrl.present
           ? data.canonicalUrl.value
           : this.canonicalUrl,
@@ -3096,6 +3176,8 @@ class Article extends DataClass implements Insertable<Article> {
           ..write('author: $author, ')
           ..write('summary: $summary, ')
           ..write('contentHtml: $contentHtml, ')
+          ..write('readerHtml: $readerHtml, ')
+          ..write('readerFetchedAt: $readerFetchedAt, ')
           ..write('canonicalUrl: $canonicalUrl, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('contentFormat: $contentFormat, ')
@@ -3120,6 +3202,8 @@ class Article extends DataClass implements Insertable<Article> {
     author,
     summary,
     contentHtml,
+    readerHtml,
+    readerFetchedAt,
     canonicalUrl,
     imageUrl,
     contentFormat,
@@ -3143,6 +3227,8 @@ class Article extends DataClass implements Insertable<Article> {
           other.author == this.author &&
           other.summary == this.summary &&
           other.contentHtml == this.contentHtml &&
+          other.readerHtml == this.readerHtml &&
+          other.readerFetchedAt == this.readerFetchedAt &&
           other.canonicalUrl == this.canonicalUrl &&
           other.imageUrl == this.imageUrl &&
           other.contentFormat == this.contentFormat &&
@@ -3164,6 +3250,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   final Value<String?> author;
   final Value<String?> summary;
   final Value<String?> contentHtml;
+  final Value<String?> readerHtml;
+  final Value<DateTime?> readerFetchedAt;
   final Value<String?> canonicalUrl;
   final Value<String?> imageUrl;
   final Value<int> contentFormat;
@@ -3184,6 +3272,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.author = const Value.absent(),
     this.summary = const Value.absent(),
     this.contentHtml = const Value.absent(),
+    this.readerHtml = const Value.absent(),
+    this.readerFetchedAt = const Value.absent(),
     this.canonicalUrl = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.contentFormat = const Value.absent(),
@@ -3205,6 +3295,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     this.author = const Value.absent(),
     this.summary = const Value.absent(),
     this.contentHtml = const Value.absent(),
+    this.readerHtml = const Value.absent(),
+    this.readerFetchedAt = const Value.absent(),
     this.canonicalUrl = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.contentFormat = const Value.absent(),
@@ -3229,6 +3321,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Expression<String>? author,
     Expression<String>? summary,
     Expression<String>? contentHtml,
+    Expression<String>? readerHtml,
+    Expression<DateTime>? readerFetchedAt,
     Expression<String>? canonicalUrl,
     Expression<String>? imageUrl,
     Expression<int>? contentFormat,
@@ -3250,6 +3344,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       if (author != null) 'author': author,
       if (summary != null) 'summary': summary,
       if (contentHtml != null) 'content_html': contentHtml,
+      if (readerHtml != null) 'reader_html': readerHtml,
+      if (readerFetchedAt != null) 'reader_fetched_at': readerFetchedAt,
       if (canonicalUrl != null) 'canonical_url': canonicalUrl,
       if (imageUrl != null) 'image_url': imageUrl,
       if (contentFormat != null) 'content_format': contentFormat,
@@ -3273,6 +3369,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     Value<String?>? author,
     Value<String?>? summary,
     Value<String?>? contentHtml,
+    Value<String?>? readerHtml,
+    Value<DateTime?>? readerFetchedAt,
     Value<String?>? canonicalUrl,
     Value<String?>? imageUrl,
     Value<int>? contentFormat,
@@ -3294,6 +3392,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
       author: author ?? this.author,
       summary: summary ?? this.summary,
       contentHtml: contentHtml ?? this.contentHtml,
+      readerHtml: readerHtml ?? this.readerHtml,
+      readerFetchedAt: readerFetchedAt ?? this.readerFetchedAt,
       canonicalUrl: canonicalUrl ?? this.canonicalUrl,
       imageUrl: imageUrl ?? this.imageUrl,
       contentFormat: contentFormat ?? this.contentFormat,
@@ -3332,6 +3432,12 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     }
     if (contentHtml.present) {
       map['content_html'] = Variable<String>(contentHtml.value);
+    }
+    if (readerHtml.present) {
+      map['reader_html'] = Variable<String>(readerHtml.value);
+    }
+    if (readerFetchedAt.present) {
+      map['reader_fetched_at'] = Variable<DateTime>(readerFetchedAt.value);
     }
     if (canonicalUrl.present) {
       map['canonical_url'] = Variable<String>(canonicalUrl.value);
@@ -3382,6 +3488,8 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
           ..write('author: $author, ')
           ..write('summary: $summary, ')
           ..write('contentHtml: $contentHtml, ')
+          ..write('readerHtml: $readerHtml, ')
+          ..write('readerFetchedAt: $readerFetchedAt, ')
           ..write('canonicalUrl: $canonicalUrl, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('contentFormat: $contentFormat, ')
@@ -10009,6 +10117,8 @@ typedef $$ArticlesTableCreateCompanionBuilder =
       Value<String?> author,
       Value<String?> summary,
       Value<String?> contentHtml,
+      Value<String?> readerHtml,
+      Value<DateTime?> readerFetchedAt,
       Value<String?> canonicalUrl,
       Value<String?> imageUrl,
       Value<int> contentFormat,
@@ -10031,6 +10141,8 @@ typedef $$ArticlesTableUpdateCompanionBuilder =
       Value<String?> author,
       Value<String?> summary,
       Value<String?> contentHtml,
+      Value<String?> readerHtml,
+      Value<DateTime?> readerFetchedAt,
       Value<String?> canonicalUrl,
       Value<String?> imageUrl,
       Value<int> contentFormat,
@@ -10124,6 +10236,16 @@ class $$ArticlesTableFilterComposer
 
   ColumnFilters<String> get contentHtml => $composableBuilder(
     column: $table.contentHtml,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get readerHtml => $composableBuilder(
+    column: $table.readerHtml,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get readerFetchedAt => $composableBuilder(
+    column: $table.readerFetchedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10270,6 +10392,16 @@ class $$ArticlesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get readerHtml => $composableBuilder(
+    column: $table.readerHtml,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get readerFetchedAt => $composableBuilder(
+    column: $table.readerFetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get canonicalUrl => $composableBuilder(
     column: $table.canonicalUrl,
     builder: (column) => ColumnOrderings(column),
@@ -10375,6 +10507,16 @@ class $$ArticlesTableAnnotationComposer
 
   GeneratedColumn<String> get contentHtml => $composableBuilder(
     column: $table.contentHtml,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get readerHtml => $composableBuilder(
+    column: $table.readerHtml,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get readerFetchedAt => $composableBuilder(
+    column: $table.readerFetchedAt,
     builder: (column) => column,
   );
 
@@ -10510,6 +10652,8 @@ class $$ArticlesTableTableManager
                 Value<String?> author = const Value.absent(),
                 Value<String?> summary = const Value.absent(),
                 Value<String?> contentHtml = const Value.absent(),
+                Value<String?> readerHtml = const Value.absent(),
+                Value<DateTime?> readerFetchedAt = const Value.absent(),
                 Value<String?> canonicalUrl = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<int> contentFormat = const Value.absent(),
@@ -10530,6 +10674,8 @@ class $$ArticlesTableTableManager
                 author: author,
                 summary: summary,
                 contentHtml: contentHtml,
+                readerHtml: readerHtml,
+                readerFetchedAt: readerFetchedAt,
                 canonicalUrl: canonicalUrl,
                 imageUrl: imageUrl,
                 contentFormat: contentFormat,
@@ -10552,6 +10698,8 @@ class $$ArticlesTableTableManager
                 Value<String?> author = const Value.absent(),
                 Value<String?> summary = const Value.absent(),
                 Value<String?> contentHtml = const Value.absent(),
+                Value<String?> readerHtml = const Value.absent(),
+                Value<DateTime?> readerFetchedAt = const Value.absent(),
                 Value<String?> canonicalUrl = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<int> contentFormat = const Value.absent(),
@@ -10572,6 +10720,8 @@ class $$ArticlesTableTableManager
                 author: author,
                 summary: summary,
                 contentHtml: contentHtml,
+                readerHtml: readerHtml,
+                readerFetchedAt: readerFetchedAt,
                 canonicalUrl: canonicalUrl,
                 imageUrl: imageUrl,
                 contentFormat: contentFormat,

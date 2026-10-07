@@ -6,6 +6,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:reader_mode/reader_mode.dart' as reader;
 
 import '../../core/constants.dart';
 import '../../core/url_identity.dart';
@@ -113,7 +114,7 @@ final class ArticleRepository {
           secret?.url.toString() ??
           feed.siteUrl ??
           feed.feedUrl;
-      final content = article.contentHtml?.trim();
+      final content = (article.readerHtml ?? article.contentHtml)?.trim();
       var image = content == null || content.isEmpty
           ? null
           : await compute(_extractPreviewImage, (
@@ -197,14 +198,15 @@ final class ArticleRepository {
     Article article, {
     bool forceRefresh = false,
   }) async {
-    final cachedSource = article.contentHtml?.trim();
-    if (!forceRefresh && cachedSource?.isNotEmpty == true) {
-      final cached = await sanitizeContent(cachedSource!, article.canonicalUrl);
-      if (cached.text.length >= _completeArticleTextLength) return cached;
+    final cachedSource = article.readerHtml?.trim();
+    if (!forceRefresh &&
+        article.readerFetchedAt != null &&
+        cachedSource?.isNotEmpty == true) {
+      return sanitizeContent(cachedSource!, article.canonicalUrl);
     }
     final rawUrl = article.canonicalUrl;
     if (rawUrl == null) {
-      return _feedFallback(article);
+      return _feedFallback(article, readerFallback: false);
     }
     late ExtractedArticle extracted;
     try {
@@ -239,9 +241,17 @@ final class ArticleRepository {
                       row.id.equals(article.id) &
                       row.canonicalUrl.equals(rawUrl) &
                       row.title.equals(article.title) &
-                      row.contentHtml.equalsNullable(article.contentHtml),
+                      row.contentHtml.equalsNullable(article.contentHtml) &
+                      row.readerFetchedAt.equalsNullable(
+                        article.readerFetchedAt,
+                      ),
                 ))
-                .write(ArticlesCompanion(contentHtml: Value(extracted.html)));
+                .write(
+                  ArticlesCompanion(
+                    readerHtml: Value(extracted.html),
+                    readerFetchedAt: Value(DateTime.now().toUtc()),
+                  ),
+                );
         if (updated > 0) {
           await _database.indexSearchItem(
             entityId: article.id,
@@ -258,8 +268,14 @@ final class ArticleRepository {
     return extracted;
   }
 
-  Future<ExtractedArticle> _feedFallback(Article article) async {
-    final content = article.contentHtml?.trim();
+  Future<ExtractedArticle> _feedFallback(
+    Article article, {
+    bool readerFallback = true,
+  }) async {
+    final cached = article.readerHtml?.trim();
+    final content = cached?.isNotEmpty == true
+        ? cached
+        : article.contentHtml?.trim();
     final fallback = await sanitizeContent(
       content?.isNotEmpty == true
           ? content!
@@ -271,7 +287,7 @@ final class ArticleRepository {
     return ExtractedArticle(
       html: fallback.html,
       text: fallback.text,
-      readerFallback: true,
+      readerFallback: readerFallback,
     );
   }
 
@@ -281,253 +297,25 @@ final class ArticleRepository {
 }
 
 ExtractedArticle _sanitizeArticleInput((String, String?) input) {
-  return _sanitizeArticle(input.$1, input.$2);
+  return sanitizeArticleHtml(input.$1, input.$2);
 }
 
 ExtractedArticle _extractArticle((String, String) input) {
-  final (source, baseUrl) = input;
-  final document = html_parser.parse(source);
-  final page = Uri.tryParse(baseUrl);
-  final baseHref = document.querySelector('base')?.attributes['href'];
-  final resolvedBase = baseHref == null || page == null
-      ? baseUrl
-      : (_safeWebUri(baseHref, page) ?? page).toString();
-  _removeReaderJunk(document.querySelectorAll('*'));
-  final metrics = _measureArticleElements(document);
-  Element? bestArticle;
-  var bestArticleScore = -1;
-  for (final article in document.querySelectorAll('article')) {
-    if (!_looksLikeArticleBody(article, metrics)) continue;
-    final score = _articleScore(article, metrics);
-    if (score > bestArticleScore) {
-      bestArticle = article;
-      bestArticleScore = score;
-    }
-  }
-  final main = document.querySelector('main');
-  Element? candidate =
-      bestArticle ?? (main == null ? null : _articleBody(main, metrics));
-  if (candidate == null) {
-    final candidates = document.querySelectorAll('div, section');
-    Element? best;
-    var bestScore = -1;
-    for (final element in candidates) {
-      final score = _articleScore(element, metrics);
-      if (score > bestScore) {
-        best = element;
-        bestScore = score;
-      }
-    }
-    candidate = best == null ? document.body : _articleBody(best, metrics);
-  }
-  return _sanitizeArticle(
-    candidate?.innerHtml ?? document.body?.innerHtml ?? '',
-    resolvedBase,
-  );
+  final article = reader.parse(input.$1, baseUri: input.$2);
+  return sanitizeArticleHtml(article?.content ?? '', input.$2);
 }
 
-Element _articleBody(
-  Element root,
-  Map<Element, _ArticleElementMetrics> metrics,
-) {
-  final paragraphCount = metrics[root]?.descendantParagraphs ?? 0;
-  if (paragraphCount < 2) return root;
-  final containers = root
-      .querySelectorAll('div, section')
-      .where(
-        (element) => metrics[element]?.descendantParagraphs == paragraphCount,
-      );
-  var body = containers.fold(
-    root,
-    (smallest, element) =>
-        _articleTextLength(element, metrics) <
-            _articleTextLength(smallest, metrics)
-        ? element
-        : smallest,
-  );
-  if (identical(body, root)) return root;
-  var ancestor = body.parent;
-  while (ancestor is Element && !identical(ancestor, root)) {
-    final ancestorMetrics = metrics[ancestor];
-    if (ancestorMetrics?.descendantParagraphs != paragraphCount ||
-        ancestorMetrics!.descendantHeadings > 0) {
-      break;
-    }
-    final addsContent =
-        _articleTextLength(ancestor, metrics) >
-        _articleTextLength(body, metrics);
-    body = ancestor;
-    if (addsContent) break;
-    ancestor = body.parent;
-  }
-  return body;
-}
-
-int _articleScore(
-  Element element,
-  Map<Element, _ArticleElementMetrics> metrics,
-) {
-  final elementMetrics = metrics[element];
-  if (elementMetrics == null) return 0;
-  return elementMetrics.text.normalizedLength +
-      elementMetrics.descendantParagraphs * 120;
-}
-
-bool _looksLikeArticleBody(
-  Element element,
-  Map<Element, _ArticleElementMetrics> metrics,
-) {
-  final elementMetrics = metrics[element];
-  if (elementMetrics == null) return false;
-  return elementMetrics.descendantParagraphs >= 2 ||
-      elementMetrics.text.normalizedLength >= _completeArticleTextLength;
-}
-
-int _articleTextLength(
-  Element element,
-  Map<Element, _ArticleElementMetrics> metrics,
-) {
-  return metrics[element]?.text.normalizedLength ?? 0;
-}
-
-Map<Element, _ArticleElementMetrics> _measureArticleElements(
-  Document document,
-) {
-  final metrics = <Element, _ArticleElementMetrics>{};
-  final elements = document.querySelectorAll('*');
-  for (final element in elements.reversed) {
-    var text = const _NormalizedText.empty();
-    var descendantParagraphs = 0;
-    var descendantHeadings = 0;
-    for (final node in element.nodes) {
-      if (node is Text) {
-        text = text.combine(_NormalizedText.from(node.data));
-      } else if (node is Element) {
-        final child = metrics[node];
-        if (child == null) continue;
-        text = text.combine(child.text);
-        descendantParagraphs +=
-            child.descendantParagraphs +
-            (node.localName?.toLowerCase() == 'p' ? 1 : 0);
-        descendantHeadings +=
-            child.descendantHeadings +
-            (node.localName?.toLowerCase() == 'h1' ? 1 : 0);
-      }
-    }
-    metrics[element] = _ArticleElementMetrics(
-      text: text,
-      descendantParagraphs: descendantParagraphs,
-      descendantHeadings: descendantHeadings,
-    );
-  }
-  return metrics;
-}
-
-final class _ArticleElementMetrics {
-  const _ArticleElementMetrics({
-    required this.text,
-    required this.descendantParagraphs,
-    required this.descendantHeadings,
-  });
-
-  final _NormalizedText text;
-  final int descendantParagraphs;
-  final int descendantHeadings;
-}
-
-final class _NormalizedText {
-  const _NormalizedText.empty()
-    : normalizedLength = 0,
-      hasNonWhitespace = false,
-      hasWhitespace = false,
-      leadingWhitespace = false,
-      trailingWhitespace = false;
-
-  const _NormalizedText._({
-    required this.normalizedLength,
-    required this.hasNonWhitespace,
-    required this.hasWhitespace,
-    required this.leadingWhitespace,
-    required this.trailingWhitespace,
-  });
-
-  factory _NormalizedText.from(String source) {
-    if (source.isEmpty) return const _NormalizedText.empty();
-    final collapsed = source.replaceAll(RegExp(r'\s+'), ' ');
-    final trimmed = collapsed.trim();
-    if (trimmed.isEmpty) {
-      return const _NormalizedText._(
-        normalizedLength: 0,
-        hasNonWhitespace: false,
-        hasWhitespace: true,
-        leadingWhitespace: true,
-        trailingWhitespace: true,
-      );
-    }
-    return _NormalizedText._(
-      normalizedLength: trimmed.length,
-      hasNonWhitespace: true,
-      hasWhitespace:
-          collapsed.length != trimmed.length || trimmed.contains(' '),
-      leadingWhitespace: collapsed.startsWith(' '),
-      trailingWhitespace: collapsed.endsWith(' '),
-    );
-  }
-
-  final int normalizedLength;
-  final bool hasNonWhitespace;
-  final bool hasWhitespace;
-  final bool leadingWhitespace;
-  final bool trailingWhitespace;
-
-  _NormalizedText combine(_NormalizedText other) {
-    if (!hasNonWhitespace) {
-      if (!other.hasNonWhitespace) {
-        return _NormalizedText._(
-          normalizedLength: 0,
-          hasNonWhitespace: false,
-          hasWhitespace: hasWhitespace || other.hasWhitespace,
-          leadingWhitespace: hasWhitespace || other.hasWhitespace,
-          trailingWhitespace: hasWhitespace || other.hasWhitespace,
-        );
-      }
-      return _NormalizedText._(
-        normalizedLength: other.normalizedLength,
-        hasNonWhitespace: true,
-        hasWhitespace: hasWhitespace || other.hasWhitespace,
-        leadingWhitespace: hasWhitespace || other.leadingWhitespace,
-        trailingWhitespace: other.trailingWhitespace,
-      );
-    }
-    if (!other.hasNonWhitespace) {
-      return _NormalizedText._(
-        normalizedLength: normalizedLength,
-        hasNonWhitespace: true,
-        hasWhitespace: hasWhitespace || other.hasWhitespace,
-        leadingWhitespace: leadingWhitespace,
-        trailingWhitespace: trailingWhitespace || other.hasWhitespace,
-      );
-    }
-    final separated = trailingWhitespace || other.leadingWhitespace;
-    return _NormalizedText._(
-      normalizedLength:
-          normalizedLength + other.normalizedLength + (separated ? 1 : 0),
-      hasNonWhitespace: true,
-      hasWhitespace: hasWhitespace || other.hasWhitespace,
-      leadingWhitespace: leadingWhitespace,
-      trailingWhitespace: other.trailingWhitespace,
-    );
-  }
-}
-
-const _completeArticleTextLength = 400;
 const _maxRememberedPreviewMisses = 512;
 
-ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
+ExtractedArticle sanitizeArticleHtml(String source, [String? baseUrl]) {
   final fragment = html_parser.parseFragment(source);
   final base = baseUrl == null ? null : Uri.tryParse(baseUrl);
-  _removeReaderJunk(fragment.querySelectorAll('*'));
-  _separateAdjacentTextElements(fragment);
+  for (final element in fragment.querySelectorAll(
+    'script, style, noscript, iframe, object, embed, form, input, button, '
+    'svg, canvas, template, [hidden], [aria-hidden="true"]',
+  )) {
+    element.remove();
+  }
   for (final image in fragment.querySelectorAll('img')) {
     final resolved = _resolvedImageUri(image, base);
     if (resolved == null) {
@@ -539,6 +327,13 @@ ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
   for (final element in fragment.querySelectorAll('*').toList()) {
     final tag = element.localName?.toLowerCase() ?? '';
     if (!const {
+      'article',
+      'main',
+      'header',
+      'footer',
+      'aside',
+      'span',
+      'time',
       'div',
       'section',
       'p',
@@ -563,6 +358,33 @@ ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
       'img',
       'figure',
       'figcaption',
+      'table',
+      'caption',
+      'thead',
+      'tbody',
+      'tfoot',
+      'tr',
+      'td',
+      'th',
+      'dl',
+      'dt',
+      'dd',
+      'hr',
+      's',
+      'del',
+      'ins',
+      'u',
+      'sub',
+      'sup',
+      'small',
+      'mark',
+      'abbr',
+      'q',
+      'cite',
+      'kbd',
+      'samp',
+      'details',
+      'summary',
     }.contains(tag)) {
       _unwrap(element);
       continue;
@@ -570,19 +392,30 @@ ExtractedArticle _sanitizeArticle(String source, [String? baseUrl]) {
     final allowed = switch (tag) {
       'a' => {'href'},
       'img' => {'src', 'alt', 'width', 'height'},
-      'ol' => {'start'},
+      'ol' => {'start', 'type', 'reversed'},
+      'li' => {'value'},
+      'td' || 'th' => {'colspan', 'rowspan'},
       _ => <String>{},
     };
     final retained = <String, String>{};
-    for (final name in allowed) {
+    for (final name in {...allowed, 'id', 'dir'}) {
       final value = element.attributes[name];
       if (value != null) retained[name] = value;
     }
     element.attributes.clear();
     element.attributes.addAll(retained);
+    if (tag == 'td' || tag == 'th') {
+      for (final attribute in const ['colspan', 'rowspan']) {
+        final span = int.tryParse(element.attributes[attribute] ?? '');
+        // Do not let malformed publisher markup allocate an enormous grid.
+        if (span == null || span < 1 || span > 1000) {
+          element.attributes.remove(attribute);
+        }
+      }
+    }
     if (tag == 'a') {
       final href = element.attributes['href'];
-      if (href != null) {
+      if (href != null && !href.startsWith('#')) {
         final resolved = _safeWebUri(href, base);
         if (resolved == null) {
           element.attributes.remove('href');
@@ -659,67 +492,6 @@ List<String> _srcsetUrls(String? source) {
       .toList(growable: false);
 }
 
-const _discardedReaderTags = {
-  'script',
-  'style',
-  'noscript',
-  'iframe',
-  'object',
-  'form',
-  'nav',
-  'header',
-  'footer',
-  'aside',
-};
-
-const _discardedReaderIdentifiers = {
-  'ad',
-  'ad-banner',
-  'ad-block',
-  'ad-container',
-  'ad-slot',
-  'ad-unit',
-  'ad-wrapper',
-  'ads',
-  'advert',
-  'advertisement',
-  'advertising',
-  'comment-list',
-  'comment-section',
-  'comments',
-  'comments-area',
-  'comments-section',
-  'comment',
-  'promo',
-  'share',
-  'share-bar',
-  'share-buttons',
-  'sharing',
-  'social',
-  'social-share',
-  'social-sharing',
-};
-
-void _removeReaderJunk(Iterable<Element> elements) {
-  for (final element in elements.toList()) {
-    final tag = element.localName?.toLowerCase() ?? '';
-    if (_discardedReaderTags.contains(tag) ||
-        _hasDiscardedReaderIdentifier(element)) {
-      element.remove();
-    }
-  }
-}
-
-bool _hasDiscardedReaderIdentifier(Element element) {
-  final identifiers = [
-    element.id,
-    ...(element.attributes['class'] ?? '').split(RegExp(r'\s+')),
-  ];
-  return identifiers
-      .map((identifier) => identifier.trim().toLowerCase())
-      .any(_discardedReaderIdentifiers.contains);
-}
-
 void _unwrap(Element element) {
   final parent = element.parentNode;
   if (parent == null) return;
@@ -727,30 +499,6 @@ void _unwrap(Element element) {
     parent.insertBefore(child, element);
   }
   element.remove();
-}
-
-bool _separateAdjacentTextElements(Node root) {
-  final nodes = root.nodes.toList();
-  Node? previous;
-  var previousHasText = false;
-  var hasText = false;
-  for (final node in nodes) {
-    final nodeHasText = switch (node) {
-      Text() => node.data.trim().isNotEmpty,
-      Element() => _separateAdjacentTextElements(node),
-      _ => false,
-    };
-    hasText = hasText || nodeHasText;
-    if (previous is Element &&
-        node is Element &&
-        previousHasText &&
-        nodeHasText) {
-      root.insertBefore(Text(' '), node);
-    }
-    previous = node;
-    previousHasText = nodeHasText;
-  }
-  return hasText;
 }
 
 Uri? _safeWebUri(String raw, Uri? base) {

@@ -572,7 +572,7 @@ final class BackupService {
             kind: 'article',
             title: article.title,
             body:
-                '${article.author ?? ''} ${plainText(article.contentHtml ?? article.summary)}',
+                '${article.author ?? ''} ${plainText(article.readerHtml ?? article.contentHtml ?? article.summary)}',
             feedTitle: feedTitles[actualFeedId] ?? '',
           ),
         );

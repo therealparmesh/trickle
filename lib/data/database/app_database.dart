@@ -101,6 +101,8 @@ class Articles extends Table {
   TextColumn get author => text().nullable()();
   TextColumn get summary => text().nullable()();
   TextColumn get contentHtml => text().nullable()();
+  TextColumn get readerHtml => text().nullable()();
+  DateTimeColumn get readerFetchedAt => dateTime().nullable()();
   TextColumn get canonicalUrl => text().nullable()();
   TextColumn get imageUrl => text().nullable()();
   IntColumn get contentFormat => integer().withDefault(const Constant(0))();
@@ -288,7 +290,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -298,7 +300,7 @@ class AppDatabase extends _$AppDatabase {
       await _createSearchIndex();
     },
     onUpgrade: (migrator, from, to) async {
-      if (from < 1 || from > 5 || to != 6) {
+      if (from < 1 || from > 6 || to != 7) {
         throw StateError('Unsupported database migration from $from to $to.');
       }
       if (from < 3) {
@@ -318,30 +320,34 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 4) await migrator.addColumn(feeds, feeds.category);
       if (from < 5) await migrator.createTable(pendingQueueAdds);
-      await _createSearchDocuments();
-      await customStatement(
-        'INSERT OR IGNORE INTO search_documents '
-        '(entity_id, kind, title, body, feed_title) '
-        'SELECT entity_id, kind, title, body, feed_title FROM search_index',
-      );
-      await customStatement('DROP TABLE search_index');
-      await _createSearchIndex();
-      await customStatement(
-        "INSERT INTO search_index(search_index) VALUES ('rebuild')",
-      );
-      await _repairLegacyMixedFeeds();
-      for (final name in const [
-        'idx_episodes_feed_date',
-        'idx_episodes_global_date',
-        'idx_articles_feed_date',
-        'idx_articles_global_date',
-        'idx_articles_unread_date',
-        'idx_episodes_starred',
-        'idx_articles_starred',
-      ]) {
-        await customStatement('DROP INDEX IF EXISTS $name');
+      if (from < 6) {
+        await _createSearchDocuments();
+        await customStatement(
+          'INSERT OR IGNORE INTO search_documents '
+          '(entity_id, kind, title, body, feed_title) '
+          'SELECT entity_id, kind, title, body, feed_title FROM search_index',
+        );
+        await customStatement('DROP TABLE search_index');
+        await _createSearchIndex();
+        await customStatement(
+          "INSERT INTO search_index(search_index) VALUES ('rebuild')",
+        );
+        await _repairLegacyMixedFeeds();
+        for (final name in const [
+          'idx_episodes_feed_date',
+          'idx_episodes_global_date',
+          'idx_articles_feed_date',
+          'idx_articles_global_date',
+          'idx_articles_unread_date',
+          'idx_episodes_starred',
+          'idx_articles_starred',
+        ]) {
+          await customStatement('DROP INDEX IF EXISTS $name');
+        }
+        await _createIndexes();
       }
-      await _createIndexes();
+      await migrator.addColumn(articles, articles.readerHtml);
+      await migrator.addColumn(articles, articles.readerFetchedAt);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -1013,7 +1019,10 @@ class AppDatabase extends _$AppDatabase {
   }
 
   String get _articleListColumns => articles.$columns
-      .where((column) => column != articles.contentHtml)
+      .where(
+        (column) =>
+            column != articles.contentHtml && column != articles.readerHtml,
+      )
       .map((column) => 'articles.${column.$name}')
       .join(', ');
 

@@ -1,31 +1,22 @@
-import 'dart:async';
-import 'dart:math' as math;
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:html/dom.dart' as dom;
-import 'package:html/parser.dart' as html_parser;
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../app/app_providers.dart';
 import '../../app/theme.dart';
 import '../../core/constants.dart';
-import '../../core/url_identity.dart';
 import '../../data/security/private_feed_store.dart';
+import 'article_image.dart';
 import 'common.dart';
-import 'design_system.dart';
 
-final class ArticleContent extends StatefulWidget {
+final class ArticleContent extends StatelessWidget {
   const ArticleContent({
     required this.html,
     required this.scale,
     this.privateSecret,
     this.allowRemoteImages = true,
     this.leadingTitleToOmit,
+    this.sliver = false,
     super.key,
   });
 
@@ -34,1202 +25,119 @@ final class ArticleContent extends StatefulWidget {
   final PrivateFeedSecret? privateSecret;
   final bool allowRemoteImages;
   final String? leadingTitleToOmit;
+  final bool sliver;
 
   @override
-  State<ArticleContent> createState() => _ArticleContentState();
-}
-
-class _ArticleContentState extends State<ArticleContent> {
-  static const _blockPageSize = 200;
-  static const _sourcePageSize = 32 * 1024;
-  final List<TapGestureRecognizer> _recognizers = [];
-  List<String>? _fragments;
-  List<List<dom.Node>?> _parsedFragments = const [];
-  int _blockLimit = _blockPageSize;
-  int _sourceLimit = _sourcePageSize;
-  int _parseGeneration = 0;
-  bool _preparationFailed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _prepareHtml();
-  }
-
-  @override
-  void didUpdateWidget(ArticleContent oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.html != widget.html) {
-      _blockLimit = _blockPageSize;
-      _sourceLimit = _sourcePageSize;
-      _prepareHtml();
-    }
-  }
-
-  void _prepareHtml() {
-    final generation = ++_parseGeneration;
-    _preparationFailed = false;
-    _fragments = null;
-    _parsedFragments = const [];
-    final source = widget.html;
-    if (source.length < 32 * 1024) {
-      try {
-        _installFragments(_splitArticleBlocks(source));
-      } on Object {
-        _preparationFailed = true;
-        _installFragments(const []);
+  Widget build(BuildContext context) => HtmlWidget(
+    html,
+    key: ValueKey((privateSecret, allowRemoteImages)),
+    factoryBuilder: _ReaderWidgetFactory.new,
+    renderMode: sliver ? RenderMode.sliverList : RenderMode.column,
+    enableCaching: true,
+    rebuildTriggers: [leadingTitleToOmit],
+    textStyle: Theme.of(
+      context,
+    ).textTheme.bodyLarge?.copyWith(fontSize: 18 * scale, height: 1.6),
+    customWidgetBuilder: (element) {
+      if (element.localName != 'img') return null;
+      final source = element.attributes['src'] ?? '';
+      final uri = Uri.tryParse(source);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        return const SizedBox.shrink();
       }
-      return;
-    }
-    unawaited(
-      compute(_splitArticleBlocks, source).then(
-        (fragments) {
-          if (!mounted || generation != _parseGeneration) return;
-          setState(() => _installFragments(fragments));
-        },
-        onError: (Object _, StackTrace _) {
-          if (!mounted || generation != _parseGeneration) return;
-          setState(() {
-            _preparationFailed = true;
-            _installFragments(const []);
-          });
-        },
-      ),
-    );
-  }
-
-  void _installFragments(List<String> fragments) {
-    _fragments = fragments;
-    _parsedFragments = List<List<dom.Node>?>.filled(fragments.length, null);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_recognizers.isNotEmpty) {
-      final staleRecognizers = List<TapGestureRecognizer>.of(_recognizers);
-      _recognizers.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        for (final recognizer in staleRecognizers) {
-          recognizer.dispose();
-        }
-      });
-    }
-    if (_preparationFailed) {
-      return InlineErrorView(
-        'The article content couldn’t be rendered.',
-        title: 'Couldn’t prepare article',
-        onRetry: () => setState(_prepareHtml),
-      );
-    }
-    if (_fragments == null) {
-      return const LoadingView(label: 'Preparing article');
-    }
-    final blocks = <Widget>[];
-    final visibleFragmentCount = _visibleFragmentCount();
-    final iterator = _allBlocks(visibleFragmentCount).iterator;
-    while (blocks.length < _blockLimit && iterator.moveNext()) {
-      blocks.add(iterator.current);
-    }
-    if (blocks.isEmpty) {
-      return const Text('No readable content was supplied.');
-    }
-    final recognizersBeforeProbe = _recognizers.length;
-    final mayHaveMore =
-        iterator.moveNext() || visibleFragmentCount < _fragments!.length;
-    while (_recognizers.length > recognizersBeforeProbe) {
-      _recognizers.removeLast().dispose();
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ...blocks,
-        if (mayHaveMore)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => setState(() {
-                _blockLimit += _blockPageSize;
-                _sourceLimit += _sourcePageSize;
-              }),
-              icon: const Icon(Icons.expand_more_rounded),
-              label: const Text('Show more'),
-            ),
-          ),
-      ],
-    );
-  }
-
-  int _visibleFragmentCount() {
-    final fragments = _fragments!;
-    var count = 0;
-    var sourceLength = 0;
-    while (count < fragments.length) {
-      final nextLength = fragments[count].length;
-      if (count > 0 && sourceLength + nextLength > _sourceLimit) break;
-      sourceLength += nextLength;
-      count++;
-    }
-    return count;
-  }
-
-  Iterable<Widget> _allBlocks(int fragmentCount) sync* {
-    final fragments = _fragments!;
-    final titleToOmit = _normalizedHeading(widget.leadingTitleToOmit);
-    var omittedHeading = false;
-    var sawBodyContent = false;
-    for (var index = 0; index < fragmentCount; index++) {
-      final nodes = _parsedFragments[index] ??= html_parser
-          .parseFragment(fragments[index])
-          .nodes
-          .toList();
-      for (final node in nodes) {
-        if (node is dom.Element && _isHeading(node)) {
-          final heading = _normalizedHeading(node.text);
-          if (heading == null) continue;
-          if (!omittedHeading &&
-              !sawBodyContent &&
-              titleToOmit != null &&
-              _headingMatchesTitle(heading, titleToOmit)) {
-            omittedHeading = true;
-            continue;
-          }
-        }
-        if (_isBodyNode(node)) sawBodyContent = true;
-        yield* _block(node);
-      }
-    }
-  }
-
-  bool _isHeading(dom.Element element) => switch (element.localName) {
-    'h1' || 'h2' || 'h3' || 'h4' || 'h5' || 'h6' => true,
-    _ => false,
-  };
-
-  bool _isBodyNode(dom.Node node) {
-    if (node is! dom.Element) return false;
-    if (node.querySelector('img') != null) return true;
-    return switch (node.localName) {
-      'p' || 'blockquote' || 'ul' || 'ol' || 'pre' || 'img' => true,
-      'h1' ||
-      'h2' ||
-      'h3' ||
-      'h4' ||
-      'h5' ||
-      'h6' => node.text.trim().isNotEmpty,
-      _ => false,
-    };
-  }
-
-  String? _normalizedHeading(String? value) {
-    final normalized = value?.trim().toLowerCase().replaceAll(
-      _inlineWhitespacePattern,
-      ' ',
-    );
-    return normalized?.isEmpty == true ? null : normalized;
-  }
-
-  bool _headingMatchesTitle(String heading, String title) {
-    if (heading == title) return true;
-    if (!title.startsWith(heading)) return false;
-    final suffix = title.substring(heading.length).trimLeft();
-    return suffix.startsWith(':') ||
-        suffix.startsWith('—') ||
-        suffix.startsWith('–') ||
-        suffix.startsWith('|') ||
-        suffix.startsWith('- ');
-  }
-
-  Iterable<Widget> _block(dom.Node node) sync* {
-    if (node is dom.Text) {
-      if (node.data.trim().isNotEmpty) yield _paragraph([node]);
-      return;
-    }
-    if (node is! dom.Element) return;
-    final tag = node.localName?.toLowerCase();
-    switch (tag) {
-      case 'h1' || 'h2' || 'h3' || 'h4' || 'h5' || 'h6':
-        final level = int.tryParse(tag!.substring(1)) ?? 2;
-        final continuation = _isFragmentContinuation(node);
-        final continues = _fragmentContinues(node);
-        yield Padding(
-          padding: EdgeInsets.only(
-            top: continuation ? 0 : (level <= 2 ? 24 : 18),
-            bottom: continues ? 0 : 8,
-          ),
-          child: Semantics(
-            header: !continuation,
-            child: Text.rich(
-              _inline(node.nodes),
-              style: TextStyle(
-                color: AppConstants.primaryText,
-                fontFamily: TrickleFonts.display,
-                fontSize: (30 - level * 2).clamp(19, 28) * widget.scale,
-                height: 1.16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.1,
-              ),
-            ),
-          ),
-        );
-      case 'p':
-        if (node.text.trim().isNotEmpty) {
-          yield _paragraph(node.nodes, continues: _fragmentContinues(node));
-        }
-        yield* _images(node);
-      case 'blockquote':
-        final continuation = _isFragmentContinuation(node);
-        final continues = _fragmentContinues(node);
-        yield Container(
-          margin: EdgeInsets.only(
-            top: continuation ? 0 : AppSpacing.sm,
-            bottom: continues ? 0 : AppSpacing.sm,
-          ),
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            continuation ? 0 : AppSpacing.md,
-            AppSpacing.md,
-            continues ? 0 : AppSpacing.md,
-          ),
-          decoration: const BoxDecoration(
-            color: AppConstants.elevated,
-            border: Border(
-              left: BorderSide(color: AppConstants.magenta, width: 3),
-            ),
-          ),
-          child: _textAndImages(
-            node,
-            style: _bodyStyle().copyWith(
-              color: AppConstants.secondaryText,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        );
-      case 'pre':
-        final continuation = _isFragmentContinuation(node);
-        final continues = _fragmentContinues(node);
-        yield Container(
-          margin: EdgeInsets.only(
-            top: continuation ? 0 : AppSpacing.sm,
-            bottom: continues ? 0 : AppSpacing.sm,
-          ),
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            continuation ? 0 : AppSpacing.md,
-            AppSpacing.md,
-            continues ? 0 : AppSpacing.md,
-          ),
-          decoration: BoxDecoration(
-            color: AppConstants.elevated,
-            borderRadius: BorderRadius.vertical(
-              top: continuation ? Radius.zero : const Radius.circular(8),
-              bottom: continues ? Radius.zero : const Radius.circular(8),
-            ),
-            border: Border(
-              left: const BorderSide(color: AppConstants.hairline),
-              right: const BorderSide(color: AppConstants.hairline),
-              top: continuation
-                  ? BorderSide.none
-                  : const BorderSide(color: AppConstants.hairline),
-              bottom: continues
-                  ? BorderSide.none
-                  : const BorderSide(color: AppConstants.hairline),
-            ),
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Text(
-              node.text,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 14 * widget.scale,
-                height: 1.5,
-                color: AppConstants.acid,
-              ),
-            ),
-          ),
-        );
-      case 'ul' || 'ol':
-        final ordered = tag == 'ol';
-        final items = node.children
-            .where((element) => element.localName == 'li')
-            .toList();
-        final markerStyle = _bodyStyle().copyWith(color: AppConstants.cyan);
-        final firstIndex = ordered
-            ? int.tryParse(node.attributes['start'] ?? '') ?? 1
-            : 1;
-        final markerWidth = ordered
-            ? _orderedMarkerWidth(
-                int.tryParse(node.attributes[_listFirstIndexAttribute] ?? '') ??
-                    firstIndex,
-                int.tryParse(node.attributes[_listLastIndexAttribute] ?? '') ??
-                    firstIndex + items.length - 1,
-                markerStyle,
-              )
-            : 28.0;
-        var index = firstIndex;
-        for (final item in items) {
-          final continuation =
-              item.attributes[_listItemContinuationAttribute] == 'true';
-          yield Padding(
-            padding: EdgeInsets.only(
-              bottom: item.attributes[_listItemContinuesAttribute] == 'true'
-                  ? 0
-                  : AppSpacing.sm,
-              left: AppSpacing.xs,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: markerWidth,
-                  child: Text(
-                    continuation ? '' : (ordered ? '$index.' : '•'),
-                    style: markerStyle,
-                  ),
-                ),
-                Expanded(child: _textAndImages(item, style: _bodyStyle())),
-              ],
-            ),
-          );
-          if (!continuation) index++;
-        }
-      case 'img':
-        yield* _images(node);
-      case 'figcaption':
-        yield Padding(
-          padding: EdgeInsets.only(
-            top: _isFragmentContinuation(node) ? 0 : 5,
-            bottom: _fragmentContinues(node) ? 0 : 12,
-          ),
-          child: Text.rich(
-            _inline(node.nodes),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppConstants.secondaryText,
-              fontSize: 13 * widget.scale,
-              height: 1.4,
-            ),
-          ),
-        );
-      case 'a':
-        if (node.text.trim().isNotEmpty) {
-          yield _paragraph([node], continues: _fragmentContinues(node));
-        }
-        yield* _images(node);
-      default:
-        if (node.text.trim().isNotEmpty) {
-          yield _paragraph([node], continues: _fragmentContinues(node));
-        }
-    }
-  }
-
-  bool _isFragmentContinuation(dom.Element node) =>
-      node.attributes[_fragmentContinuationAttribute] == 'true';
-
-  bool _fragmentContinues(dom.Element node) =>
-      node.attributes[_fragmentContinuesAttribute] == 'true';
-
-  double _orderedMarkerWidth(int firstIndex, int lastIndex, TextStyle style) {
-    var widest = 0.0;
-    final textScaler = MediaQuery.textScalerOf(context);
-    final textDirection = Directionality.of(context);
-    final labels = _orderedMarkerLabels(firstIndex, lastIndex);
-    for (final label in labels) {
-      final painter = TextPainter(
-        text: TextSpan(text: '$label.', style: style),
-        textDirection: textDirection,
-        textScaler: textScaler,
-        maxLines: 1,
-      )..layout();
-      widest = math.max(widest, painter.width);
-      painter.dispose();
-    }
-    return math.max(28, widest + 12);
-  }
-
-  Iterable<Widget> _images(dom.Element root) sync* {
-    final images = root.localName?.toLowerCase() == 'img'
-        ? [root]
-        : root.querySelectorAll('img');
-    for (final image in images) {
-      final source = image.attributes['src'];
-      if (source == null || source.trim().isEmpty) continue;
-      final link = _imageLink(image, root);
-      yield ArticleImage(
+      return ArticleImage(
         source: source,
-        alt: image.attributes['alt']?.trim(),
-        declaredWidth: _imageDimension(image.attributes['width']),
-        declaredHeight: _imageDimension(image.attributes['height']),
-        secret: widget.privateSecret,
-        allowed: widget.allowRemoteImages,
-        onTap: link == null ? null : () => _open(link),
+        allowed: allowRemoteImages,
+        alt: element.attributes['alt'],
+        declaredWidth: double.tryParse(element.attributes['width'] ?? ''),
+        declaredHeight: double.tryParse(element.attributes['height'] ?? ''),
+        secret: privateSecret,
       );
-    }
-  }
-
-  String? _imageLink(dom.Element image, dom.Element boundary) {
-    dom.Node? current = image.parentNode;
-    while (current != null) {
-      if (current is dom.Element && current.localName == 'a') {
-        return _safeExternalUrl(current.attributes['href']);
+    },
+    customStylesBuilder: (element) {
+      if (_isRepeatedTitle(element, leadingTitleToOmit)) {
+        return const {'display': 'none'};
       }
-      if (identical(current, boundary)) break;
-      current = current.parentNode;
-    }
-    return null;
-  }
-
-  Widget _textAndImages(dom.Element root, {required TextStyle style}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (root.text.trim().isNotEmpty)
-          Text.rich(_inline(root.nodes), style: style),
-        ..._images(root),
-      ],
-    );
-  }
-
-  Widget _paragraph(List<dom.Node> nodes, {bool continues = false}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: continues ? 0 : AppSpacing.lg),
-      child: Text.rich(_inline(nodes), style: _bodyStyle()),
-    );
-  }
-
-  TextStyle _bodyStyle() => TextStyle(
-    fontSize: 18 * widget.scale,
-    height: 1.68,
-    color: AppConstants.primaryText,
+      return switch (element.localName) {
+        'h1' || 'h2' || 'h3' || 'h4' || 'h5' || 'h6' => const {
+          'font-family': TrickleFonts.display,
+          'line-height': '1.25',
+        },
+        'blockquote' => {
+          'border-left': '3px solid ${_cssColor(AppConstants.magenta)}',
+          'padding-left': '${AppSpacing.lg}px',
+          'margin-left': '0',
+          'margin-right': '0',
+        },
+        'code' => {'color': _cssColor(AppConstants.acid)},
+        'figcaption' => {
+          'color': _cssColor(AppConstants.secondaryText),
+          'font-size': '0.875em',
+        },
+        'td' || 'th' => {'padding': '${AppSpacing.sm}px'},
+        _ => null,
+      };
+    },
+    onTapUrl: (url) => _openLink(context, url),
+    onLoadingBuilder: (_, _, _) =>
+        const InlineLoadingView(label: 'Loading content'),
+    onErrorBuilder: (_, _, _) => const Padding(
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+      child: Text(
+        'Couldn’t display this content. Try opening it in your browser.',
+      ),
+    ),
   );
 
-  TextSpan _inline(List<dom.Node> nodes, [TextStyle? inherited]) {
-    final whitespace = _InlineWhitespace();
-    return TextSpan(
-      style: inherited,
-      children: [for (final node in nodes) _span(node, inherited, whitespace)],
-    );
-  }
-
-  InlineSpan _span(
-    dom.Node node,
-    TextStyle? inherited,
-    _InlineWhitespace whitespace,
-  ) {
-    if (node is dom.Text) {
-      return TextSpan(text: whitespace.normalize(node.data), style: inherited);
-    }
-    if (node is! dom.Element) return const TextSpan();
-    final tag = node.localName?.toLowerCase();
-    if (tag == 'br') return TextSpan(text: whitespace.lineBreak());
-    if (tag == 'img') return const TextSpan();
-    var style = inherited;
-    if (tag == 'strong' || tag == 'b') {
-      style = (style ?? const TextStyle()).copyWith(
-        fontWeight: FontWeight.w800,
-      );
-    } else if (tag == 'em' || tag == 'i') {
-      style = (style ?? const TextStyle()).copyWith(
-        fontStyle: FontStyle.italic,
-      );
-    } else if (tag == 'code') {
-      style = (style ?? const TextStyle()).copyWith(
-        fontFamily: 'monospace',
-        color: AppConstants.acid,
-        backgroundColor: AppConstants.elevated,
-      );
-    }
-    TapGestureRecognizer? recognizer;
-    final href = tag == 'a' ? _safeExternalUrl(node.attributes['href']) : null;
-    if (href != null && node.text.trim().isNotEmpty) {
-      recognizer = TapGestureRecognizer()..onTap = () => _open(href);
-      _recognizers.add(recognizer);
-      style = (style ?? const TextStyle()).copyWith(
-        color: AppConstants.cyan,
-        decoration: TextDecoration.underline,
-        decorationColor: AppConstants.cyan,
-      );
-    }
-    return TextSpan(
-      style: style,
-      recognizer: recognizer,
-      children: [
-        for (final child in node.nodes) _span(child, style, whitespace),
-      ],
-    );
-  }
-
-  Future<void> _open(String rawUrl) async {
+  Future<bool> _openLink(BuildContext context, String url) async {
+    if (url.startsWith('#')) return false;
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return true;
     var opened = false;
     try {
-      final safeUrl = _safeExternalUrl(rawUrl);
-      final uri = safeUrl == null ? null : Uri.parse(safeUrl);
-      opened =
-          uri != null &&
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     } on Object {
       opened = false;
     }
-    if (!opened && mounted) {
-      showMessageSnackBar(context, 'Couldn’t open that link.');
+    if (!opened && context.mounted) {
+      showMessageSnackBar(context, 'Couldn’t open this link in your browser.');
     }
+    return true;
   }
+}
+
+String _cssColor(Color color) =>
+    '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+
+bool _isRepeatedTitle(dom.Element element, String? title) {
+  if (title == null || !const {'h1', 'h2', 'h3'}.contains(element.localName)) {
+    return false;
+  }
+  String normalize(String value) =>
+      value.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+  if (normalize(element.text) != normalize(title)) return false;
+  dom.Node node = element;
+  while (node.parentNode != null) {
+    for (final sibling in node.parentNode!.nodes) {
+      if (identical(sibling, node)) break;
+      if (sibling.text?.trim().isNotEmpty == true) return false;
+    }
+    node = node.parentNode!;
+  }
+  return true;
+}
+
+final class _ReaderWidgetFactory extends WidgetFactory {
+  // All reader images must go through the app's bounded, authenticated loader.
+  @override
+  ImageProvider? imageProviderFromNetwork(String url) => null;
 
   @override
-  void dispose() {
-    _parseGeneration++;
-    for (final recognizer in _recognizers) {
-      recognizer.dispose();
-    }
-    super.dispose();
-  }
-}
-
-final class _InlineWhitespace {
-  bool _canSeparate = false;
-  bool _pendingSpace = false;
-
-  String normalize(String source) {
-    final collapsed = source.replaceAll(_inlineWhitespacePattern, ' ');
-    final content = collapsed.trim();
-    if (content.isEmpty) {
-      if (_canSeparate) _pendingSpace = true;
-      return '';
-    }
-    final hasLeadingSpace = collapsed.startsWith(' ');
-    final result = _canSeparate && (_pendingSpace || hasLeadingSpace)
-        ? ' $content'
-        : content;
-    _canSeparate = true;
-    _pendingSpace = collapsed.endsWith(' ');
-    return result;
-  }
-
-  String lineBreak() {
-    _canSeparate = false;
-    _pendingSpace = false;
-    return '\n';
-  }
-}
-
-final _inlineWhitespacePattern = RegExp(r'\s+');
-
-const _maxArticleFragmentLength = 8 * 1024;
-const _fragmentMetadataReserve = 256;
-const _fragmentPayloadLength =
-    _maxArticleFragmentLength - _fragmentMetadataReserve;
-const _maxListItemsPerFragment = 40;
-const _fragmentContinuationAttribute = 'data-trickle-fragment-continuation';
-const _fragmentContinuesAttribute = 'data-trickle-fragment-continues';
-const _listFirstIndexAttribute = 'data-trickle-list-first';
-const _listLastIndexAttribute = 'data-trickle-list-last';
-const _listItemContinuationAttribute = 'data-trickle-item-continuation';
-const _listItemContinuesAttribute = 'data-trickle-item-continues';
-
-typedef _ListItemPart = ({
-  dom.Element element,
-  int itemOffset,
-  bool continuation,
-});
-
-List<String> _splitArticleBlocks(String source) {
-  final nodes = html_parser.parseFragment(source).nodes;
-  final fragments = <String>[];
-
-  void collect(dom.Node node) {
-    if (node is dom.Text) {
-      if (node.data.trim().isNotEmpty) {
-        final escaped = const HtmlEscape(
-          HtmlEscapeMode.element,
-        ).convert(node.data);
-        if (escaped.length <= _maxArticleFragmentLength) {
-          _addBoundedFragment(fragments, escaped);
-        } else {
-          final paragraph = dom.Element.tag('p')..append(node.clone(true));
-          _addSplitFragments(
-            fragments,
-            _splitElement(paragraph, _fragmentPayloadLength),
-          );
-        }
-      }
-      return;
-    }
-    if (node is! dom.Element) return;
-    final tag = node.localName?.toLowerCase();
-    if (tag == 'div' || tag == 'section' || tag == 'figure') {
-      for (final child in node.nodes) {
-        collect(child);
-      }
-      return;
-    }
-    if (tag == 'p' && node.outerHtml.length > _maxArticleFragmentLength) {
-      _addSplitFragments(
-        fragments,
-        _splitElement(node, _fragmentPayloadLength),
-      );
-      return;
-    }
-    if (tag == 'ol' || tag == 'ul') {
-      for (final fragment in _splitList(node)) {
-        _addBoundedFragment(fragments, fragment);
-      }
-      return;
-    }
-    if (node.outerHtml.length > _maxArticleFragmentLength) {
-      _addSplitFragments(
-        fragments,
-        _splitElement(node, _fragmentPayloadLength),
-      );
-      return;
-    }
-    _addBoundedFragment(fragments, node.outerHtml);
-  }
-
-  for (final node in nodes) {
-    collect(node);
-  }
-  return fragments;
-}
-
-void _addSplitFragments(List<String> target, List<dom.Element> parts) {
-  for (var index = 0; index < parts.length; index++) {
-    if (index > 0) {
-      parts[index].attributes[_fragmentContinuationAttribute] = 'true';
-    }
-    if (index < parts.length - 1) {
-      parts[index].attributes[_fragmentContinuesAttribute] = 'true';
-    }
-    _addBoundedFragment(target, parts[index].outerHtml);
-  }
-}
-
-void _addBoundedFragment(List<String> target, String fragment) {
-  if (fragment.length > _maxArticleFragmentLength) {
-    throw StateError('Article fragment exceeded its render limit.');
-  }
-  target.add(fragment);
-}
-
-List<String> _splitList(dom.Element source) {
-  final items = source.children
-      .where((element) => element.localName == 'li')
-      .toList();
-  if (items.isEmpty ||
-      (items.length <= _maxListItemsPerFragment &&
-          source.outerHtml.length <= _maxArticleFragmentLength)) {
-    return [source.outerHtml];
-  }
-
-  final ordered = source.localName == 'ol';
-  final firstIndex = ordered
-      ? int.tryParse(source.attributes['start'] ?? '') ?? 1
-      : 1;
-  final lastIndex = firstIndex + items.length - 1;
-  final emptyChunk = _newListChunk(
-    source,
-    ordered: ordered,
-    start: firstIndex,
-    firstIndex: firstIndex,
-    lastIndex: lastIndex,
-  );
-  final itemLimit = math
-      .max(
-        64,
-        _maxArticleFragmentLength -
-            emptyChunk.outerHtml.length -
-            _fragmentMetadataReserve,
-      )
-      .toInt();
-  final parts = <_ListItemPart>[];
-  for (var itemOffset = 0; itemOffset < items.length; itemOffset++) {
-    final item = items[itemOffset];
-    final itemParts = item.outerHtml.length > itemLimit
-        ? _splitElement(item, itemLimit)
-        : [item.clone(true)];
-    for (var partIndex = 0; partIndex < itemParts.length; partIndex++) {
-      final continuation = partIndex > 0;
-      if (continuation) {
-        itemParts[partIndex].attributes[_listItemContinuationAttribute] =
-            'true';
-      }
-      if (partIndex < itemParts.length - 1) {
-        itemParts[partIndex].attributes[_listItemContinuesAttribute] = 'true';
-      }
-      parts.add((
-        element: itemParts[partIndex],
-        itemOffset: itemOffset,
-        continuation: continuation,
-      ));
-    }
-  }
-
-  final result = <String>[];
-  var chunk = _newListChunk(
-    source,
-    ordered: ordered,
-    start: _listPartStart(firstIndex, parts.first),
-    firstIndex: firstIndex,
-    lastIndex: lastIndex,
-  );
-  var chunkLength = chunk.outerHtml.length;
-
-  for (final part in parts) {
-    final partLength = part.element.outerHtml.length;
-    final tooLarge = chunkLength + partLength > _maxArticleFragmentLength;
-    final tooMany = chunk.children.length >= _maxListItemsPerFragment;
-    if ((tooLarge || tooMany) && chunk.children.isNotEmpty) {
-      result.add(chunk.outerHtml);
-      chunk = _newListChunk(
-        source,
-        ordered: ordered,
-        start: _listPartStart(firstIndex, part),
-        firstIndex: firstIndex,
-        lastIndex: lastIndex,
-      );
-      chunkLength = chunk.outerHtml.length;
-    }
-    chunk.append(part.element);
-    chunkLength += partLength;
-  }
-  if (chunk.children.isNotEmpty) result.add(chunk.outerHtml);
-  return result;
-}
-
-int _listPartStart(int firstIndex, _ListItemPart part) =>
-    firstIndex + part.itemOffset + (part.continuation ? 1 : 0);
-
-dom.Element _newListChunk(
-  dom.Element source, {
-  required bool ordered,
-  required int start,
-  required int firstIndex,
-  required int lastIndex,
-}) {
-  final chunk = source.clone(false);
-  if (ordered) {
-    chunk.attributes['start'] = '$start';
-    chunk.attributes[_listFirstIndexAttribute] = '$firstIndex';
-    chunk.attributes[_listLastIndexAttribute] = '$lastIndex';
-  }
-  return chunk;
-}
-
-List<dom.Element> _splitElement(dom.Element source, int maxLength) {
-  final lengths = _SerializedNodeLengths();
-  return _splitElementWithLengths(source, maxLength, lengths);
-}
-
-List<dom.Element> _splitElementWithLengths(
-  dom.Element source,
-  int maxLength,
-  _SerializedNodeLengths lengths,
-) {
-  final shell = _boundedElementShell(source, maxLength);
-  if (shell == null) return const [];
-  final chunks = <dom.Element>[];
-  var chunk = shell.clone(false);
-  final emptyLength = shell.outerHtml.length;
-  final childLimit = math.max(64, maxLength - emptyLength).toInt();
-  var chunkLength = emptyLength;
-
-  for (final child in source.nodes) {
-    for (final part in _splitNode(child, childLimit, lengths)) {
-      final partLength = lengths.of(part);
-      if (chunk.nodes.isNotEmpty && chunkLength + partLength > maxLength) {
-        chunks.add(chunk);
-        chunk = shell.clone(false);
-        chunkLength = emptyLength;
-      }
-      chunk.append(part);
-      chunkLength += partLength;
-    }
-  }
-  if (chunk.nodes.isNotEmpty) chunks.add(chunk);
-  return chunks.isEmpty ? [shell] : chunks;
-}
-
-List<dom.Node> _splitNode(
-  dom.Node source,
-  int maxLength,
-  _SerializedNodeLengths lengths,
-) {
-  if (source is dom.Text) {
-    return lengths.of(source) <= maxLength
-        ? [source.clone(true)]
-        : _splitText(source.data, maxLength);
-  }
-  if (source is! dom.Element) return const [];
-  final shell = _boundedElementShell(source, maxLength);
-  if (shell == null) return const [];
-  final serializedLength =
-      shell.outerHtml.length +
-      source.nodes.fold(0, (total, child) => total + lengths.of(child));
-  if (serializedLength <= maxLength) {
-    for (final child in source.nodes) {
-      shell.append(child.clone(true));
-    }
-    return [shell];
-  }
-  if (source.nodes.isEmpty) return [shell];
-
-  final chunks = <dom.Node>[];
-  var chunk = shell.clone(false);
-  final emptyLength = shell.outerHtml.length;
-  final childLimit = math.max(64, maxLength - emptyLength).toInt();
-  var chunkLength = emptyLength;
-  for (final child in source.nodes) {
-    for (final part in _splitNode(child, childLimit, lengths)) {
-      final partLength = lengths.of(part);
-      if (chunk.nodes.isNotEmpty && chunkLength + partLength > maxLength) {
-        chunks.add(chunk);
-        chunk = shell.clone(false);
-        chunkLength = emptyLength;
-      }
-      chunk.append(part);
-      chunkLength += partLength;
-    }
-  }
-  if (chunk.nodes.isNotEmpty) chunks.add(chunk);
-  return chunks.isEmpty ? [shell] : chunks;
-}
-
-dom.Element? _boundedElementShell(dom.Element source, int maxLength) {
-  final clone = source.clone(false);
-  if (clone.clone(false).outerHtml.length <= maxLength) return clone;
-  switch (clone.localName?.toLowerCase()) {
-    case 'img':
-      final alt = clone.attributes['alt'];
-      if (alt != null && alt.length > 512) {
-        clone.attributes['alt'] = _safePrefix(alt, 512);
-      }
-      if (clone.clone(false).outerHtml.length <= maxLength) return clone;
-      clone.attributes.remove('alt');
-      if (clone.clone(false).outerHtml.length <= maxLength) return clone;
-      return null;
-    case 'a':
-      clone.attributes.remove('href');
-    default:
-      clone.attributes.clear();
-  }
-  return clone.clone(false).outerHtml.length <= maxLength ? clone : null;
-}
-
-final class _SerializedNodeLengths {
-  final Map<dom.Node, int> _lengths = {};
-
-  int of(dom.Node source) {
-    final cached = _lengths[source];
-    if (cached != null) return cached;
-    final length = switch (source) {
-      dom.Element() =>
-        source.clone(false).outerHtml.length +
-            source.nodes.fold<int>(0, (total, child) => total + of(child)),
-      dom.Text() => _escapedTextLength(source.data),
-      _ => 0,
-    };
-    _lengths[source] = length;
-    return length;
-  }
-}
-
-String _safePrefix(String source, int maxCodeUnits) {
-  var end = math.min(source.length, maxCodeUnits);
-  if (end < source.length &&
-      end > 0 &&
-      _isHighSurrogate(source.codeUnitAt(end - 1)) &&
-      _isLowSurrogate(source.codeUnitAt(end))) {
-    end--;
-  }
-  return source.substring(0, end);
-}
-
-List<dom.Node> _splitText(String source, int maxLength) {
-  final chunks = <dom.Node>[];
-  var start = 0;
-  while (start < source.length) {
-    var end = start;
-    var escapedLength = 0;
-    while (end < source.length) {
-      final codeUnit = source.codeUnitAt(end);
-      final codeUnits =
-          _isHighSurrogate(codeUnit) &&
-              end + 1 < source.length &&
-              _isLowSurrogate(source.codeUnitAt(end + 1))
-          ? 2
-          : 1;
-      final nextLength = _escapedCodeUnitLength(codeUnit, codeUnits);
-      if (escapedLength + nextLength > maxLength) break;
-      escapedLength += nextLength;
-      end += codeUnits;
-    }
-    if (end == start) {
-      end = math.min(start + 1, source.length);
-    }
-    if (end < source.length) {
-      final minimumBreak = start + ((end - start) ~/ 2);
-      for (var candidate = end - 1; candidate > minimumBreak; candidate--) {
-        if (_isWhitespace(source.codeUnitAt(candidate))) {
-          end = candidate + 1;
-          break;
-        }
-      }
-      if (end < source.length &&
-          end > start &&
-          _isHighSurrogate(source.codeUnitAt(end - 1)) &&
-          _isLowSurrogate(source.codeUnitAt(end))) {
-        end--;
-      }
-    }
-    chunks.add(dom.Text(source.substring(start, end)));
-    start = end;
-  }
-  return chunks;
-}
-
-int _escapedTextLength(String source) {
-  var length = 0;
-  for (var index = 0; index < source.length; index++) {
-    final codeUnit = source.codeUnitAt(index);
-    if (_isHighSurrogate(codeUnit) &&
-        index + 1 < source.length &&
-        _isLowSurrogate(source.codeUnitAt(index + 1))) {
-      length += 2;
-      index++;
-    } else {
-      length += _escapedCodeUnitLength(codeUnit, 1);
-    }
-  }
-  return length;
-}
-
-int _escapedCodeUnitLength(int codeUnit, int codeUnits) => switch (codeUnit) {
-  0x26 => 5, // &amp;
-  0x3C || 0x3E => 4, // &lt; / &gt;
-  _ => codeUnits,
-};
-
-bool _isWhitespace(int codeUnit) =>
-    codeUnit == 0x20 ||
-    codeUnit == 0x09 ||
-    codeUnit == 0x0A ||
-    codeUnit == 0x0D;
-
-bool _isHighSurrogate(int codeUnit) => codeUnit >= 0xD800 && codeUnit <= 0xDBFF;
-
-bool _isLowSurrogate(int codeUnit) => codeUnit >= 0xDC00 && codeUnit <= 0xDFFF;
-
-Iterable<String> _orderedMarkerLabels(int firstIndex, int lastIndex) sync* {
-  final count = (lastIndex - firstIndex).abs() + 1;
-  if (count <= 200) {
-    final step = lastIndex >= firstIndex ? 1 : -1;
-    for (var value = firstIndex; ; value += step) {
-      yield '$value';
-      if (value == lastIndex) break;
-    }
-    return;
-  }
-
-  yield '$firstIndex';
-  yield '$lastIndex';
-  final maxDigits = math
-      .max(firstIndex.abs(), lastIndex.abs())
-      .toString()
-      .length;
-  for (var digit = 0; digit <= 9; digit++) {
-    final repeated = List.filled(maxDigits, '$digit').join();
-    yield repeated;
-    if (firstIndex < 0 || lastIndex < 0) yield '-$repeated';
-  }
-}
-
-final class ArticleImage extends ConsumerWidget {
-  const ArticleImage({
-    required this.source,
-    required this.allowed,
-    this.alt,
-    this.declaredWidth,
-    this.declaredHeight,
-    this.secret,
-    this.onTap,
-    super.key,
-  });
-
-  final String source;
-  final bool allowed;
-  final String? alt;
-  final double? declaredWidth;
-  final double? declaredHeight;
-  final PrivateFeedSecret? secret;
-  final VoidCallback? onTap;
+  ImageProvider? imageProviderFromFileUri(String url) => null;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (!allowed) return const SizedBox.shrink();
-    final enabled = ref.watch(remoteImagesProvider).value ?? false;
-    final uri = Uri.tryParse(source);
-    final headers =
-        secret != null && uri != null && sameOrigin(uri, secret!.url)
-        ? secret!.headers
-        : const <String, String>{};
-    final imageState = enabled && uri != null
-        ? ref.watch(safeImageFileProvider((url: source, headers: headers)))
-        : null;
-    if (imageState == null) return const SizedBox.shrink();
-    final localPath = imageState.value;
-    final image = localPath == null
-        ? _placeholder(context, loading: imageState.isLoading, keyed: true)
-        : LayoutBuilder(
-            builder: (context, constraints) {
-              final logicalWidth = constraints.hasBoundedWidth
-                  ? constraints.maxWidth
-                  : MediaQuery.sizeOf(context).width;
-              final pixelWidth =
-                  (logicalWidth * MediaQuery.devicePixelRatioOf(context))
-                      .round()
-                      .clamp(1, 2048)
-                      .toInt();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                child: ClipPath(
-                  clipper: ShapeBorderClipper(
-                    shape: const CutCornerBorder(cut: AppCuts.small),
-                  ),
-                  child: Image.file(
-                    File(localPath),
-                    key: ValueKey('article-image:$source'),
-                    cacheWidth: pixelWidth,
-                    fit: BoxFit.contain,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, _, _) =>
-                        _placeholder(context, loading: false, padded: false),
-                  ),
-                ),
-              );
-            },
-          );
-    final linkedImage = onTap == null
-        ? image
-        : InkWell(
-            onTap: onTap,
-            customBorder: const CutCornerBorder(cut: AppCuts.small),
-            child: image,
-          );
-    if (onTap != null) {
-      return Semantics(
-        image: true,
-        link: true,
-        label: alt?.isNotEmpty == true ? alt : 'Linked image',
-        onTap: onTap,
-        child: ExcludeSemantics(child: linkedImage),
-      );
-    }
-    if (alt?.isNotEmpty == true) {
-      return Semantics(
-        image: true,
-        label: alt,
-        child: ExcludeSemantics(child: linkedImage),
-      );
-    }
-    return ExcludeSemantics(child: linkedImage);
-  }
+  ImageProvider? imageProviderFromDataUri(String data) => null;
 
-  Widget _placeholder(
-    BuildContext context, {
-    required bool loading,
-    bool padded = true,
-    bool keyed = false,
-  }) {
-    final placeholder = LayoutBuilder(
-      builder: (context, constraints) {
-        final availableWidth = constraints.hasBoundedWidth
-            ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
-        final width = declaredWidth == null
-            ? availableWidth
-            : math.min(declaredWidth!, availableWidth);
-        final aspectRatio = declaredWidth != null && declaredHeight != null
-            ? (declaredWidth! / declaredHeight!).clamp(0.2, 5.0)
-            : null;
-        final rawHeight = aspectRatio == null
-            ? math.min(declaredHeight ?? 96, 240).toDouble()
-            : width / aspectRatio;
-        final height = math.min(rawHeight, 480.0);
-        final shortestSide = math.min(width, height);
-        Widget status;
-        if (shortestSide < 24) {
-          status = const SizedBox.shrink();
-        } else if (loading) {
-          status = SizedBox.square(
-            dimension: math.min(22, shortestSide * 0.5),
-            child: const CircularProgressIndicator(strokeWidth: 2),
-          );
-        } else if (shortestSide < 64) {
-          status = Icon(
-            Icons.broken_image_outlined,
-            size: math.min(22, shortestSide * 0.55),
-            color: AppConstants.secondaryText,
-          );
-        } else {
-          status = const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.broken_image_outlined,
-                color: AppConstants.secondaryText,
-              ),
-              SizedBox(height: AppSpacing.xs),
-              Text(
-                'Image unavailable',
-                style: TextStyle(
-                  color: AppConstants.secondaryText,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          );
-        }
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: ClipPath(
-            clipper: ShapeBorderClipper(
-              shape: const CutCornerBorder(cut: AppCuts.small),
-            ),
-            child: SizedBox(
-              key: keyed ? ValueKey('article-image:$source') : null,
-              width: width,
-              height: height,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppConstants.elevated,
-                  border: Border.all(color: AppConstants.hairline),
-                ),
-                child: Center(child: status),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    return padded
-        ? Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            child: placeholder,
-          )
-        : placeholder;
-  }
-}
-
-double? _imageDimension(String? raw) {
-  final value = double.tryParse(raw ?? '');
-  if (value == null || !value.isFinite || value <= 0 || value > 8192) {
-    return null;
-  }
-  return value;
-}
-
-String? _safeExternalUrl(String? rawUrl) {
-  if (rawUrl == null) return null;
-  final uri = Uri.tryParse(rawUrl);
-  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
-  return uri.toString();
+  @override
+  ImageProvider? imageProviderFromAsset(String url) => null;
 }
