@@ -7,6 +7,7 @@ import '../../app/app_providers.dart';
 import '../../core/errors.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/stable_sliver_list.dart';
 
 final class SavedPage extends ConsumerStatefulWidget {
   const SavedPage({this.initialTab = 0, super.key});
@@ -51,17 +52,22 @@ final class _SavedPageState extends ConsumerState<SavedPage> {
                         title: 'No saved episodes',
                         message: 'Save an episode to keep it here.',
                       )
-                    : ListView.builder(
-                        itemCount:
-                            items.length +
-                            (items.length < episodeTotal ? 1 : 0),
-                        itemBuilder: (_, index) => index < items.length
-                            ? EpisodeTile(items[index])
-                            : _loadMore(
+                    : CustomScrollView(
+                        slivers: [
+                          StableSliverList(
+                            items: items,
+                            itemId: (item) => item.id,
+                            itemBuilder: (_, item) => EpisodeTile(item),
+                          ),
+                          if (items.length < episodeTotal)
+                            SliverToBoxAdapter(
+                              child: _loadMore(
                                 remaining: episodeTotal - items.length,
                                 onPressed: () =>
                                     setState(() => _episodeLimit += _pageSize),
                               ),
+                            ),
+                        ],
                       ),
                 loading: () => const LoadingView(),
                 error: (error, _) => ErrorView(
@@ -78,17 +84,22 @@ final class _SavedPageState extends ConsumerState<SavedPage> {
                         title: 'No saved feed items',
                         message: 'Save a feed item to keep it here.',
                       )
-                    : ListView.builder(
-                        itemCount:
-                            items.length +
-                            (items.length < articleTotal ? 1 : 0),
-                        itemBuilder: (_, index) => index < items.length
-                            ? ArticleTile(items[index])
-                            : _loadMore(
+                    : CustomScrollView(
+                        slivers: [
+                          StableSliverList(
+                            items: items,
+                            itemId: (item) => item.id,
+                            itemBuilder: (_, item) => ArticleTile(item),
+                          ),
+                          if (items.length < articleTotal)
+                            SliverToBoxAdapter(
+                              child: _loadMore(
                                 remaining: articleTotal - items.length,
                                 onPressed: () =>
                                     setState(() => _articleLimit += _pageSize),
                               ),
+                            ),
+                        ],
                       ),
                 loading: () => const LoadingView(),
                 error: (error, _) => ErrorView(

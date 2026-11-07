@@ -7,7 +7,7 @@ trickle is a podcast player and RSS reader. No account, login, purchase, subscri
 1. Launch trickle, tap Add next to Library, then Add podcast. The corner Search button searches the local library instead.
 2. Search the Apple podcast catalog for a public podcast. Its description and episodes are available before subscription. Subscribe from that screen.
 3. Open an episode and tap Play to stream it.
-4. Download or save it. Use More to add it to Up next or mark it played.
+4. Download or save it. Use the episode actions menu in the top-right toolbar to add it to Up next or mark it played.
 5. From Library’s Add menu, tap Add feed to enter a public RSS, Atom, JSON Feed, website URL, or Nostr `npub`/`nprofile`. Add podcast URL accepts a podcast RSS URL. If a feed is entered through the wrong action, trickle explains and adds it to the appropriate collection. Nostr profile feeds show verified root posts and omit replies and reposts.
 6. From Library’s Add menu, tap Add YouTube feed to enter a public YouTube channel or playlist URL. Both actions use the same feed subscription pipeline.
 7. Open an article in reader view. Text size persists. The toolbar can share or open the article; saving stores its readable text for offline use.

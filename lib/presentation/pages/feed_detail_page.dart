@@ -19,6 +19,7 @@ import '../widgets/content_tiles.dart';
 import '../widgets/content_list_controls.dart';
 import '../widgets/design_system.dart';
 import '../widgets/feed_category_field.dart';
+import '../widgets/stable_sliver_list.dart';
 
 enum _FeedMenuAction { settings, markAllRead }
 
@@ -233,10 +234,17 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                                     'Refresh this podcast to check for episodes.',
                               ),
                             )
-                          : SliverList.builder(
-                              itemCount: items.length,
-                              itemBuilder: (_, index) =>
-                                  EpisodeTile(items[index], showSource: false),
+                          : StableSliverList(
+                              key: ValueKey((
+                                feedId,
+                                _episodeFilter,
+                                _sort,
+                                _query,
+                              )),
+                              items: items,
+                              itemId: (item) => item.id,
+                              itemBuilder: (_, item) =>
+                                  EpisodeTile(item, showSource: false),
                             ),
                       loading: () => const SliverToBoxAdapter(
                         child: SizedBox(height: 180, child: LoadingView()),
@@ -273,10 +281,17 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                                     'Pull down to refresh this feed.',
                               ),
                             )
-                          : SliverList.builder(
-                              itemCount: items.length,
-                              itemBuilder: (_, index) =>
-                                  ArticleTile(items[index], showSource: false),
+                          : StableSliverList(
+                              key: ValueKey((
+                                feedId,
+                                _articleFilter,
+                                _sort,
+                                _query,
+                              )),
+                              items: items,
+                              itemId: (item) => item.id,
+                              itemBuilder: (_, item) =>
+                                  ArticleTile(item, showSource: false),
                             ),
                       loading: () => const SliverToBoxAdapter(
                         child: SizedBox(height: 120, child: LoadingView()),

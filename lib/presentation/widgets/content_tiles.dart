@@ -38,7 +38,7 @@ final class EpisodeTile extends ConsumerWidget {
     final metadata = metadataLine([
       listeningState.label,
       if (sourceTitle?.isNotEmpty == true) sourceTitle!,
-      relativeDate(episode.publishedAt),
+      compactDate(episode.publishedAt),
       compactDuration(episode.durationMs),
       if (downloadState == DownloadState.complete) 'Downloaded',
     ]);
@@ -178,7 +178,7 @@ final class _PodcastPreviewEpisodeTileState
     final episode = widget.episode;
     final description = plainText(episode.description);
     final metadata = metadataLine([
-      relativeDate(episode.publishedAt),
+      compactDate(episode.publishedAt),
       compactDuration(episode.duration?.inMilliseconds),
     ]);
     return _InsetListFrame(
@@ -304,11 +304,22 @@ final class ArticleTile extends ConsumerStatefulWidget {
   ConsumerState<ArticleTile> createState() => _ArticleTileState();
 }
 
-final class _ArticleTileState extends ConsumerState<ArticleTile> {
+final class _ArticleTileState extends ConsumerState<ArticleTile>
+    with AutomaticKeepAliveClientMixin {
   bool _busy = false;
+  bool _menuOpen = false;
+
+  @override
+  bool get wantKeepAlive => _busy || _menuOpen;
+
+  void _setMenuOpen(bool value) {
+    _menuOpen = value;
+    updateKeepAlive();
+  }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final article = widget.article;
     final canonicalUri = Uri.tryParse(article.canonicalUrl ?? '');
     final isPost = canonicalUri?.scheme == 'nostr';
@@ -338,7 +349,7 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
           article.author!.trim().toLowerCase() !=
               sourceTitle?.trim().toLowerCase())
         article.author!,
-      relativeDate(article.publishedAt),
+      compactDate(article.publishedAt),
     ]);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     final content = Column(
@@ -470,6 +481,8 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
                     )
                   : const Icon(Icons.more_horiz_rounded),
               onSelected: _action,
+              onOpened: () => _setMenuOpen(true),
+              onCanceled: () => _setMenuOpen(false),
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'star',
@@ -498,6 +511,7 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
   Future<void> _action(String action) async {
     if (_busy) return;
     setState(() => _busy = true);
+    _setMenuOpen(false);
     final article = widget.article;
     try {
       if (action == 'star') {
@@ -519,7 +533,10 @@ final class _ArticleTileState extends ConsumerState<ArticleTile> {
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        updateKeepAlive();
+      }
     }
   }
 }

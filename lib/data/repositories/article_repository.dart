@@ -301,7 +301,7 @@ ExtractedArticle _sanitizeArticleInput((String, String?) input) {
 }
 
 ExtractedArticle _extractArticle((String, String) input) {
-  final article = reader.parse(input.$1, baseUri: input.$2);
+  final article = reader.parse(input.$1, parser: reader.ParserType.html);
   return sanitizeArticleHtml(article?.content ?? '', input.$2);
 }
 

@@ -608,7 +608,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                   article.author!.trim().toLowerCase() !=
                       feedTitle?.trim().toLowerCase())
                 article.author!,
-              relativeDate(article.publishedAt),
+              publicationDate(article.publishedAt),
             ]),
             style: const TextStyle(color: AppConstants.cyan),
           ),

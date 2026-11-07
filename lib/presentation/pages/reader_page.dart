@@ -17,6 +17,7 @@ import '../widgets/content_list_controls.dart';
 import '../widgets/feed_category_field.dart';
 import '../widgets/add_feed_sheet.dart';
 import '../widgets/add_feed_dialog.dart';
+import '../widgets/stable_sliver_list.dart';
 
 enum _ReaderFilter { unread, all, starred }
 
@@ -281,9 +282,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                           : 'There are no matching items in $selectedCategory.',
                     ),
                   )
-                : SliverList.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, index) => ArticleTile(items[index]),
+                : StableSliverList(
+                    key: ValueKey((_filter, _sort, _query, selectedCategory)),
+                    items: items,
+                    itemId: (item) => item.id,
+                    itemBuilder: (context, item) => ArticleTile(item),
                   ),
             loading: () => const SliverToBoxAdapter(
               child: SizedBox(height: 220, child: LoadingView()),
@@ -484,13 +487,15 @@ final class _FeedListState extends ConsumerState<_FeedList> {
             ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            sliver: SliverList.builder(
-              itemCount: group.feeds.length,
-              itemBuilder: (context, index) => Padding(
+            key: ValueKey(group.category),
+            sliver: StableSliverList(
+              items: group.feeds,
+              itemId: (item) => item.id,
+              itemBuilder: (context, item) => Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                 child: _FeedRow(
-                  group.feeds[index],
-                  unreadCount: widget.unreadCounts[group.feeds[index].id] ?? 0,
+                  item,
+                  unreadCount: widget.unreadCounts[item.id] ?? 0,
                 ),
               ),
             ),

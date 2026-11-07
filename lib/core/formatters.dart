@@ -30,17 +30,23 @@ String compactDuration(int? milliseconds) {
   return '${duration.inMinutes}m';
 }
 
-String relativeDate(DateTime? value) {
+String compactDate(DateTime? value, {DateTime? now}) {
   if (value == null) return '';
   final local = value.toLocal();
-  final difference = DateTime.now().difference(local);
-  if (difference.isNegative) return DateFormat.MMMd().format(local);
-  if (difference.inMinutes < 1) return 'now';
-  if (difference.inHours < 1) return '${difference.inMinutes}m';
-  if (difference.inDays < 1) return '${difference.inHours}h';
-  if (difference.inDays < 7) return '${difference.inDays}d';
-  return DateFormat.MMMd().format(local);
+  final current = (now ?? DateTime.now()).toLocal();
+  final difference = current.difference(local);
+  if (!difference.isNegative) {
+    if (difference.inMinutes < 1) return 'now';
+    if (difference.inHours < 1) return '${difference.inMinutes}m';
+    if (difference.inDays < 1) return '${difference.inHours}h';
+    if (difference.inDays < 7) return '${difference.inDays}d';
+  }
+  return (local.year == current.year ? DateFormat.MMMd() : DateFormat.yMMMd())
+      .format(local);
 }
+
+String publicationDate(DateTime? value) =>
+    value == null ? '' : DateFormat.yMMMMd().format(value.toLocal());
 
 String formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';

@@ -8,6 +8,7 @@ import '../../core/errors.dart';
 import '../../core/formatters.dart';
 import '../../data/database/app_database.dart';
 import '../widgets/common.dart';
+import '../widgets/stable_sliver_list.dart';
 import '../widgets/episode_playback_button.dart';
 
 enum _DownloadsAction { removePlayed, removeAll }
@@ -68,22 +69,36 @@ final class _DownloadsPageState extends ConsumerState<DownloadsPage> {
               : episodes.when(
                   data: (episodes) => IgnorePointer(
                     ignoring: _busy,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.sm,
-                        AppSpacing.lg,
-                        AppSpacing.xxl,
-                      ),
-                      itemCount: items.length + 1,
-                      itemBuilder: (context, index) {
-                        if (index == 0) return _StorageSummary(items);
-                        final download = items[index - 1];
-                        return _DownloadRow(
-                          download,
-                          episode: episodes[download.episodeId],
-                        );
-                      },
+                    child: CustomScrollView(
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.sm,
+                            AppSpacing.lg,
+                            0,
+                          ),
+                          sliver: SliverToBoxAdapter(
+                            child: _StorageSummary(items),
+                          ),
+                        ),
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            0,
+                            AppSpacing.lg,
+                            AppSpacing.xxl,
+                          ),
+                          sliver: StableSliverList(
+                            items: items,
+                            itemId: (item) => item.episodeId,
+                            itemBuilder: (_, download) => _DownloadRow(
+                              download,
+                              episode: episodes[download.episodeId],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   loading: () => const LoadingView(label: 'Loading downloads'),
@@ -204,11 +219,22 @@ final class _DownloadRow extends ConsumerStatefulWidget {
   ConsumerState<_DownloadRow> createState() => _DownloadRowState();
 }
 
-final class _DownloadRowState extends ConsumerState<_DownloadRow> {
+final class _DownloadRowState extends ConsumerState<_DownloadRow>
+    with AutomaticKeepAliveClientMixin {
   bool _busy = false;
+  bool _menuOpen = false;
+
+  @override
+  bool get wantKeepAlive => _busy || _menuOpen;
+
+  void _setMenuOpen(bool value) {
+    _menuOpen = value;
+    updateKeepAlive();
+  }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final download = widget.download;
     final episode = widget.episode;
     final state = DownloadState
@@ -252,6 +278,8 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
                   )
                 : const Icon(Icons.more_vert_rounded),
             onSelected: (action) => _runAction(action, download),
+            onOpened: () => _setMenuOpen(true),
+            onCanceled: () => _setMenuOpen(false),
             itemBuilder: (_) => [
               if (state == DownloadState.running ||
                   state == DownloadState.queued)
@@ -298,6 +326,7 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
   Future<void> _runAction(String action, MediaDownload download) async {
     if (_busy) return;
     setState(() => _busy = true);
+    _setMenuOpen(false);
     try {
       final coordinator = ref.read(downloadCoordinatorProvider);
       switch (action) {
@@ -313,7 +342,10 @@ final class _DownloadRowState extends ConsumerState<_DownloadRow> {
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        updateKeepAlive();
+      }
     }
   }
 

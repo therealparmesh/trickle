@@ -10,12 +10,19 @@ import 'package:flutter/rendering.dart';
 /// The live route stays mounted beneath a temporary glitched snapshot, so the
 /// effect cannot reset page state, duplicate work, or intercept input.
 final class NavigationGlitch extends StatefulWidget {
-  const NavigationGlitch({required this.child, this.routeObserver, super.key});
+  const NavigationGlitch({
+    required this.child,
+    this.routeObserver,
+    this.random,
+    super.key,
+  });
 
   static const duration = Duration(milliseconds: 190);
 
   final Widget child;
   final RouteObserver<ModalRoute<dynamic>>? routeObserver;
+  @visibleForTesting
+  final math.Random? random;
 
   @override
   State<NavigationGlitch> createState() => _NavigationGlitchState();
@@ -31,6 +38,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   );
 
   final _captureBoundaryKey = GlobalKey();
+  late final _random = widget.random ?? math.Random();
   late final _animation = AnimationController(
     vsync: this,
     duration: NavigationGlitch.duration,
@@ -77,7 +85,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
     }
     if (_started) return;
     _started = true;
-    _scheduleEffect();
+    _maybeScheduleEffect();
   }
 
   @override
@@ -116,12 +124,21 @@ class _NavigationGlitchState extends State<NavigationGlitch>
 
   @override
   void didPopNext() {
-    _scheduleEffect();
+    _maybeScheduleEffect();
   }
 
   @override
   void didPushNext() {
     _cancelEffect(rebuild: true);
+  }
+
+  void _maybeScheduleEffect() {
+    // Choose once per navigation, not again while waiting for its final frame.
+    if (_reduceMotion || _random.nextInt(4) != 0) {
+      _cancelEffect(rebuild: true);
+      return;
+    }
+    _scheduleEffect();
   }
 
   void _scheduleEffect() {

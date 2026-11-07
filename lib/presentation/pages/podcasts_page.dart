@@ -10,6 +10,7 @@ import '../../core/errors.dart';
 import '../widgets/add_feed_dialog.dart';
 import '../widgets/common.dart';
 import '../widgets/content_tiles.dart';
+import '../widgets/stable_sliver_list.dart';
 
 final class PodcastsPage extends ConsumerStatefulWidget {
   const PodcastsPage({this.initialPodcasts = false, super.key});
@@ -99,9 +100,10 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
                       onAction: () => context.push('/podcast-search'),
                     ),
                   )
-                : SliverList.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, index) => PodcastTile(items[index]),
+                : StableSliverList(
+                    items: items,
+                    itemId: (item) => item.id,
+                    itemBuilder: (context, item) => PodcastTile(item),
                   ),
             loading: () => const SliverToBoxAdapter(
               child: SizedBox(height: 220, child: LoadingView()),
@@ -181,9 +183,11 @@ class _PodcastsPageState extends ConsumerState<PodcastsPage>
                           : null,
                     ),
                   )
-                : SliverList.builder(
-                    itemCount: items.length > _limit ? _limit : items.length,
-                    itemBuilder: (context, index) => EpisodeTile(items[index]),
+                : StableSliverList(
+                    key: ValueKey(_filter),
+                    items: items.take(_limit).toList(growable: false),
+                    itemId: (item) => item.id,
+                    itemBuilder: (context, item) => EpisodeTile(item),
                   ),
             loading: () => const SliverToBoxAdapter(
               child: SizedBox(height: 180, child: LoadingView()),

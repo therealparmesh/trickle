@@ -1,10 +1,38 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/core/formatters.dart';
 import 'package:trickle/core/playback_rules.dart';
 import 'package:trickle/core/url_identity.dart';
 
 void main() {
+  test('publication dates keep boundaries, years, and detail dates clear', () {
+    Intl.withLocale('en_US', () {
+      final now = DateTime(2026, 11, 7, 12);
+      final cases = <DateTime?, String>{
+        null: '',
+        now.subtract(const Duration(seconds: 59)): 'now',
+        now.subtract(const Duration(minutes: 1)): '1m',
+        now.subtract(const Duration(minutes: 59)): '59m',
+        now.subtract(const Duration(hours: 1)): '1h',
+        now.subtract(const Duration(hours: 23)): '23h',
+        now.subtract(const Duration(days: 1)): '1d',
+        now.subtract(const Duration(days: 6, hours: 23)): '6d',
+        now.subtract(const Duration(days: 7)): 'Oct 31',
+        DateTime(2025, 11, 7): 'Nov 7, 2025',
+        now.add(const Duration(days: 1)): 'Nov 8',
+        DateTime(2027, 1, 1): 'Jan 1, 2027',
+      };
+      for (final entry in cases.entries) {
+        expect(compactDate(entry.key, now: now), entry.value);
+        expect(compactDate(entry.key?.toUtc(), now: now.toUtc()), entry.value);
+      }
+      expect(publicationDate(null), '');
+      expect(publicationDate(now), 'November 7, 2026');
+      expect(publicationDate(now.toUtc()), 'November 7, 2026');
+    });
+  });
+
   test('metadata lines omit blank and repeated values', () {
     expect(metadataLine(['Signal', ' signal ', '', null, '2h']), 'Signal · 2h');
   });

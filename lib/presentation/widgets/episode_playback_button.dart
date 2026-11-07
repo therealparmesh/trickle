@@ -25,11 +25,16 @@ final class EpisodePlaybackButton extends ConsumerStatefulWidget {
       _EpisodePlaybackButtonState();
 }
 
-class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
+class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton>
+    with AutomaticKeepAliveClientMixin {
   bool _running = false;
 
   @override
+  bool get wantKeepAlive => _running;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final playback = ref.watch(
       playbackItemUiSnapshotProvider(widget.episode.id),
     );
@@ -143,6 +148,7 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
 
   Future<void> _toggle(bool isCurrent, bool playing) async {
     setState(() => _running = true);
+    updateKeepAlive();
     try {
       if (!isCurrent) {
         await ref.read(audioHandlerProvider).playEpisode(widget.episode.id);
@@ -154,7 +160,10 @@ class _EpisodePlaybackButtonState extends ConsumerState<EpisodePlaybackButton> {
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
-      if (mounted) setState(() => _running = false);
+      if (mounted) {
+        setState(() => _running = false);
+        updateKeepAlive();
+      }
     }
   }
 }

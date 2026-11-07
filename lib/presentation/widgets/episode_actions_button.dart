@@ -18,11 +18,22 @@ final class EpisodeActionsButton extends ConsumerStatefulWidget {
       _EpisodeActionsButtonState();
 }
 
-class _EpisodeActionsButtonState extends ConsumerState<EpisodeActionsButton> {
+class _EpisodeActionsButtonState extends ConsumerState<EpisodeActionsButton>
+    with AutomaticKeepAliveClientMixin {
   bool _busy = false;
+  bool _menuOpen = false;
+
+  @override
+  bool get wantKeepAlive => _busy || _menuOpen;
+
+  void _setMenuOpen(bool value) {
+    _menuOpen = value;
+    updateKeepAlive();
+  }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final episode = widget.episode;
     final progress = ref.watch(episodeProgressSnapshotProvider(episode.id));
     final download = episodeDownloadAction(
@@ -41,6 +52,8 @@ class _EpisodeActionsButtonState extends ConsumerState<EpisodeActionsButton> {
             )
           : const Icon(Icons.more_horiz_rounded),
       onSelected: _perform,
+      onOpened: () => _setMenuOpen(true),
+      onCanceled: () => _setMenuOpen(false),
       itemBuilder: (_) => [
         const PopupMenuItem(
           value: EpisodeAction.playNext,
@@ -66,12 +79,16 @@ class _EpisodeActionsButtonState extends ConsumerState<EpisodeActionsButton> {
   Future<void> _perform(EpisodeAction action) async {
     if (_busy) return;
     setState(() => _busy = true);
+    _setMenuOpen(false);
     try {
       await performEpisodeAction(ref, widget.episode, action);
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        updateKeepAlive();
+      }
     }
   }
 }

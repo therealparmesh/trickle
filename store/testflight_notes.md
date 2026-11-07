@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. More consistent spacing on Home. Fixed missing podcast artwork from some feeds. Improved article reading, including tables, lists, and saved text for offline use.
+Requires iOS 17 or later. Fixed reader view on more web pages. Lists keep your place while feeds refresh. Clearer publication dates and episode controls. Navigation glitches now appear less often.
 
 ## What to test
 
@@ -10,7 +10,9 @@ Please test the combined podcast and feed flow:
 
 - Check spacing above and below Home's section actions, with populated and empty lists and at large text sizes; rows should stay aligned and readable
 - Check artwork in Podcasts, podcast details, and episode lists, including existing subscriptions whose image servers use a generic binary content type
-- Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; each route change should use one brief full-surface signal glitch that settles cleanly without persistent lines, duplicate controls, state resets, or delayed interaction
+- Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; roughly one in four navigations should use a brief full-surface signal glitch. It must settle cleanly without persistent lines, duplicate controls, state resets, or delayed interaction; retries and background/resume must not reroll the choice
+- Compare dates across Home, search, podcast lists, and feed lists: items less than seven days old use relative times; older items use dates, including the year outside the current year. Episode and article details show the full publication date
+- Open episode details at normal and large text sizes. More actions should stay in the top-right toolbar next to Share; Play next, Download, and Save should remain reachable and wrap from the left without clipping. Confirm the menu can queue and mark episodes played or unplayed
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - Swipe back from search, podcast details, episode details, and the reader on iOS; complete and cancel the gesture. Check Android system Back. The previous page should retain its position and the glitch should wait until navigation settles
 - On Home, play and resume episodes directly from the shelf. Check the podcast name, date, duration, and episode actions menu. Loading and buffering must not briefly appear as Paused, and Pause must stay visible while playing audio buffers. Reading or playing an item must not remove it from Home. Library should have six shortcuts, with cyan podcast actions and magenta feed actions. See all episodes and See all feed items should open their respective full lists and stay hidden when those sections are empty
@@ -22,7 +24,7 @@ Please test the combined podcast and feed flow:
 - Verify the Podcasts episode filters: New contains untouched episodes, In progress contains partially played episodes ordered by most recently heard, and All contains the recent combined timeline
 - Unsubscribe while an episode or video is open, then immediately leave the details screen. Unfinished episodes must still appear in In progress, and queued episodes must remain in Up next. Removed items must disappear from their player, including minimized video and Picture in Picture; saved articles and their videos must remain available
 - At the largest system text size, verify controls, shortcuts, the mini player, and tab navigation reflow without clipping or overlap
-- With a large library, scroll primary lists during refresh or queue automation; they should remain responsive
+- During rapid refreshes, browse Home's episode shelf and the podcast, feed, saved, and download lists. Incoming rows must not interrupt a drag or fling; once scrolling stops, the visible item should stay in place. Open menus and pending row actions must remain attached to the same item. At the top, new items should appear normally. Removing an item must not leave an actionable stale row after scrolling stops
 - While audio buffers or changes between playing and paused, scroll a long episode list; unrelated rows should remain stable and responsive
 - Search for multiple podcasts and subscribe to more than one; only the tapped row should show progress, and the rest of the results should remain usable
 - Type a lowercase podcast query, then allow autocorrect or capitalization to change only its letter case; results must remain visible without a new loading flash
@@ -41,7 +43,7 @@ Please test the combined podcast and feed flow:
 - With automatic queueing enabled, let a background refresh add episodes while Up next is open or playing; each episode should appear once after the existing queue
 - Pause, resume, retry, keep, and remove downloads; only that row should show command progress
 - Open an article in reader mode, change text size, close and reopen it, share it, and open it in the browser. Save the article, go offline, and verify its readable text remains available while remote media is clearly network-dependent
-- Check articles and podcast show notes with nested lists, tables, links, and code blocks. Long articles should scroll smoothly. Disable Remote images and confirm that no article images load. Retry an unavailable page and confirm that saved or feed text remains visible
+- Check linked articles with ordinary HTML5 markup, including omitted optional closing tags, and podcast show notes with nested lists, tables, links, and code blocks. Long articles should scroll smoothly. Disable Remote images and confirm that no article images load. Retry an unavailable page and confirm that saved or feed text remains visible
 - Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add feed appears with an editable address and canceling makes no subscription change
 - Add a Nostr profile by `npub` and `nprofile`; verify only signed root posts appear, replies and reposts are absent, content warnings require a reveal, Markdown is readable, images keep their aspect ratio, native audio saves progress, and direct video can be minimized
 - Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content
@@ -76,6 +78,6 @@ Please test the combined podcast and feed flow:
 - Lock the screen during playback and verify system media controls
 - Interrupt playback or disconnect headphones and confirm playback pauses appropriately
 - Try large system text and VoiceOver or TalkBack on the primary views
-- Cold-launch the app with an empty library and an existing library, including a restored Now playing item. The logo should stay centered on the dark background until Home appears, followed by one brief glitch. Background during startup and return; the effect should wait until the app is active. After the effect has finished, backgrounding and returning must not replay it. Repeat offline and with Reduce Motion enabled; reduced motion must suppress the effect
+- Cold-launch the app with an empty library and an existing library, including a restored Now playing item. The logo should stay centered on the dark background until Home appears. If that navigation was selected for a glitch, the effect should wait until the page is visible and the app is active. Backgrounding and returning must not trigger an effect that was skipped or already finished. Repeat offline and with Reduce Motion enabled; reduced motion must suppress the effect
 
 Report the device model, OS version, network state, and affected feed or episode. Never include private-feed credentials or complete private-feed URLs.

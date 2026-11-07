@@ -32,19 +32,23 @@ Home shows the 20 most recent episodes, a Library grid, then the 20 most recent 
 
 At normal phone widths, episodes use a two-row scrolling shelf and Library has two columns. On narrow screens or at accessibility text sizes, Library becomes a full-width list. Accessibility text sizes also give episodes one wider row and move article thumbnails above the text. Badge counts scale with text and describe what they count to screen readers.
 
-Navigation uses Flutter's platform-adaptive page transitions, including iOS swipe-back. The decorative glitch runs after a transition settles and never intercepts gestures.
+Live lists preserve the visible item when refreshes insert or remove rows above it. Incoming rows wait until an active drag or fling ends, then appear without losing your place. Open row menus and pending actions remain attached to their item. At the top of a list, new items appear normally.
+
+Navigation uses Flutter's platform-adaptive page transitions, including iOS swipe-back. The decorative glitch has a one-in-four chance per navigation, runs after the transition settles, and never intercepts gestures.
 
 The corner Search button searches the local library. Add podcast searches Apple’s catalog. Manual podcast and feed adds detect the content type, explain a mismatch, and use the correct collection. The Podcasts screen has Episodes and Podcasts tabs; its episode list has New, In progress, and All filters. The Feeds screen has Feed items and Feeds tabs. Full lists load older entries in pages. The Podcasts badge counts new episodes and the Feeds badge counts unread items; both hide at zero. The mini player keeps current playback reachable and restores the most recently played unfinished audio, paused, on launch. This uses saved progress without fetching or starting media.
 
 Interface copy uses sentence case. Shared spacing uses 4, 8, 12, 16, 24, and 32 points, with 48-point control targets. Home section actions use 16 points above and 8 below, without extra padding around the episode shelf. Small icons and spinners use 20 points, standard icons use 24, and ordinary list artwork uses 56. Clipped controls, panels, and sheets use 8-, 12-, and 16-point corner cuts. Library shortcuts place icons beside their labels, with equal row heights and 8-point gaps. Reader typography and landscape media keep their content-specific sizing.
 
-The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green highlights the current player and saved items. Content lists remain continuous and low-chrome. Route changes use a brief full-surface signal glitch after navigation settles and skip the effect when reduced motion is enabled. Persistent audio and video hosts stay outside the effect so navigation cannot reset playback. Playback, Picture in Picture, article reading, and in-place controls remain stable through navigation. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
+Lists show relative publication times for the last seven days, then a localized date; dates outside the current year include the year. Episode and article details show the full publication date. Episode details keep More actions in the trailing toolbar and left-align the quick actions below Play so wrapped buttons do not form isolated centered rows.
+
+The visual system uses clipped control geometry, functional state rails, and a sparse signal-line backdrop instead of decorating every content row. Cyan identifies listening actions, magenta identifies feed actions, and acid green highlights the current player and saved items. Content lists remain continuous and low-chrome. The occasional navigation glitch is brief and full-surface; reduced motion disables it. Persistent audio and video hosts stay outside the effect so navigation cannot reset playback. Playback, Picture in Picture, article reading, and in-place controls remain stable through navigation. Display typography is limited to page and section hierarchy; reading and metadata use the more neutral text face. Controls reflow at accessibility text sizes rather than shrinking labels or touch targets.
 
 On launch, the centered mark stays in place until Home's initial local data and player state are available. Home then appears without intermediate loading sections. This does not wait for network refreshes or add a timed splash delay. The navigation effect captures the rendered page only after its shader is ready.
 
 ## Prerequisites
 
-- Flutter 3.44.4 or later with Dart 3.12.2 or later; the current release is verified with Flutter 3.47.2
+- Flutter 3.44.4 or later with Dart 3.12.2 or later; the current release is verified with Flutter 3.47.9
 - oxfmt 0.57.0 or later for Markdown formatting
 - Android SDK 36 for Android builds
 - JDK 17 or 21 for Android builds; JDK 26 is not supported by the current Android toolchain
@@ -107,9 +111,11 @@ Artwork uses the same fallback rules across lists and detail views. An unavailab
 
 Shared library snapshots keep rows from opening duplicate database streams. Feed timelines use ordered item indexes, and article list queries omit HTML bodies. Search-document updates use indexed identities and skip unchanged text. Expensive feed, article, Nostr verification, and backup compression work runs off the UI isolate. Lists and reader blocks render lazily, and artwork uses bounded, aspect-preserving decoding. Playback progress is saved every 15 seconds, and download progress writes are limited to once every 2 seconds.
 
+Live vertical lists use `positioned_sliver_list` for layout-time scroll anchoring; Home's fixed-width episode shelf uses Flutter's grid. Row keys preserve identity across reordering. Only open menus and pending actions request keep-alive state.
+
 ### Reader
 
-`reader_mode` extracts web articles using a Dart port of Mozilla Readability. `flutter_widget_from_html_core` renders sanitized HTML, including tables, nested lists, links, and code blocks. The app supplies typography, safe image loading, and external link handling; it does not implement a second HTML layout engine. The reader uses a sliver list; podcast show notes use the same renderer inside their existing page layout. Scripts, embeds, and publisher styling are removed. Private headers remain restricted to the feed's origin. Unavailable pages fall back to saved or feed content, with retry and browser actions.
+`reader_mode` extracts web articles using a Dart port of Mozilla Readability with its HTML5 parser backend. `flutter_widget_from_html_core` renders sanitized HTML, including tables, nested lists, links, and code blocks. The app supplies typography, safe image loading, and external link handling; it does not implement a second HTML layout engine. The reader uses a sliver list; podcast show notes use the same renderer inside their existing page layout. Scripts, embeds, and publisher styling are removed. Private headers remain restricted to the feed's origin. Unavailable pages fall back to saved or feed content, with retry and browser actions.
 
 ### Time limits
 

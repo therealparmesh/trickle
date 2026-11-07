@@ -17,6 +17,7 @@ import '../widgets/episode_playback_button.dart';
 import '../widgets/episode_actions_button.dart';
 import '../widgets/add_feed_dialog.dart';
 import '../widgets/add_feed_sheet.dart';
+import '../widgets/stable_sliver_list.dart';
 
 final class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -160,10 +161,10 @@ final class HomePage extends ConsumerWidget {
                           },
                         ),
                       )
-                    : SliverList.builder(
-                        itemCount: items.length,
-                        itemBuilder: (context, index) =>
-                            ArticleTile(items[index]),
+                    : StableSliverList(
+                        items: items,
+                        itemId: (item) => item.id,
+                        itemBuilder: (context, item) => ArticleTile(item),
                       ),
                 loading: () => const SliverToBoxAdapter(
                   child: SizedBox(
@@ -281,13 +282,63 @@ final class _HomeToolbar extends StatelessWidget {
   }
 }
 
-final class _RecentStrip extends StatelessWidget {
+final class _RecentStrip extends StatefulWidget {
   const _RecentStrip({required this.episodes});
 
   final List<Episode> episodes;
 
   @override
+  State<_RecentStrip> createState() => _RecentStripState();
+}
+
+class _RecentStripState extends State<_RecentStrip> {
+  final _scroll = ScrollController();
+  late List<Episode> _episodes = widget.episodes;
+  int _rows = 2;
+  double _columnExtent = 0;
+  ({String id, double fraction})? _anchor;
+
+  @override
+  void didUpdateWidget(covariant _RecentStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_scroll.hasClients || !_scroll.position.isScrollingNotifier.value) {
+      _captureAnchor(_episodes);
+      _episodes = widget.episodes;
+    }
+  }
+
+  void _captureAnchor(List<Episode> episodes) {
+    if (_anchor != null ||
+        !_scroll.hasClients ||
+        _scroll.offset <= 0 ||
+        _columnExtent == 0) {
+      return;
+    }
+    final column = (_scroll.offset / _columnExtent).floor();
+    final first = column * _rows;
+    final ids = widget.episodes.map((item) => item.id).toSet();
+    for (var index = first; index < episodes.length; index++) {
+      if (!ids.contains(episodes[index].id)) continue;
+      _anchor = (
+        id: episodes[index].id,
+        fraction: _scroll.offset / _columnExtent - (index ~/ _rows),
+      );
+      break;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final episodes = _episodes;
+    final indices = {
+      for (var i = 0; i < episodes.length; i++) ValueKey(episodes[i].id): i,
+    };
     final scaler = MediaQuery.textScalerOf(context);
     final largeText = scaler.scale(1) > 1.5;
     final titleHeight = scaler.scale(14) * 1.25 * (largeText ? 4 : 2);
@@ -309,25 +360,65 @@ final class _RecentStrip extends StatelessWidget {
     return SizedBox(
       height: rowHeight * rows + (rows - 1) * AppSpacing.sm,
       child: LayoutBuilder(
-        builder: (context, constraints) => GridView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          scrollDirection: Axis.horizontal,
-          itemCount: episodes.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: rows,
-            mainAxisExtent: largeText
-                ? math
-                      .max(240, constraints.maxWidth - AppSpacing.xxl)
-                      .toDouble()
-                : 336,
-            mainAxisSpacing: AppSpacing.sm,
-            crossAxisSpacing: AppSpacing.sm,
-          ),
-          itemBuilder: (context, index) => _RecentEpisodeCard(
-            episodes[index],
-            key: ValueKey(episodes[index].id),
-          ),
-        ),
+        builder: (context, constraints) {
+          final extent =
+              (largeText
+                  ? math
+                        .max(240, constraints.maxWidth - AppSpacing.xxl)
+                        .toDouble()
+                  : 336.0) +
+              AppSpacing.sm;
+          if (rows != _rows || extent != _columnExtent) {
+            _captureAnchor(episodes);
+          }
+          final anchor = _anchor;
+          _anchor = null;
+          if (anchor != null && _scroll.hasClients) {
+            final index = indices[ValueKey(anchor.id)];
+            if (index != null) {
+              final offset = ((index ~/ rows) + anchor.fraction) * extent;
+              // Correct during layout, before paint, without canceling a drag.
+              _scroll.position.correctBy(math.max(0, offset) - _scroll.offset);
+            }
+          }
+          _rows = rows;
+          _columnExtent = extent;
+          return NotificationListener<ScrollEndNotification>(
+            onNotification: (_) {
+              if (!identical(_episodes, widget.episodes)) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted ||
+                      !_scroll.hasClients ||
+                      _scroll.position.isScrollingNotifier.value) {
+                    return;
+                  }
+                  setState(() {
+                    _captureAnchor(_episodes);
+                    _episodes = widget.episodes;
+                  });
+                });
+              }
+              return false;
+            },
+            child: GridView.builder(
+              controller: _scroll,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              scrollDirection: Axis.horizontal,
+              itemCount: episodes.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: rows,
+                mainAxisExtent: extent - AppSpacing.sm,
+                mainAxisSpacing: AppSpacing.sm,
+                crossAxisSpacing: AppSpacing.sm,
+              ),
+              itemBuilder: (context, index) => _RecentEpisodeCard(
+                episodes[index],
+                key: ValueKey(episodes[index].id),
+              ),
+              findChildIndexCallback: (key) => indices[key],
+            ),
+          );
+        },
       ),
     );
   }
@@ -352,7 +443,7 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     final status = isCurrent ? playbackPhase.label : listeningState.label;
     final metadata = metadataLine([
       status,
-      relativeDate(episode.publishedAt),
+      compactDate(episode.publishedAt),
       compactDuration(episode.durationMs),
     ]);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.5;

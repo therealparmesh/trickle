@@ -42,22 +42,24 @@ void main() {
   });
 
   test(
-    'long summaries fetch the article and short reader caches stay offline',
+    'HTML5 articles extract and cache without losing offline feed content',
     () async {
       final article = await _seed(
         database,
         content: '<p>${List.filled(80, 'Feed summary').join(' ')}</p>',
       );
       adapter.body =
-          '<html><head><title>Launch</title></head><body>'
+          '<!doctype html><html><head><title>Launch</title><body>'
           '<nav>Navigation</nav><article><h1>Launch</h1>'
-          '<p>A short, complete article, with useful details and a conclusion.</p>'
-          '<p>Read the <a href="/more">follow-up</a>.</p>'
+          '<p>A short, complete article, with useful details and a conclusion.'
+          '<p>Read the <a href="/more">follow-up</a>.'
+          '<p><img src="/cover.jpg" alt="Launch artwork">'
           '</article><script>unsafe()</script></body></html>';
       final result = await repository.load(article);
       expect(result.readerFallback, isFalse);
       expect(result.text, contains('A short, complete article'));
       expect(result.html, contains('https://publisher.test/more'));
+      expect(result.html, contains('https://publisher.test/cover.jpg'));
       expect(result.html, isNot(contains('unsafe()')));
       expect(result.text, isNot(contains('Feed summary')));
 
@@ -67,10 +69,17 @@ void main() {
       adapter.statusCode = 503;
       expect((await repository.load(stored)).html, result.html);
       expect(adapter.requests, hasLength(1));
-      final offline = await repository.load(stored, forceRefresh: true);
-      expect(offline.html, result.html);
-      expect(offline.readerFallback, isTrue);
-      expect((await database.articleById(article.id))?.readerHtml, result.html);
+      for (final status in [503, 202]) {
+        adapter.statusCode = status;
+        adapter.body = '';
+        final fallback = await repository.load(stored, forceRefresh: true);
+        expect(fallback.html, result.html);
+        expect(fallback.readerFallback, isTrue);
+        expect(
+          (await database.articleById(article.id))?.readerHtml,
+          result.html,
+        );
+      }
     },
   );
 

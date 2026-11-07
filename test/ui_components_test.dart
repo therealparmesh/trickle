@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
@@ -634,7 +635,7 @@ void main() {
     },
   );
 
-  testWidgets('home keeps section spacing and playback states consistent', (
+  testWidgets('home keeps spacing, playback, and shelf position consistent', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
@@ -690,17 +691,22 @@ void main() {
     );
     final media = StreamController<MediaItem?>.broadcast();
     final states = StreamController<PlaybackState>.broadcast();
+    final episodeUpdates = StreamController<List<Episode>>();
     final textScale = ValueNotifier(1.0);
     addTearDown(textScale.dispose);
     addTearDown(() async {
       await media.close();
       await states.close();
+      await episodeUpdates.close();
     });
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          recentEpisodesProvider.overrideWith((_) => Stream.value(episodes)),
+          recentEpisodesProvider.overrideWith((_) async* {
+            yield episodes;
+            yield* episodeUpdates.stream;
+          }),
           feedsProvider.overrideWith((_) => Stream.value([feed, readerFeed])),
           recentArticlesProvider.overrideWith((_) => Stream.value([article])),
           unreadArticleCountProvider.overrideWith((_) => Stream.value(1)),
@@ -785,6 +791,17 @@ void main() {
     ]) {
       expect(find.text(action), findsOneWidget);
     }
+    episodeUpdates.add([
+      for (var index = 0; index < 20; index++)
+        episodes.first.copyWith(id: 'arrival-$index', title: 'Arrival $index'),
+      ...episodes,
+    ]);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Mark played'), findsOneWidget);
+    episodeUpdates.add(episodes);
+    await tester.pump();
+    await tester.pump();
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();
     media.add(const MediaItem(id: 'episode-0', title: 'Episode 1'));
@@ -805,6 +822,51 @@ void main() {
         expect(find.textContaining('Paused ·'), findsNothing);
       }
     }
+
+    await tester.drag(find.byType(GridView), const Offset(-340, 0));
+    await tester.pumpAndSettle();
+    final shelfX = tester.getTopLeft(card('Episode 3')).dx;
+    episodeUpdates.add([
+      for (var index = 0; index < 2; index++)
+        episodes.first.copyWith(id: 'arrival-$index', title: 'Arrival $index'),
+      ...episodes,
+    ]);
+    await tester.pump();
+    await tester.pump();
+    expect(tester.getTopLeft(card('Episode 3')).dx, closeTo(shelfX, 0.01));
+    episodeUpdates.add(episodes);
+    await tester.pump();
+    await tester.pump();
+    expect(tester.getTopLeft(card('Episode 3')).dx, closeTo(shelfX, 0.01));
+    final shelf = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byType(GridView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    final drag = await tester.startGesture(
+      tester.getCenter(find.byType(GridView)),
+    );
+    await drag.moveBy(const Offset(20, 0));
+    await tester.pump();
+    final draggingX = tester.getTopLeft(card('Episode 3')).dx;
+    episodeUpdates.add([
+      for (var index = 0; index < 2; index++)
+        episodes.first.copyWith(id: 'arrival-$index', title: 'Arrival $index'),
+      ...episodes,
+    ]);
+    await tester.pump();
+    await tester.pump();
+    expect(tester.getTopLeft(card('Episode 3')).dx, closeTo(draggingX, 0.01));
+    expect(shelf.position.isScrollingNotifier.value, isTrue);
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(card('Episode 3')).dx, closeTo(draggingX, 0.01));
+    episodeUpdates.add(episodes);
+    await tester.pump();
+    await tester.pump();
+    shelf.position.jumpTo(0);
+    await tester.pumpAndSettle();
 
     textScale.value = 3.2;
     await tester.pump();
@@ -1530,9 +1592,10 @@ void main() {
   });
 
   testWidgets(
-    'navigation glitch handles lifecycle, preserves state, and respects reduced motion',
+    'navigation glitch samples once and preserves lifecycle, state, and reduced motion',
     (tester) async {
       final glitch = find.byKey(const ValueKey('navigation-glitch-overlay'));
+      final random = _GlitchRandom();
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       addTearDown(() {
         tester.binding.handleAppLifecycleStateChanged(
@@ -1540,13 +1603,17 @@ void main() {
         );
       });
       await tester.pumpWidget(
-        const MaterialApp(
-          home: NavigationGlitch(child: Scaffold(body: Text('Home'))),
+        MaterialApp(
+          home: NavigationGlitch(
+            random: random,
+            child: const Scaffold(body: Text('Home')),
+          ),
         ),
       );
       await tester.pumpAndSettle();
       expect(glitch, findsNothing);
       expect(find.text('Home'), findsOneWidget);
+      expect(random.calls, 1);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await _pumpUntilGlitch(tester, glitch);
@@ -1566,7 +1633,36 @@ void main() {
       await tester.pumpAndSettle();
       expect(glitch, findsNothing);
       expect(find.text('Home'), findsOneWidget);
+      expect(random.calls, 1);
       expect(tester.takeException(), isNull);
+
+      for (final roll in [1, 2, 3]) {
+        random.value = roll;
+        final calls = random.calls;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NavigationGlitch(
+              key: UniqueKey(),
+              random: random,
+              child: const Scaffold(body: Text('Home')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(glitch, findsNothing);
+        expect(find.text('Home'), findsOneWidget);
+        expect(random.calls, calls + 1);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(glitch, findsNothing);
+        expect(random.calls, calls + 1);
+      }
+      random.value = 0;
       await tester.pumpWidget(const SizedBox.shrink());
       final semantics = tester.ensureSemantics();
       final observer = RouteObserver<ModalRoute<dynamic>>();
@@ -1580,6 +1676,7 @@ void main() {
           theme: TrickleTheme.dark.copyWith(platform: TargetPlatform.iOS),
           home: NavigationGlitch(
             routeObserver: observer,
+            random: random,
             child: _NavigationTestPage(key: pageKey, title: 'Settings'),
           ),
         ),
@@ -1611,12 +1708,14 @@ void main() {
       await tester.pump();
       expect(find.text('Updates: 1'), findsOneWidget);
 
+      final callsBeforePush = random.calls;
       unawaited(
         navigatorKey.currentState!.push(
           MaterialPageRoute<void>(
             allowSnapshotting: false,
             builder: (_) => NavigationGlitch(
               routeObserver: observer,
+              random: random,
               child: const Scaffold(body: Text('Second screen')),
             ),
           ),
@@ -1627,6 +1726,7 @@ void main() {
       expect(glitch, findsNothing);
       await _pumpUntilGlitch(tester, glitch);
       expect(glitch, findsOneWidget);
+      expect(random.calls, callsBeforePush + 1);
       await tester.pumpAndSettle();
       expect(glitch, findsNothing);
 
@@ -1638,6 +1738,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Second screen'), findsOneWidget);
       expect(glitch, findsNothing);
+      expect(random.calls, callsBeforePush + 1);
 
       await tester.dragFrom(const Offset(1, 300), const Offset(700, 0));
       await tester.pump();
@@ -1645,6 +1746,7 @@ void main() {
       expect(glitch, findsOneWidget);
       expect(find.text('Second screen'), findsNothing);
       expect(pageKey.currentState, same(initialState));
+      expect(random.calls, callsBeforePush + 2);
 
       unawaited(
         navigatorKey.currentState!.push(
@@ -1670,6 +1772,7 @@ void main() {
             theme: TrickleTheme.dark,
             home: NavigationGlitch(
               key: UniqueKey(),
+              random: random,
               child: _NavigationTestPage(title: 'Search'),
             ),
           ),
@@ -1687,6 +1790,7 @@ void main() {
             theme: TrickleTheme.dark,
             home: NavigationGlitch(
               key: UniqueKey(),
+              random: random,
               child: _NavigationTestPage(title: 'Search'),
             ),
           ),
@@ -2750,11 +2854,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
-  testWidgets('episode details render playback entry and readable show notes', (
+  testWidgets('episode details keep toolbar actions and reflow at large text', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final now = DateTime.utc(2026, 7, 17);
+    final now = DateTime(2026, 7, 17, 12);
     await database
         .into(database.feeds)
         .insert(
@@ -2777,6 +2883,7 @@ void main() {
             description: const Value('<p>Readable show notes.</p>'),
             enclosureUrl: 'https://example.test/audio.mp3',
             discoveredAt: now,
+            publishedAt: Value(now),
             durationMs: const Value(3600000),
           ),
         );
@@ -2802,10 +2909,10 @@ void main() {
           theme: TrickleTheme.dark,
           home: const MediaQuery(
             data: MediaQueryData(
-              size: Size(390, 844),
-              textScaler: TextScaler.linear(1.8),
+              size: Size(320, 844),
+              textScaler: TextScaler.linear(3.2),
             ),
-            child: EpisodePage(episodeId: 'episode'),
+            child: AdaptiveAppChrome(child: EpisodePage(episodeId: 'episode')),
           ),
         ),
       ),
@@ -2815,6 +2922,29 @@ void main() {
     expect(find.text('A complete episode title'), findsOneWidget);
     expect(find.text('Signal Podcast'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
+    expect(find.textContaining('July 17, 2026'), findsOneWidget);
+    expect(find.text('More'), findsNothing);
+    final actions = find.byTooltip('Episode actions');
+    expect(
+      find.ancestor(of: actions, matching: find.byType(AppBar)),
+      findsOneWidget,
+    );
+    expect(
+      tester.getCenter(actions).dx,
+      greaterThan(tester.getCenter(find.byTooltip('Share episode')).dx),
+    );
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    expect(find.text('Add to Up next'), findsOneWidget);
+    expect(find.text('Mark played'), findsOneWidget);
+    await tester.tapAt(const Offset(4, 400));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Show notes'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Show notes'), findsOneWidget);
     expect(
       find.text('Readable show notes.', findRichText: true),
@@ -3063,6 +3193,18 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+final class _GlitchRandom extends Fake implements math.Random {
+  int value = 0;
+  int calls = 0;
+
+  @override
+  int nextInt(int max) {
+    expect(max, 4);
+    calls++;
+    return value;
+  }
 }
 
 final class _NavigationTestPage extends StatefulWidget {

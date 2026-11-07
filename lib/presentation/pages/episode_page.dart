@@ -10,6 +10,7 @@ import '../episode_actions.dart';
 import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/design_system.dart';
+import '../widgets/episode_actions_button.dart';
 import '../widgets/episode_playback_button.dart';
 import '../widgets/episode_show_notes.dart';
 
@@ -36,6 +37,7 @@ final class EpisodePage extends ConsumerWidget {
                 : () => _run(context, () => shareEpisode(context, value, feed)),
             icon: const Icon(Icons.share_rounded),
           ),
+          if (value != null) EpisodeActionsButton(episode: value),
         ],
       ),
       body: AppBackdrop(
@@ -99,7 +101,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
         ? ref.watch(privateFeedSecretProvider(feed!.id)).value
         : null;
     final metadata = [
-      relativeDate(episode.publishedAt),
+      publicationDate(episode.publishedAt),
       compactDuration(episode.durationMs),
       listeningState.label,
     ].where((part) => part.isNotEmpty).join(' · ');
@@ -208,7 +210,6 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
           ),
           const SizedBox(height: AppSpacing.lg),
           Wrap(
-            alignment: WrapAlignment.center,
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
             children: [
@@ -233,46 +234,6 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
                 busy: _busyActions.contains(EpisodeAction.toggleSaved),
                 onPressed: () =>
                     _action(context, ref, EpisodeAction.toggleSaved),
-              ),
-              PopupMenuButton<EpisodeAction>(
-                tooltip: 'More episode actions',
-                enabled:
-                    !_busyActions.contains(EpisodeAction.addToUpNext) &&
-                    !_busyActions.contains(EpisodeAction.togglePlayed),
-                onSelected: (action) => _action(context, ref, action),
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: EpisodeAction.addToUpNext,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.queue_music_rounded),
-                      title: Text('Add to Up next'),
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: EpisodeAction.togglePlayed,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        listeningState == EpisodeListeningState.played
-                            ? Icons.replay_rounded
-                            : Icons.done_rounded,
-                      ),
-                      title: Text(
-                        listeningState == EpisodeListeningState.played
-                            ? 'Mark unplayed'
-                            : 'Mark played',
-                      ),
-                    ),
-                  ),
-                ],
-                child: _ActionButtonFace(
-                  icon: Icons.more_horiz_rounded,
-                  label: 'More',
-                  busy:
-                      _busyActions.contains(EpisodeAction.addToUpNext) ||
-                      _busyActions.contains(EpisodeAction.togglePlayed),
-                ),
               ),
             ],
           ),
@@ -307,36 +268,6 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
     } finally {
       if (mounted) setState(() => _busyActions.remove(action));
     }
-  }
-}
-
-final class _ActionButtonFace extends StatelessWidget {
-  const _ActionButtonFace({
-    required this.icon,
-    required this.label,
-    required this.busy,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      child: IgnorePointer(
-        child: OutlinedButton.icon(
-          onPressed: () {},
-          icon: busy
-              ? const SizedBox.square(
-                  dimension: AppSizes.progressIndicator,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(icon, size: AppSizes.smallIcon),
-          label: Text(label),
-        ),
-      ),
-    );
   }
 }
 
