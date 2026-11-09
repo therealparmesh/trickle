@@ -601,12 +601,12 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
         Expanded(
           child: Text(
             metadataLine([
+              itemTimestamp(article.publishedAt),
               if (feedTitle?.isNotEmpty == true) feedTitle!,
               if (article.author?.isNotEmpty == true &&
                   article.author!.trim().toLowerCase() !=
                       feedTitle?.trim().toLowerCase())
                 article.author!,
-              publicationDate(article.publishedAt),
             ]),
             style: const TextStyle(color: AppConstants.cyan),
           ),

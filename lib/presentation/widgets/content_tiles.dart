@@ -37,9 +37,9 @@ final class EpisodeTile extends ConsumerWidget {
           )];
     final metadata = metadataLine([
       listeningState.label,
-      if (sourceTitle?.isNotEmpty == true) sourceTitle!,
-      compactDate(episode.publishedAt),
+      itemTimestamp(episode.publishedAt),
       compactDuration(episode.durationMs),
+      sourceTitle,
       if (downloadState == DownloadState.complete) 'Downloaded',
     ]);
     return _InsetListFrame(
@@ -98,17 +98,16 @@ final class EpisodeTile extends ConsumerWidget {
                             ),
                             const SizedBox(height: AppSpacing.sm),
                             Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (listeningState !=
                                     EpisodeListeningState.played) ...[
-                                  _NewDot(color: listeningState.color),
+                                  _MetadataDot(color: listeningState.color),
                                   const SizedBox(width: AppSpacing.sm),
                                 ],
                                 Expanded(
                                   child: Text(
                                     metadata,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       color:
                                           download?.status ==
@@ -116,6 +115,7 @@ final class EpisodeTile extends ConsumerWidget {
                                           ? AppConstants.acid
                                           : AppConstants.secondaryText,
                                       fontSize: 12,
+                                      height: 1.25,
                                     ),
                                   ),
                                 ),
@@ -178,7 +178,7 @@ final class _PodcastPreviewEpisodeTileState
     final episode = widget.episode;
     final description = plainText(episode.description);
     final metadata = metadataLine([
-      compactDate(episode.publishedAt),
+      itemTimestamp(episode.publishedAt),
       compactDuration(episode.duration?.inMilliseconds),
     ]);
     return _InsetListFrame(
@@ -236,11 +236,10 @@ final class _PodcastPreviewEpisodeTileState
                       const SizedBox(height: AppSpacing.sm),
                       Text(
                         metadata,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppConstants.secondaryText,
                           fontSize: 12,
+                          height: 1.25,
                         ),
                       ),
                     ],
@@ -339,17 +338,15 @@ final class _ArticleTileState extends ConsumerState<ArticleTile>
     final readState = article.readAt == null
         ? (isVideo ? 'Unopened' : 'Unread')
         : (isVideo ? 'Opened' : 'Read');
-    final sourceTitle = widget.showSource
-        ? ref.watch(feedSnapshotProvider(article.feedId))?.title
-        : null;
+    final sourceTitle = ref.watch(feedSnapshotProvider(article.feedId))?.title;
     final metadata = metadataLine([
-      if (sourceTitle?.isNotEmpty == true) sourceTitle!,
+      itemTimestamp(article.publishedAt),
+      if (widget.showSource) sourceTitle,
       if (!isPost &&
           article.author?.isNotEmpty == true &&
           article.author!.trim().toLowerCase() !=
               sourceTitle?.trim().toLowerCase())
         article.author!,
-      compactDate(article.publishedAt),
     ]);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     final content = Column(
@@ -388,24 +385,15 @@ final class _ArticleTileState extends ConsumerState<ArticleTile>
         ),
         const SizedBox(height: AppSpacing.sm),
         Row(
-          crossAxisAlignment: largeText
-              ? CrossAxisAlignment.start
-              : CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (article.readAt == null) ...[
-              SizedBox(
-                height: MediaQuery.textScalerOf(context).scale(12) * 1.25,
-                child: const Center(child: _NewDot(color: AppConstants.cyan)),
-              ),
+              const _MetadataDot(color: AppConstants.cyan),
               const SizedBox(width: AppSpacing.sm),
             ],
             Expanded(
               child: Text(
                 metadataLine([readState, metadata]),
-                maxLines: largeText ? null : 1,
-                overflow: largeText
-                    ? TextOverflow.visible
-                    : TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: AppConstants.secondaryText,
                   fontSize: 12,
@@ -597,17 +585,22 @@ final class _ArticleThumbnail extends StatelessWidget {
   }
 }
 
-final class _NewDot extends StatelessWidget {
-  const _NewDot({required this.color});
+final class _MetadataDot extends StatelessWidget {
+  const _MetadataDot({required this.color});
 
   final Color color;
 
   @override
   Widget build(BuildContext context) {
     return ExcludeSemantics(
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: const SizedBox.square(dimension: 7),
+      child: SizedBox(
+        height: MediaQuery.textScalerOf(context).scale(12) * 1.25,
+        child: Center(
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            child: const SizedBox.square(dimension: 7),
+          ),
+        ),
       ),
     );
   }

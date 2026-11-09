@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.3.5
-- Build: 70
+- Version: 1.3.6
+- Build: 71
 
 ## Name
 
@@ -84,7 +84,7 @@ Both pages are published from `main/docs` in the public trickle repository. Veri
 
 ## Screenshots
 
-The checked-in 1320×2868 iPhone images were recaptured and visually verified against 1.3.4 on November 7, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
+The checked-in 1320×2868 iPhone images were recaptured and visually verified against 1.3.6 on November 9, 2026. They use only the original fictional fixtures. After a visual change, build and launch trickle once on an iPhone Pro Max simulator with that resolution, then run `tool/maestro/capture_store_screenshots.sh [simulator-udid]` to replace the complete checked-in set. Upload the images in this order:
 
 1. Home
 2. Podcast
@@ -99,9 +99,9 @@ The checked-in 1320×2868 iPhone images were recaptured and visually verified ag
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.3.5 release notes
+## Version 1.3.6 release notes
 
-PDF links now open the original document. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
+Episodes and feed items show minutes or hours ago for the first 24 hours, then the date. Long bylines wrap instead of hiding the date.
 
 ## Privacy declarations
 

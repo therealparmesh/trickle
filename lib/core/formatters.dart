@@ -30,23 +30,19 @@ String compactDuration(int? milliseconds) {
   return '${duration.inMinutes}m';
 }
 
-String compactDate(DateTime? value, {DateTime? now}) {
+String itemTimestamp(DateTime? value, {DateTime? now}) {
   if (value == null) return '';
   final local = value.toLocal();
   final current = (now ?? DateTime.now()).toLocal();
   final difference = current.difference(local);
   if (!difference.isNegative) {
-    if (difference.inMinutes < 1) return 'now';
-    if (difference.inHours < 1) return '${difference.inMinutes}m';
-    if (difference.inDays < 1) return '${difference.inHours}h';
-    if (difference.inDays < 7) return '${difference.inDays}d';
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inHours < 1) return '${difference.inMinutes}m ago';
+    if (difference.inHours < 24) return '${difference.inHours}h ago';
   }
   return (local.year == current.year ? DateFormat.MMMd() : DateFormat.yMMMd())
       .format(local);
 }
-
-String publicationDate(DateTime? value) =>
-    value == null ? '' : DateFormat.yMMMMd().format(value.toLocal());
 
 String formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';

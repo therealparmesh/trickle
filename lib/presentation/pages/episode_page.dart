@@ -101,7 +101,7 @@ class _EpisodeBodyState extends ConsumerState<_EpisodeBody> {
         ? ref.watch(privateFeedSecretProvider(feed!.id)).value
         : null;
     final metadata = [
-      publicationDate(episode.publishedAt),
+      itemTimestamp(episode.publishedAt),
       compactDuration(episode.durationMs),
       listeningState.label,
     ].where((part) => part.isNotEmpty).join(' · ');

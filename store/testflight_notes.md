@@ -2,7 +2,7 @@
 
 ## What's new
 
-Requires iOS 17 or later. PDF links now open the original document. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
+Requires iOS 17 or later. Check that episode and feed timestamps show minutes or hours ago for the first 24 hours, then the date. In a feed with long bylines, verify the date stays readable at both standard and accessibility text sizes.
 
 ## What to test
 
@@ -12,7 +12,7 @@ Please test the combined podcast and feed flow:
 - Check spacing above and below Home's section actions, with populated and empty lists and at large text sizes; rows should stay aligned and readable
 - Check artwork in Podcasts, podcast details, and episode lists, including existing subscriptions whose image servers use a generic binary content type
 - Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; roughly one in four navigations should use a brief full-surface signal glitch. It must settle cleanly without persistent lines, duplicate controls, state resets, or delayed interaction; retries and background/resume must not reroll the choice
-- Compare dates across Home, search, podcast lists, and feed lists: items less than seven days old use relative times; older items use dates, including the year outside the current year. Episode and article details show the full publication date
+- Compare timestamps on Home, podcast and feed lists, and item details: recent items use minutes or hours followed by ago, and items at least 24 hours old use a calendar date. Older years include the year. Long bylines and large text must not hide timestamps or confuse them with podcast lengths
 - Open episode details at normal and large text sizes. More actions should stay in the top-right toolbar next to Share; Play next, Download, and Save should remain reachable and wrap from the left without clipping. Confirm the menu can queue and mark episodes played or unplayed
 - Enable Reduce Motion and repeat several forward and back navigations; the signal effect should be skipped while navigation and playback remain unchanged
 - Swipe back from search, podcast details, episode details, and the reader on iOS; complete and cancel the gesture. Check Android system Back. The previous page should retain its position and the glitch should wait until navigation settles

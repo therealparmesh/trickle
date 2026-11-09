@@ -669,7 +669,9 @@ void main() {
         title: 'Episode ${index + 1}',
         enclosureUrl: 'https://example.test/$index.mp3',
         discoveredAt: now.subtract(Duration(hours: index)),
-        publishedAt: now.subtract(Duration(hours: index)),
+        publishedAt: index == 0
+            ? DateTime.now().subtract(const Duration(minutes: 11))
+            : now.subtract(Duration(hours: index)),
         durationMs: 2520000,
         explicit: false,
         played: false,
@@ -781,7 +783,10 @@ void main() {
     expect(find.bySemanticsLabel('Up next, 1 item'), findsNothing);
     expect(find.bySemanticsLabel('Play Episode 1'), findsOneWidget);
     expect(find.textContaining('New ·'), findsWidgets);
-    expect(find.textContaining('42m'), findsWidgets);
+    expect(
+      find.textContaining(RegExp(r'^New · \d+m ago · 42m$')),
+      findsOneWidget,
+    );
     expect(find.text('Example Podcast'), findsWidgets);
     await tester.tap(find.byTooltip('Episode actions').first);
     await tester.pumpAndSettle();
@@ -871,12 +876,20 @@ void main() {
     shelf.position.jumpTo(0);
     await tester.pumpAndSettle();
 
+    await tester.binding.setSurfaceSize(const Size(320, 852));
     textScale.value = 3.2;
     await tester.pump();
     final largeFirst = tester.getTopLeft(card('Episode 1'));
     final largeSecond = tester.getTopLeft(card('Episode 2'));
     expect(largeSecond.dx, greaterThan(largeFirst.dx));
     expect(largeSecond.dy, closeTo(largeFirst.dy, 1));
+    final largeMetadata = find.textContaining(
+      RegExp(r'^Playback error · \d+m ago · 42m$'),
+    );
+    expect(
+      tester.renderObject<RenderParagraph>(largeMetadata).didExceedMaxLines,
+      isFalse,
+    );
     expect(tester.takeException(), isNull);
 
     await tester.scrollUntilVisible(
@@ -1471,6 +1484,79 @@ void main() {
     network.close();
     await database.close();
     await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('feed drill-in keeps dates visible beside long bylines', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final now = DateTime.now();
+    final year = now.year - 1;
+    final feed = _readerFeed(
+      id: 'reader',
+      title: 'A publisher with a long name',
+      category: null,
+      now: now,
+    );
+    const byline = 'A distinct author with a very long byline that must wrap';
+    await database.into(database.feeds).insert(feed);
+    for (final (day, author) in [(8, byline), (9, feed.title)]) {
+      await database
+          .into(database.articles)
+          .insert(
+            ArticlesCompanion.insert(
+              id: 'article-$day',
+              feedId: feed.id,
+              title: 'Article $day',
+              author: Value(author),
+              publishedAt: Value(DateTime(year, 10, day, 12)),
+              discoveredAt: now,
+            ),
+          );
+    }
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(
+          theme: TrickleTheme.dark,
+          home: const FeedDetailPage(feedId: 'reader'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final short = find.text('Unread · Oct 9, $year');
+    expect(short, findsOneWidget, reason: 'the feed name is already shown');
+    final wrapped = find.text('Unread · Oct 8, $year · $byline');
+    await tester.scrollUntilVisible(
+      wrapped,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final paragraph = tester.renderObject<RenderParagraph>(wrapped);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(
+      tester.getSize(wrapped).height,
+      greaterThan(tester.getSize(short).height),
+    );
+    final row = find.ancestor(of: wrapped, matching: find.byType(ArticleTile));
+    final menu = find.descendant(
+      of: row,
+      matching: find.byTooltip('Article actions'),
+    );
+    expect(
+      tester.getRect(wrapped).right,
+      lessThanOrEqualTo(tester.getRect(menu).left),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    await database.close();
   });
 
   testWidgets('podcast episode filters keep their empty states distinct', (
@@ -2933,7 +3019,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(320, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final now = DateTime(2026, 7, 17, 12);
+    final now = DateTime(DateTime.now().year - 1, 7, 17, 12);
     await database
         .into(database.feeds)
         .insert(
@@ -2995,7 +3081,7 @@ void main() {
     expect(find.text('A complete episode title'), findsOneWidget);
     expect(find.text('Signal Podcast'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
-    expect(find.textContaining('July 17, 2026'), findsOneWidget);
+    expect(find.textContaining('Jul 17, ${now.year} · 1h'), findsOneWidget);
     expect(find.text('More'), findsNothing);
     final actions = find.byTooltip('Episode actions');
     expect(

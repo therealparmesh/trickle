@@ -343,7 +343,7 @@ class _RecentStripState extends State<_RecentStrip> {
     final largeText = scaler.scale(1) > 1.5;
     final titleHeight = scaler.scale(14) * 1.25 * (largeText ? 4 : 2);
     final sourceHeight = scaler.scale(12) * 1.25 * (largeText ? 2 : 1);
-    final metadataHeight = scaler.scale(12) * 1.25 * 2;
+    final metadataHeight = scaler.scale(12) * 1.25 * _metadataLines(largeText);
     final rowHeight =
         AppSpacing.lg +
         AppSpacing.sm +
@@ -355,7 +355,9 @@ class _RecentStripState extends State<_RecentStrip> {
                 AppSizes.control,
                 titleHeight + AppSpacing.xs + sourceHeight,
               )) +
-        math.max(AppSizes.control, metadataHeight);
+        (largeText
+            ? metadataHeight + AppSpacing.xs + AppSizes.control
+            : math.max(AppSizes.control, metadataHeight));
     final rows = largeText ? 1 : 2;
     return SizedBox(
       height: rowHeight * rows + (rows - 1) * AppSpacing.sm,
@@ -424,6 +426,8 @@ class _RecentStripState extends State<_RecentStrip> {
   }
 }
 
+int _metadataLines(bool largeText) => largeText ? 4 : 2;
+
 final class _RecentEpisodeCard extends ConsumerWidget {
   const _RecentEpisodeCard(this.episode, {super.key});
 
@@ -443,10 +447,18 @@ final class _RecentEpisodeCard extends ConsumerWidget {
     final status = isCurrent ? playbackPhase.label : listeningState.label;
     final metadata = metadataLine([
       status,
-      compactDate(episode.publishedAt),
+      itemTimestamp(episode.publishedAt),
       compactDuration(episode.durationMs),
     ]);
     final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.5;
+    final metadataText = Text(
+      metadata,
+      maxLines: _metadataLines(largeText),
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: isCurrent ? playbackPhase.color : listeningState.color,
+      ),
+    );
     final source = Text(
       feed?.title ?? '',
       maxLines: largeText ? 2 : 1,
@@ -532,21 +544,18 @@ final class _RecentEpisodeCard extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
+            if (largeText) ...[
+              metadataText,
+              const SizedBox(height: AppSpacing.xs),
+            ],
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    metadata,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: isCurrent
-                          ? playbackPhase.color
-                          : listeningState.color,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
+                if (largeText)
+                  const Spacer()
+                else ...[
+                  Expanded(child: metadataText),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
                 EpisodePlaybackButton(episode: episode, progress: progress),
                 EpisodeActionsButton(
                   key: ValueKey(episode.id),
