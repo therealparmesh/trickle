@@ -14,7 +14,9 @@ import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/article_repository.dart';
+import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
+import 'package:trickle/presentation/pages/article_page.dart';
 import 'package:trickle/presentation/widgets/article_content.dart';
 
 void main() {
@@ -56,7 +58,7 @@ void main() {
           '<p><img src="/cover.jpg" alt="Launch artwork">'
           '</article><script>unsafe()</script></body></html>';
       final result = await repository.load(article);
-      expect(result.readerFallback, isFalse);
+      expect(result.status, ReaderStatus.content);
       expect(result.text, contains('A short, complete article'));
       expect(result.html, contains('https://publisher.test/more'));
       expect(result.html, contains('https://publisher.test/cover.jpg'));
@@ -74,7 +76,7 @@ void main() {
         adapter.body = '';
         final fallback = await repository.load(stored, forceRefresh: true);
         expect(fallback.html, result.html);
-        expect(fallback.readerFallback, isTrue);
+        expect(fallback.status, ReaderStatus.unavailable);
         expect(
           (await database.articleById(article.id))?.readerHtml,
           result.html,
@@ -133,11 +135,11 @@ void main() {
           credentialRef: Value(credential),
         ),
       );
-      adapter.contentType = 'application/pdf';
-      adapter.body = '%PDF';
+      adapter.contentType = 'application/json';
+      adapter.body = '{}';
       final fallback = await repository.load(article);
       expect(fallback.text, 'Offline feed text');
-      expect(fallback.readerFallback, isTrue);
+      expect(fallback.status, ReaderStatus.notArticle);
       expect(
         adapter.requests.single.headers['Authorization'],
         'Bearer private',
@@ -153,10 +155,56 @@ void main() {
         article.copyWith(canonicalUrl: const Value(null)),
       );
       expect(feedOnly.text, 'Offline feed text');
-      expect(feedOnly.readerFallback, isFalse);
+      expect(feedOnly.status, ReaderStatus.content);
       expect(adapter.requests, hasLength(2));
+      expect((await database.articleById(article.id))?.readerHtml, isNull);
     },
   );
+
+  test(
+    'browser-only pages keep the feed link without caching an article',
+    () async {
+      final article = await _seed(
+        database,
+        content:
+            '<a href="https://news.ycombinator.com/item?id=123">Comments</a>',
+      );
+      adapter.body =
+          '<html><body><div id="app"></div><script src="/app.js"></script></body></html>';
+      final result = await repository.load(article);
+      expect(result.status, ReaderStatus.notArticle);
+      expect(result.text, 'Comments');
+      expect(result.html, contains('https://news.ycombinator.com/item?id=123'));
+      expect(
+        adapter.requests.single.headers['Accept'],
+        startsWith('text/html'),
+      );
+      expect((await database.articleById(article.id))?.readerFetchedAt, isNull);
+    },
+  );
+
+  test('HN discussions extract the original post, never the comments', () async {
+    final article = await _seed(
+      database,
+      canonicalUrl: 'https://news.ycombinator.com/item?id=123',
+    );
+    adapter.body = '''
+      <table class="fatitem"><tr><td><div class="toptext">
+        Short original question. <a href="https://example.test/">Reference</a>
+      </div></td></tr></table>
+      <table class="comment-tree"><tr><td><p>Unrelated reply text.</p></td></tr></table>
+    ''';
+    final result = await repository.load(article);
+    expect(result.status, ReaderStatus.content);
+    expect(result.text, 'Short original question. Reference');
+    expect(result.html, isNot(contains('Unrelated reply')));
+    adapter.body =
+        '<table class="comment-tree"><tr><td><p>Unrelated reply text.</p></td></tr></table>';
+    expect(
+      (await repository.load(article, forceRefresh: true)).status,
+      ReaderStatus.notArticle,
+    );
+  });
 
   test(
     'preview discovery still deduplicates requests and stores publisher artwork',
@@ -173,6 +221,78 @@ void main() {
       expect((await database.articleById(article.id))?.imageUrl, images.first);
     },
   );
+
+  testWidgets('PDF links offer the original document, not a reader retry', (
+    tester,
+  ) async {
+    const url = 'https://publisher.test/paper.pdf';
+    final article = await _seed(
+      database,
+      canonicalUrl: url,
+      content:
+          '<a href="https://news.ycombinator.com/item?id=123">Comments</a>',
+    );
+    adapter.contentType = 'application/pdf';
+    // The response type must be recognized before applying the HTML size limit.
+    adapter.contentLength = AppConstants.articleLimitBytes + 1;
+    final opened = <String>[];
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      if (call.method == 'launch') opened.add(call.arguments['url'] as String);
+      return true;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          articleProvider.overrideWith((_, _) => Stream.value(article)),
+          articleRepositoryProvider.overrideWithValue(repository),
+          feedRepositoryProvider.overrideWithValue(
+            FeedRepository(
+              database: database,
+              network: network,
+              privateFeeds: secrets,
+            ),
+          ),
+          readerTextScaleProvider.overrideWith((_) => Stream.value(100)),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp(home: ArticlePage(articleId: article.id)),
+      ),
+    );
+    final openPdf = find.widgetWithText(TextButton, 'Open PDF');
+    for (
+      var attempt = 0;
+      attempt < 40 && openPdf.evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(
+      find.text('PDF document'),
+      findsOneWidget,
+      reason:
+          '${adapter.requests.length} requests; ${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data)}',
+    );
+    expect(find.text('Comments', findRichText: true), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
+    await tester.tap(openPdf);
+    await tester.pumpAndSettle();
+    expect(opened, [url]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
 
   test(
     'HTML safety preserves article structure without publisher code or styling',
@@ -325,7 +445,11 @@ void main() {
   );
 }
 
-Future<Article> _seed(AppDatabase database, {String? content}) async {
+Future<Article> _seed(
+  AppDatabase database, {
+  String? content,
+  String canonicalUrl = 'https://publisher.test/launch',
+}) async {
   final now = DateTime.utc(2026, 10, 7);
   await database
       .into(database.feeds)
@@ -347,7 +471,7 @@ Future<Article> _seed(AppDatabase database, {String? content}) async {
           feedId: 'feed',
           title: 'Launch',
           contentHtml: Value(content),
-          canonicalUrl: const Value('https://publisher.test/launch'),
+          canonicalUrl: Value(canonicalUrl),
           discoveredAt: now,
         ),
       );
@@ -358,6 +482,7 @@ final class _PageAdapter implements HttpClientAdapter {
   String body = '';
   String contentType = 'text/html';
   int statusCode = 200;
+  int? contentLength;
   Future<void> Function()? beforeResponse;
   final requests = <RequestOptions>[];
 
@@ -374,6 +499,8 @@ final class _PageAdapter implements HttpClientAdapter {
       statusCode,
       headers: {
         Headers.contentTypeHeader: [contentType],
+        if (contentLength != null)
+          Headers.contentLengthHeader: ['$contentLength'],
       },
     );
   }

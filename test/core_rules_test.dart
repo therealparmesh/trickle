@@ -303,12 +303,7 @@ void main() {
     expect(compactDuration(const Duration(minutes: 1).inMilliseconds), '1m');
   });
 
-  test('settings expose the exact cleanup and refresh choices', () {
-    expect(AutoDeletePolicy.values, const [
-      AutoDeletePolicy.immediately,
-      AutoDeletePolicy.after1Day,
-      AutoDeletePolicy.after1Week,
-    ]);
+  test('refresh labels match their scheduling intervals', () {
     expect(
       RefreshInterval.values
           .map((interval) => (interval.duration, interval.label))

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -17,40 +19,36 @@ import '../presentation/pages/search_page.dart';
 import '../presentation/pages/settings_page.dart';
 import '../presentation/widgets/navigation_glitch.dart';
 
-GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
-  final rootNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
-  final shellNavigationObserver = RouteObserver<ModalRoute<dynamic>>();
-  Page<void> navigationPage(
-    GoRouterState state,
-    Widget child, {
-    required RouteObserver<ModalRoute<dynamic>> observer,
-  }) {
+GoRouter createRouter({
+  GlobalKey<NavigatorState>? navigatorKey,
+  Random? random,
+}) {
+  final navigationRandom = random ?? Random();
+  Page<void> navigationPage(GoRouterState state, Widget child) {
     return MaterialPage<void>(
       key: state.pageKey,
       allowSnapshotting: false,
-      child: NavigationGlitch(routeObserver: observer, child: child),
+      child: NavigationGlitch(random: navigationRandom, child: child),
     );
   }
 
-  Page<void> shellPage(GoRouterState state, Widget child) =>
-      navigationPage(state, child, observer: shellNavigationObserver);
-
   return GoRouter(
     navigatorKey: navigatorKey,
-    observers: [rootNavigationObserver],
     routes: [
       ShellRoute(
-        notifyRootObserver: false,
-        observers: [shellNavigationObserver],
-        builder: (_, _, child) => AppShell(child: child),
+        builder: (context, _, child) => NavigationGlitchScope(
+          route: ModalRoute.of(context),
+          isCurrent: ModalRoute.isCurrentOf(context) != false,
+          child: AppShell(child: child),
+        ),
         routes: [
           GoRoute(
             path: '/',
-            pageBuilder: (_, state) => shellPage(state, const HomePage()),
+            pageBuilder: (_, state) => navigationPage(state, const HomePage()),
           ),
           GoRoute(
             path: '/podcasts',
-            pageBuilder: (_, state) => shellPage(
+            pageBuilder: (_, state) => navigationPage(
               state,
               PodcastsPage(
                 initialPodcasts: state.uri.queryParameters['tab'] == 'podcasts',
@@ -59,7 +57,7 @@ GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
           ),
           GoRoute(
             path: '/reader',
-            pageBuilder: (_, state) => shellPage(
+            pageBuilder: (_, state) => navigationPage(
               state,
               ReaderPage(
                 initialFeeds: state.uri.queryParameters['tab'] == 'feeds',
@@ -69,54 +67,57 @@ GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
           ),
           GoRoute(
             path: '/search',
-            pageBuilder: (_, state) => shellPage(state, const SearchPage()),
+            pageBuilder: (_, state) =>
+                navigationPage(state, const SearchPage()),
           ),
           GoRoute(
             path: '/podcast-search',
             pageBuilder: (_, state) =>
-                shellPage(state, const SearchPage.catalog()),
+                navigationPage(state, const SearchPage.catalog()),
           ),
           GoRoute(
             path: '/podcast-preview',
-            pageBuilder: (_, state) => shellPage(state, switch (state.extra) {
-              final PodcastSearchResult podcast => FeedDetailPage.catalog(
-                podcast: podcast,
-              ),
-              _ => const FeedDetailPage.catalog(),
-            }),
+            pageBuilder: (_, state) =>
+                navigationPage(state, switch (state.extra) {
+                  final PodcastSearchResult podcast => FeedDetailPage.catalog(
+                    podcast: podcast,
+                  ),
+                  _ => const FeedDetailPage.catalog(),
+                }),
           ),
           GoRoute(
             path: '/feed/:id',
-            pageBuilder: (_, state) => shellPage(
+            pageBuilder: (_, state) => navigationPage(
               state,
               FeedDetailPage(feedId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/article/:id',
-            pageBuilder: (_, state) => shellPage(
+            pageBuilder: (_, state) => navigationPage(
               state,
               ArticlePage(articleId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/episode/:id',
-            pageBuilder: (_, state) => shellPage(
+            pageBuilder: (_, state) => navigationPage(
               state,
               EpisodePage(episodeId: state.pathParameters['id']!),
             ),
           ),
           GoRoute(
             path: '/queue',
-            pageBuilder: (_, state) => shellPage(state, const QueuePage()),
+            pageBuilder: (_, state) => navigationPage(state, const QueuePage()),
           ),
           GoRoute(
             path: '/downloads',
-            pageBuilder: (_, state) => shellPage(state, const DownloadsPage()),
+            pageBuilder: (_, state) =>
+                navigationPage(state, const DownloadsPage()),
           ),
           GoRoute(
             path: '/saved',
-            pageBuilder: (_, state) => shellPage(
+            pageBuilder: (_, state) => navigationPage(
               state,
               SavedPage(
                 initialTab: state.uri.queryParameters['tab'] == 'articles'
@@ -127,17 +128,14 @@ GoRouter createRouter({GlobalKey<NavigatorState>? navigatorKey}) {
           ),
           GoRoute(
             path: '/settings',
-            pageBuilder: (_, state) => shellPage(state, const SettingsPage()),
+            pageBuilder: (_, state) =>
+                navigationPage(state, const SettingsPage()),
           ),
         ],
       ),
       GoRoute(
         path: '/player',
-        pageBuilder: (_, state) => navigationPage(
-          state,
-          const PlayerPage(),
-          observer: rootNavigationObserver,
-        ),
+        pageBuilder: (_, state) => navigationPage(state, const PlayerPage()),
       ),
     ],
   );

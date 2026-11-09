@@ -170,6 +170,7 @@ final class SafeNetworkClient {
     int maxBytes = 10 * 1024 * 1024,
     Map<String, String> headers = const {},
     Duration totalTimeout = AppConstants.contentRequestTimeout,
+    bool Function(String? contentType)? readBody,
   }) async {
     if (maxBytes <= 0 || totalTimeout <= Duration.zero) {
       throw ArgumentError('Limits and timeout must be positive.');
@@ -247,6 +248,15 @@ final class SafeNetworkClient {
         if (status < 200 || status >= 300) {
           cancelToken.cancel('error body is not needed');
           throw NetworkException('The server returned HTTP $status.');
+        }
+        if (readBody?.call(flattenedHeaders['content-type']) == false) {
+          cancelToken.cancel('response body is not needed');
+          return NetworkDocument(
+            url: current,
+            statusCode: status,
+            bytes: Uint8List(0),
+            headers: flattenedHeaders,
+          );
         }
         final contentLength = int.tryParse(
           response.headers.value(Headers.contentLengthHeader) ?? '',

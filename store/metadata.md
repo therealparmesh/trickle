@@ -6,8 +6,8 @@
 - On-device name: trickle
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
-- Version: 1.3.4
-- Build: 68
+- Version: 1.3.5
+- Build: 69
 
 ## Name
 
@@ -99,9 +99,9 @@ The checked-in 1320×2868 iPhone images were recaptured and visually verified ag
 - Distribution: Public App Store
 - Release option: Manually release after App Review approval
 
-## Version 1.3.4 release notes
+## Version 1.3.5 release notes
 
-Fixed reader view on more web pages. Lists keep your place while feeds refresh. Clearer publication dates and episode controls. Navigation glitches now appear less often.
+PDF links now open the original document. Ask HN posts show the original text without replies. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
 
 ## Privacy declarations
 

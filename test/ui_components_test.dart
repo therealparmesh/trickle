@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:trickle/app/app_providers.dart';
+import 'package:trickle/app/router.dart';
 import 'package:trickle/app/startup.dart';
 import 'package:trickle/app/theme.dart';
 import 'package:trickle/core/constants.dart';
@@ -21,8 +22,10 @@ import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/article_repository.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
+import 'package:trickle/data/repositories/settings_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/features/player/trickle_audio_handler.dart';
+import 'package:trickle/data/repositories/playback_source_resolver.dart';
 import 'package:trickle/presentation/app_shell.dart';
 import 'package:trickle/presentation/pages/episode_page.dart';
 import 'package:trickle/presentation/pages/feed_detail_page.dart';
@@ -1591,6 +1594,80 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('selected glitches play on production routes', (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {},
+    );
+    final audio = TrickleAudioHandler(
+      database: db,
+      settings: SettingsRepository(db),
+      sourceResolver: PlaybackSourceResolver(db, PrivateFeedStore(), network),
+    );
+    final random = _GlitchRandom();
+    final router = createRouter(random: random);
+    addTearDown(router.dispose);
+    final glitch = find.byKey(const ValueKey('navigation-glitch-overlay'));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          audioHandlerProvider.overrideWithValue(audio),
+          currentMediaProvider.overrideWith((_) => Stream.value(null)),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          theme: TrickleTheme.dark.copyWith(platform: TargetPlatform.iOS),
+        ),
+      ),
+    );
+    await _pumpUntilGlitch(tester, glitch);
+    expect(glitch, findsOneWidget);
+    await tester.pumpAndSettle();
+    for (final (path, roll) in [
+      ('/search', 0),
+      ('/podcasts', 2),
+      ('/reader', 0),
+      ('/player', 0),
+    ]) {
+      random.value = roll;
+      final calls = random.calls;
+      unawaited(router.push<void>(path));
+      await tester.pump();
+      if (roll == 0) {
+        await _pumpUntilGlitch(tester, glitch);
+        expect(glitch, findsOneWidget, reason: path);
+      }
+      expect(random.calls, calls + 1);
+      await tester.pumpAndSettle();
+      expect(glitch, findsNothing);
+    }
+    final beforeBack = random.calls;
+    router.pop();
+    await tester.pump();
+    await _pumpUntilGlitch(tester, glitch);
+    expect(glitch, findsOneWidget);
+    expect(find.byType(ReaderPage), findsOneWidget);
+    expect(random.calls, beforeBack + 1);
+    await tester.pumpAndSettle();
+    router.go('/');
+    await tester.pump();
+    await _pumpUntilGlitch(tester, glitch);
+    expect(glitch, findsOneWidget);
+    expect(find.byType(HomePage), findsOneWidget);
+    expect(random.calls, beforeBack + 2);
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+    final disposal = audio.disposeHandler();
+    await tester.pumpAndSettle();
+    await disposal;
+    network.close();
+    await db.close();
+  });
+
   testWidgets(
     'navigation glitch samples once and preserves lifecycle, state, and reduced motion',
     (tester) async {
@@ -1665,17 +1742,14 @@ void main() {
       random.value = 0;
       await tester.pumpWidget(const SizedBox.shrink());
       final semantics = tester.ensureSemantics();
-      final observer = RouteObserver<ModalRoute<dynamic>>();
       final navigatorKey = GlobalKey<NavigatorState>();
       final pageKey = GlobalKey<_NavigationTestPageState>();
 
       await tester.pumpWidget(
         MaterialApp(
           navigatorKey: navigatorKey,
-          navigatorObservers: [observer],
           theme: TrickleTheme.dark.copyWith(platform: TargetPlatform.iOS),
           home: NavigationGlitch(
-            routeObserver: observer,
             random: random,
             child: _NavigationTestPage(key: pageKey, title: 'Settings'),
           ),
@@ -1714,7 +1788,6 @@ void main() {
           MaterialPageRoute<void>(
             allowSnapshotting: false,
             builder: (_) => NavigationGlitch(
-              routeObserver: observer,
               random: random,
               child: const Scaffold(body: Text('Second screen')),
             ),

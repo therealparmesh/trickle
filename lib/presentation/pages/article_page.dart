@@ -134,10 +134,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                     onRetry: () => _refreshContent(value),
                   );
                 }
-                final extracted = snapshot.data;
-                final html = extracted?.html.isNotEmpty == true
-                    ? extracted!.html
-                    : value.summary ?? '';
+                final extracted = snapshot.requireData;
                 final feed = ref.watch(feedProvider(value.feedId)).value;
                 final secret = ref
                     .watch(privateFeedSecretProvider(value.feedId))
@@ -185,14 +182,15 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                       const SizedBox(height: AppSpacing.md),
                                       _metadata(value, feed?.title),
                                       const SizedBox(height: AppSpacing.xl),
-                                      if (extracted?.readerFallback ==
-                                          true) ...[
+                                      if (extracted.status !=
+                                          ReaderStatus.content) ...[
                                         _ReaderFallbackNotice(
+                                          status: extracted.status,
+                                          hasFallback:
+                                              extracted.html.isNotEmpty,
                                           onRetry: () => _refreshContent(value),
-                                          onOpenInBrowser:
-                                              value.canonicalUrl == null
-                                              ? null
-                                              : () => _openInBrowser(value),
+                                          onOpenInBrowser: () =>
+                                              _openInBrowser(value),
                                         ),
                                         const SizedBox(height: AppSpacing.lg),
                                       ],
@@ -211,7 +209,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                 ),
                                 if (revealContent)
                                   ArticleContent(
-                                    html: html,
+                                    html: extracted.html,
                                     scale: scale,
                                     privateSecret: secret,
                                     allowRemoteImages: allowRemoteImages,
@@ -707,15 +705,38 @@ final class _ContentWarningGate extends StatelessWidget {
 
 final class _ReaderFallbackNotice extends StatelessWidget {
   const _ReaderFallbackNotice({
+    required this.status,
+    required this.hasFallback,
     required this.onRetry,
     required this.onOpenInBrowser,
   });
 
+  final ReaderStatus status;
+  final bool hasFallback;
   final VoidCallback onRetry;
-  final VoidCallback? onOpenInBrowser;
+  final VoidCallback onOpenInBrowser;
 
   @override
   Widget build(BuildContext context) {
+    final (title, explanation, action) = switch (status) {
+      ReaderStatus.pdf => (
+        'PDF document',
+        'Open the original PDF to read it.',
+        'Open PDF',
+      ),
+      ReaderStatus.notArticle => (
+        'Open the original page',
+        'This link doesn’t provide an article the reader can display.',
+        'Open in browser',
+      ),
+      _ => (
+        'Couldn’t load reader view',
+        hasFallback
+            ? 'The available feed or saved content is below.'
+            : 'Try again or open the original page.',
+        'Open in browser',
+      ),
+    };
     return Semantics(
       container: true,
       liveRegion: true,
@@ -737,28 +758,22 @@ final class _ReaderFallbackNotice extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Reader view unavailable',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: AppSpacing.xs),
-              const Text(
-                'Showing previously saved or feed content instead.',
-                style: TextStyle(color: AppConstants.secondaryText),
+              Text(
+                explanation,
+                style: const TextStyle(color: AppConstants.secondaryText),
               ),
               const SizedBox(height: AppSpacing.sm),
               Wrap(
                 spacing: AppSpacing.xs,
                 children: [
-                  TextButton(
-                    onPressed: onRetry,
-                    child: const Text('Try again'),
-                  ),
-                  if (onOpenInBrowser != null)
+                  if (status == ReaderStatus.unavailable)
                     TextButton(
-                      onPressed: onOpenInBrowser,
-                      child: const Text('Open in browser'),
+                      onPressed: onRetry,
+                      child: const Text('Try again'),
                     ),
+                  TextButton(onPressed: onOpenInBrowser, child: Text(action)),
                 ],
               ),
             ],

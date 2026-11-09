@@ -5,22 +5,33 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+/// Carries the root route's visibility across the shell's nested Navigator.
+final class NavigationGlitchScope extends InheritedWidget {
+  const NavigationGlitchScope({
+    required this.route,
+    required this.isCurrent,
+    required super.child,
+    super.key,
+  });
+
+  final ModalRoute<dynamic>? route;
+  final bool isCurrent;
+
+  @override
+  bool updateShouldNotify(NavigationGlitchScope oldWidget) =>
+      route != oldWidget.route || isCurrent != oldWidget.isCurrent;
+}
+
 /// A brief, non-interactive signal effect for route navigation.
 ///
 /// The live route stays mounted beneath a temporary glitched snapshot, so the
 /// effect cannot reset page state, duplicate work, or intercept input.
 final class NavigationGlitch extends StatefulWidget {
-  const NavigationGlitch({
-    required this.child,
-    this.routeObserver,
-    this.random,
-    super.key,
-  });
+  const NavigationGlitch({required this.child, this.random, super.key});
 
   static const duration = Duration(milliseconds: 190);
 
   final Widget child;
-  final RouteObserver<ModalRoute<dynamic>>? routeObserver;
   @visibleForTesting
   final math.Random? random;
 
@@ -29,13 +40,11 @@ final class NavigationGlitch extends StatefulWidget {
 }
 
 class _NavigationGlitchState extends State<NavigationGlitch>
-    with RouteAware, SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // The shader intentionally distorts the snapshot, so more resolution only
   // increases transient texture memory without improving the visible effect.
   static const _maxCapturePixelRatio = 1.5;
-  static final _program = ui.FragmentProgram.fromAsset(
-    'packages/animated_glitch/shader/glitch.frag',
-  );
+  static const _shaderAsset = 'packages/animated_glitch/shader/glitch.frag';
 
   final _captureBoundaryKey = GlobalKey();
   late final _random = widget.random ?? math.Random();
@@ -45,10 +54,22 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   )..addStatusListener(_handleAnimationStatus);
   ui.Image? _snapshot;
   ui.FragmentShader? _shader;
-  bool _started = false;
+  bool _visible = false;
   bool _pending = false;
   int _captureGeneration = 0;
   ModalRoute<dynamic>? _route;
+  ModalRoute<dynamic>? _shellRoute;
+
+  bool get _canCapture =>
+      _visible &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+      _isSettled(_route) &&
+      _isSettled(_shellRoute);
+
+  bool _isSettled(ModalRoute<dynamic>? route) =>
+      route?.isCurrent != false &&
+      route?.animation?.isAnimating != true &&
+      route?.secondaryAnimation?.isAnimating != true;
 
   bool get _reduceMotion =>
       MediaQuery.disableAnimationsOf(context) ||
@@ -68,7 +89,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (_pending) _scheduleEffect();
+      _scheduleCapture();
     } else {
       _cancelEffect(rebuild: true, keepPending: true);
     }
@@ -77,85 +98,48 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _subscribeToRoute();
-    if (_reduceMotion) {
-      _started = true;
+    final shell = context
+        .dependOnInheritedWidgetOfExactType<NavigationGlitchScope>();
+    final route = ModalRoute.of(context);
+    if (_route != route || _shellRoute != shell?.route) {
+      _listenToRoutes(add: false);
+      _route = route;
+      _shellRoute = shell?.route;
+      _listenToRoutes(add: true);
+    }
+    final wasVisible = _visible;
+    _visible =
+        ModalRoute.isCurrentOf(context) != false && shell?.isCurrent != false;
+    if (!_visible || _reduceMotion) {
       _cancelEffect();
       return;
     }
-    if (_started) return;
-    _started = true;
-    _maybeScheduleEffect();
-  }
-
-  @override
-  void didUpdateWidget(covariant NavigationGlitch oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.routeObserver == widget.routeObserver) return;
-    _unsubscribeFromRoute(oldWidget.routeObserver);
-    _subscribeToRoute();
-  }
-
-  void _subscribeToRoute() {
-    final observer = widget.routeObserver;
-    final route = ModalRoute.of(context);
-    if (observer == null || route is! ModalRoute<dynamic> || route == _route) {
-      return;
+    if (!wasVisible) {
+      // Choose once on arrival, not again while waiting for the final frame.
+      _pending = _random.nextInt(4) == 0;
     }
-    _unsubscribeFromRoute(observer);
-    _route = route;
-    route.animation?.addStatusListener(_handleRouteAnimationStatus);
-    route.secondaryAnimation?.addStatusListener(_handleRouteAnimationStatus);
-    observer.subscribe(this, route);
+    _scheduleCapture();
   }
 
-  void _unsubscribeFromRoute(RouteObserver<ModalRoute<dynamic>>? observer) {
-    observer?.unsubscribe(this);
-    _route?.animation?.removeStatusListener(_handleRouteAnimationStatus);
-    _route?.secondaryAnimation?.removeStatusListener(
-      _handleRouteAnimationStatus,
-    );
-    _route = null;
+  void _listenToRoutes({required bool add}) {
+    for (final route in [_route, _shellRoute]) {
+      for (final animation in [route?.animation, route?.secondaryAnimation]) {
+        if (add) {
+          animation?.addStatusListener(_handleRouteAnimationStatus);
+        } else {
+          animation?.removeStatusListener(_handleRouteAnimationStatus);
+        }
+      }
+    }
   }
 
   void _handleRouteAnimationStatus(AnimationStatus status) {
-    if (_pending && _snapshot == null) _scheduleEffect();
+    _scheduleCapture();
   }
 
-  @override
-  void didPopNext() {
-    _maybeScheduleEffect();
-  }
-
-  @override
-  void didPushNext() {
-    _cancelEffect(rebuild: true);
-  }
-
-  void _maybeScheduleEffect() {
-    // Choose once per navigation, not again while waiting for its final frame.
-    if (_reduceMotion || _random.nextInt(4) != 0) {
-      _cancelEffect(rebuild: true);
-      return;
-    }
-    _scheduleEffect();
-  }
-
-  void _scheduleEffect() {
-    if (!mounted || _reduceMotion) return;
-    _cancelEffect(rebuild: true);
-    _pending = true;
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-        _route?.isCurrent == false ||
-        _route?.animation?.isAnimating == true ||
-        _route?.secondaryAnimation?.isAnimating == true) {
-      return;
-    }
-    final generation = _captureGeneration;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_captureRoute(generation));
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
+  void _scheduleCapture() {
+    if (!mounted || !_pending || _snapshot != null || !_canCapture) return;
+    unawaited(_captureRoute(++_captureGeneration));
   }
 
   Future<void> _captureRoute(int generation, {bool retry = true}) async {
@@ -165,9 +149,14 @@ class _NavigationGlitchState extends State<NavigationGlitch>
     try {
       // Shader loading can outlast the first layout. Capture only afterward so
       // the overlay never replays a frame from before the shader was ready.
-      final program = await _program;
+      final program = _shader == null
+          ? await ui.FragmentProgram.fromAsset(_shaderAsset)
+          : null;
+      WidgetsBinding.instance.ensureVisualUpdate();
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || generation != _captureGeneration) return;
+      if (!mounted || generation != _captureGeneration || !_canCapture) {
+        return;
+      }
       final renderObject = _captureBoundaryKey.currentContext
           ?.findRenderObject();
       if (renderObject is! RenderRepaintBoundary) {
@@ -180,7 +169,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
           _maxCapturePixelRatio,
         ),
       );
-      _shader ??= program.fragmentShader();
+      if (program != null) _shader ??= program.fragmentShader();
     } on Object {
       capturedImage?.dispose();
       if (!mounted || generation != _captureGeneration) return;
@@ -237,7 +226,7 @@ class _NavigationGlitchState extends State<NavigationGlitch>
   void dispose() {
     _captureGeneration++;
     WidgetsBinding.instance.removeObserver(this);
-    _unsubscribeFromRoute(widget.routeObserver);
+    _listenToRoutes(add: false);
     _animation.dispose();
     _shader?.dispose();
     _snapshot?.dispose();

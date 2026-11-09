@@ -34,7 +34,7 @@ At normal phone widths, episodes use a two-row scrolling shelf and Library has t
 
 Live lists preserve the visible item when refreshes insert or remove rows above it. Incoming rows wait until an active drag or fling ends, then appear without losing your place. Open row menus and pending actions remain attached to their item. At the top of a list, new items appear normally.
 
-Navigation uses Flutter's platform-adaptive page transitions, including iOS swipe-back. The decorative glitch has a one-in-four chance per navigation, runs after the transition settles, and never intercepts gestures.
+Navigation uses Flutter's platform-adaptive page transitions, including iOS swipe-back. Each screen arrival has an independent one-in-four chance of a decorative glitch, including returning from the full-screen player. The effect waits for both the screen and its enclosing route to settle and never intercepts gestures.
 
 The corner Search button searches the local library. Add podcast searches Apple’s catalog. Manual podcast and feed adds detect the content type, explain a mismatch, and use the correct collection. The Podcasts screen has Episodes and Podcasts tabs; its episode list has New, In progress, and All filters. The Feeds screen has Feed items and Feeds tabs. Full lists load older entries in pages. The Podcasts badge counts new episodes and the Feeds badge counts unread items; both hide at zero. The mini player keeps current playback reachable and restores the most recently played unfinished audio, paused, on launch. This uses saved progress without fetching or starting media.
 
@@ -115,7 +115,7 @@ Live vertical lists use `positioned_sliver_list` for layout-time scroll anchorin
 
 ### Reader
 
-`reader_mode` extracts web articles using a Dart port of Mozilla Readability with its HTML5 parser backend. `flutter_widget_from_html_core` renders sanitized HTML, including tables, nested lists, links, and code blocks. The app supplies typography, safe image loading, and external link handling; it does not implement a second HTML layout engine. The reader uses a sliver list; podcast show notes use the same renderer inside their existing page layout. Scripts, embeds, and publisher styling are removed. Private headers remain restricted to the feed's origin. Unavailable pages fall back to saved or feed content, with retry and browser actions.
+`reader_mode` extracts web articles using a Dart port of Mozilla Readability with its HTML5 parser backend. `flutter_widget_from_html_core` renders sanitized HTML, including tables, nested lists, links, and code blocks. The app supplies typography, safe image loading, and external link handling; it does not implement a second HTML layout engine. The reader uses a sliver list; podcast show notes use the same renderer inside their existing page layout. Scripts, embeds, and publisher styling are removed. Private headers remain restricted to the feed's origin. Hacker News discussion pages show the original self-post rather than the replies; use Refresh reader view to replace an older cached extraction. PDF links open in the browser, as do pages without an extractable article. Failed requests preserve saved or feed content and offer a retry.
 
 ### Time limits
 

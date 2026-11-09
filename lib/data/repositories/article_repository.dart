@@ -14,17 +14,21 @@ import '../database/app_database.dart';
 import '../network/safe_network_client.dart';
 import '../security/private_feed_store.dart';
 
+enum ReaderStatus { content, unavailable, notArticle, pdf }
+
 final class ExtractedArticle {
   const ExtractedArticle({
     required this.html,
     required this.text,
-    this.readerFallback = false,
+    this.status = ReaderStatus.content,
   });
 
   final String html;
   final String text;
-  final bool readerFallback;
+  final ReaderStatus status;
 }
+
+const _htmlAccept = {'Accept': 'text/html, application/xhtml+xml, */*;q=0.1'};
 
 final class PreviewLease {
   PreviewLease(this._release);
@@ -126,17 +130,14 @@ final class ArticleRepository {
         if (pageUrl == null || _previewMisses.contains(pageUrl)) return null;
         final uri = Uri.tryParse(pageUrl);
         if (uri == null) return null;
-        var headers = const <String, String>{};
-        if (secret != null && sameOrigin(uri, secret.url)) {
-          headers = secret.headers;
-        }
         final document = await _network.get(
           uri,
-          headers: headers,
+          headers: _articleHeaders(uri, secret),
           maxBytes: AppConstants.discoveryLimitBytes,
           totalTimeout: AppConstants.interactiveRequestTimeout,
+          readBody: _isHtmlContentType,
         );
-        if (!_isHtmlDocument(document)) {
+        if (!_isHtmlContentType(document.header('content-type'))) {
           _rememberPreviewMiss(article.canonicalUrl!);
           return null;
         }
@@ -206,30 +207,44 @@ final class ArticleRepository {
     }
     final rawUrl = article.canonicalUrl;
     if (rawUrl == null) {
-      return _feedFallback(article, readerFallback: false);
+      return _feedFallback(article, status: ReaderStatus.content);
     }
     late ExtractedArticle extracted;
     try {
       final uri = Uri.parse(rawUrl);
       final feed = await _database.feedById(article.feedId);
-      var headers = const <String, String>{};
-      if (feed?.isPrivate == true) {
-        final secret = await _privateFeeds.read(feed?.credentialRef ?? '');
-        if (secret != null && sameOrigin(uri, secret.url)) {
-          headers = secret.headers;
-        }
-      }
+      final secret = feed?.isPrivate == true
+          ? await _privateFeeds.read(feed?.credentialRef ?? '')
+          : null;
       final document = await _network.get(
         uri,
-        headers: headers,
+        headers: _articleHeaders(uri, secret),
         maxBytes: AppConstants.articleLimitBytes,
+        readBody: _isHtmlContentType,
       );
-      if (!_isHtmlDocument(document)) return await _feedFallback(article);
+      final contentType = document.header('content-type');
+      final mediaType = _mediaType(contentType);
+      if (mediaType == 'application/pdf' ||
+          ((mediaType.isEmpty || mediaType == 'application/octet-stream') &&
+              document.url.path.toLowerCase().endsWith('.pdf')) ||
+          (document.bytes.length >= 5 &&
+              String.fromCharCodes(document.bytes.take(5)) == '%PDF-')) {
+        return await _feedFallback(article, status: ReaderStatus.pdf);
+      }
+      if ((document.statusCode == 202 && document.bytes.isEmpty) ||
+          document.header('cf-mitigated')?.toLowerCase() == 'challenge') {
+        return await _feedFallback(article);
+      }
+      if (!_isHtmlContentType(contentType)) {
+        return await _feedFallback(article, status: ReaderStatus.notArticle);
+      }
       extracted = await compute(_extractArticle, (
         document.text,
         document.url.toString(),
       )).timeout(AppConstants.shortOperationTimeout);
-      if (extracted.text.isEmpty) return await _feedFallback(article);
+      if (extracted.text.isEmpty) {
+        return await _feedFallback(article, status: ReaderStatus.notArticle);
+      }
     } on Object {
       return await _feedFallback(article);
     }
@@ -270,7 +285,7 @@ final class ArticleRepository {
 
   Future<ExtractedArticle> _feedFallback(
     Article article, {
-    bool readerFallback = true,
+    ReaderStatus status = ReaderStatus.unavailable,
   }) async {
     final cached = article.readerHtml?.trim();
     final content = cached?.isNotEmpty == true
@@ -287,7 +302,7 @@ final class ArticleRepository {
     return ExtractedArticle(
       html: fallback.html,
       text: fallback.text,
-      readerFallback: readerFallback,
+      status: status,
     );
   }
 
@@ -301,8 +316,17 @@ ExtractedArticle _sanitizeArticleInput((String, String?) input) {
 }
 
 ExtractedArticle _extractArticle((String, String) input) {
-  final article = reader.parse(input.$1, parser: reader.ParserType.html);
-  return sanitizeArticleHtml(article?.content ?? '', input.$2);
+  final (source, url) = input;
+  final uri = Uri.parse(url);
+  // An HN self-post is the story body, not the table of reader comments.
+  if (uri.host == 'news.ycombinator.com' &&
+      uri.path == '/item' &&
+      int.tryParse(uri.queryParameters['id'] ?? '') != null) {
+    final post = html_parser.parse(source).querySelector('.fatitem .toptext');
+    return sanitizeArticleHtml(post?.innerHtml ?? '', url);
+  }
+  final article = reader.parse(source, parser: reader.ParserType.html);
+  return sanitizeArticleHtml(article?.content ?? '', url);
 }
 
 const _maxRememberedPreviewMisses = 512;
@@ -442,15 +466,17 @@ ExtractedArticle sanitizeArticleHtml(String source, [String? baseUrl]) {
   return ExtractedArticle(html: html, text: text);
 }
 
-bool _isHtmlDocument(NetworkDocument document) {
-  final contentType = document
-      .header('content-type')
-      ?.split(';')
-      .first
-      .trim()
-      .toLowerCase();
-  return contentType == null ||
-      contentType.isEmpty ||
+Map<String, String> _articleHeaders(Uri uri, PrivateFeedSecret? secret) =>
+    secret != null && sameOrigin(uri, secret.url)
+    ? {..._htmlAccept, ...secret.headers}
+    : _htmlAccept;
+
+String _mediaType(String? contentType) =>
+    contentType?.split(';').first.trim().toLowerCase() ?? '';
+
+bool _isHtmlContentType(String? header) {
+  final contentType = _mediaType(header);
+  return contentType.isEmpty ||
       contentType == 'text/html' ||
       contentType == 'application/xhtml+xml';
 }
