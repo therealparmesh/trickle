@@ -166,15 +166,14 @@ void main() {
     () async {
       final article = await _seed(
         database,
-        content:
-            '<a href="https://news.ycombinator.com/item?id=123">Comments</a>',
+        content: '<a href="https://discussion.test/item/123">Comments</a>',
       );
       adapter.body =
           '<html><body><div id="app"></div><script src="/app.js"></script></body></html>';
       final result = await repository.load(article);
       expect(result.status, ReaderStatus.notArticle);
       expect(result.text, 'Comments');
-      expect(result.html, contains('https://news.ycombinator.com/item?id=123'));
+      expect(result.html, contains('https://discussion.test/item/123'));
       expect(
         adapter.requests.single.headers['Accept'],
         startsWith('text/html'),
@@ -182,29 +181,6 @@ void main() {
       expect((await database.articleById(article.id))?.readerFetchedAt, isNull);
     },
   );
-
-  test('HN discussions extract the original post, never the comments', () async {
-    final article = await _seed(
-      database,
-      canonicalUrl: 'https://news.ycombinator.com/item?id=123',
-    );
-    adapter.body = '''
-      <table class="fatitem"><tr><td><div class="toptext">
-        Short original question. <a href="https://example.test/">Reference</a>
-      </div></td></tr></table>
-      <table class="comment-tree"><tr><td><p>Unrelated reply text.</p></td></tr></table>
-    ''';
-    final result = await repository.load(article);
-    expect(result.status, ReaderStatus.content);
-    expect(result.text, 'Short original question. Reference');
-    expect(result.html, isNot(contains('Unrelated reply')));
-    adapter.body =
-        '<table class="comment-tree"><tr><td><p>Unrelated reply text.</p></td></tr></table>';
-    expect(
-      (await repository.load(article, forceRefresh: true)).status,
-      ReaderStatus.notArticle,
-    );
-  });
 
   test(
     'preview discovery still deduplicates requests and stores publisher artwork',
@@ -229,8 +205,7 @@ void main() {
     final article = await _seed(
       database,
       canonicalUrl: url,
-      content:
-          '<a href="https://news.ycombinator.com/item?id=123">Comments</a>',
+      content: '<a href="https://discussion.test/item/123">Comments</a>',
     );
     adapter.contentType = 'application/pdf';
     // The response type must be recognized before applying the HTML size limit.

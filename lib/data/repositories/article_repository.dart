@@ -317,14 +317,6 @@ ExtractedArticle _sanitizeArticleInput((String, String?) input) {
 
 ExtractedArticle _extractArticle((String, String) input) {
   final (source, url) = input;
-  final uri = Uri.parse(url);
-  // An HN self-post is the story body, not the table of reader comments.
-  if (uri.host == 'news.ycombinator.com' &&
-      uri.path == '/item' &&
-      int.tryParse(uri.queryParameters['id'] ?? '') != null) {
-    final post = html_parser.parse(source).querySelector('.fatitem .toptext');
-    return sanitizeArticleHtml(post?.innerHtml ?? '', url);
-  }
   final article = reader.parse(source, parser: reader.ParserType.html);
   return sanitizeArticleHtml(article?.content ?? '', url);
 }

@@ -7,7 +7,7 @@
 - Apple ID: 6792352845
 - Bundle ID: com.parmscript.trickle
 - Version: 1.3.5
-- Build: 69
+- Build: 70
 
 ## Name
 
@@ -101,7 +101,7 @@ The checked-in 1320×2868 iPhone images were recaptured and visually verified ag
 
 ## Version 1.3.5 release notes
 
-PDF links now open the original document. Ask HN posts show the original text without replies. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
+PDF links now open the original document. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
 
 ## Privacy declarations
 

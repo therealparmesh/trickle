@@ -2,13 +2,13 @@
 
 ## What's new
 
-Requires iOS 17 or later. PDF links now open the original document. Ask HN posts show the original text without replies. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
+Requires iOS 17 or later. PDF links now open the original document. Links without a readable article point to the original page. Navigation glitches work across screens, including when you close Now playing.
 
 ## What to test
 
 Please test the combined podcast and feed flow:
 
-- Open a PDF and verify Open PDF launches the original without a retry button. Check that Ask HN shows the original post without replies. Close Now playing and confirm any selected glitch waits for the underlying screen to settle.
+- Open a PDF and verify Open PDF launches the original without a retry button. Close Now playing and confirm any selected glitch waits for the underlying screen to settle.
 - Check spacing above and below Home's section actions, with populated and empty lists and at large text sizes; rows should stay aligned and readable
 - Check artwork in Podcasts, podcast details, and episode lists, including existing subscriptions whose image servers use a generic binary content type
 - Cold-launch trickle, use Library shortcuts to open Podcasts or Feeds, open Search or Settings, and open podcast, feed, and episode details; roughly one in four navigations should use a brief full-surface signal glitch. It must settle cleanly without persistent lines, duplicate controls, state resets, or delayed interaction; retries and background/resume must not reroll the choice
