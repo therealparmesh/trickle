@@ -101,9 +101,9 @@ Settings can import and export standard OPML files. Before importing, choose Pod
 
 You can also share a feed, website, podcast RSS, YouTube, `npub`, or `nprofile` address to trickle from another app. Review or edit the address in Add feed before subscribing.
 
-Articles open in reader view when the page can be downloaded and extracted. Use the text-size menu to adjust the type or refresh the article. Share and Open in browser are in the toolbar. If reader view is unavailable, trickle shows saved or feed content with options to retry or open the website.
+Articles open in reader view when the page can be downloaded and extracted. Use the text-size menu to adjust the type or refresh the article. Share and Open in browser are in the toolbar. PDF links offer Open PDF, and links without an extractable article can be opened on the original site. A failed request preserves any saved or feed text and offers a retry.
 
-Saving an article keeps its available text for offline use. Articles downloaded by the current reader open from its local cache; Refresh reader view fetches a new copy. After upgrading from the old reader, reopen saved articles while online to cache them again. Publisher-hosted images and video still require a connection unless already cached.
+Saving an article keeps its available text for offline use. If a saved article only has feed text, reopen it online to download the readable page. Refresh reader view fetches a new copy of the article. Publisher-hosted images and video still require a connection unless already cached.
 
 The local ZIP backup includes subscriptions, Nostr profiles, articles, playback and reading state, queues, bookmarks, and settings. It does not include separate authorization headers, passwords, or downloaded media.
 
