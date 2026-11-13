@@ -32,7 +32,6 @@ import 'package:trickle/presentation/pages/feed_detail_page.dart';
 import 'package:trickle/presentation/pages/home_page.dart';
 import 'package:trickle/presentation/pages/player_page.dart';
 import 'package:trickle/presentation/pages/podcasts_page.dart';
-import 'package:trickle/presentation/subscription_actions.dart';
 import 'package:trickle/presentation/pages/queue_page.dart';
 import 'package:trickle/presentation/pages/reader_page.dart';
 import 'package:trickle/presentation/widgets/common.dart';
@@ -42,6 +41,8 @@ import 'package:trickle/presentation/widgets/content_tiles.dart';
 import 'package:trickle/presentation/widgets/design_system.dart';
 import 'package:trickle/presentation/widgets/episode_playback_button.dart';
 import 'package:trickle/presentation/widgets/navigation_glitch.dart';
+
+import 'support/playback_harness.dart';
 
 void main() {
   setUpAll(() async {
@@ -113,37 +114,6 @@ void main() {
     );
   });
 
-  test('subscription cleanup starts only after deletion commits', () async {
-    final events = <String>[];
-
-    await deleteSubscriptionThenCleanup(
-      deleteSubscription: () async => events.add('commit'),
-      cleanupOperations: [
-        () async {
-          events.add('playback cleanup');
-          throw StateError('cleanup failed');
-        },
-        () async => events.add('download cleanup'),
-      ],
-    );
-
-    expect(events, ['commit', 'playback cleanup', 'download cleanup']);
-  });
-
-  test('failed subscription deletion preserves external state', () async {
-    var cleaned = false;
-
-    await expectLater(
-      deleteSubscriptionThenCleanup(
-        deleteSubscription: () => Future<void>.error(StateError('rejected')),
-        cleanupOperations: [() async => cleaned = true],
-      ),
-      throwsStateError,
-    );
-
-    expect(cleaned, isFalse);
-  });
-
   testWidgets('buffering playback keeps Pause available', (tester) async {
     final episode = Episode(
       id: 'episode',
@@ -155,6 +125,7 @@ void main() {
       played: false,
       starred: false,
       automationApplied: false,
+      queueAutomationApplied: false,
     );
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(
@@ -677,6 +648,7 @@ void main() {
         played: false,
         starred: false,
         automationApplied: false,
+        queueAutomationApplied: false,
       ),
     );
     final readerFeed = feed.copyWith(
@@ -998,6 +970,7 @@ void main() {
       played: false,
       starred: false,
       automationApplied: false,
+      queueAutomationApplied: false,
     );
     final article = Article(
       id: 'article',
@@ -1396,6 +1369,34 @@ void main() {
     expect(find.text('News · 1 unread'), findsOneWidget);
     await tester.tap(find.text('Science · 2 unread'));
     await tester.pumpAndSettle();
+
+    final markCategory = find.widgetWithText(TextButton, 'Mark category read');
+    expect(markCategory, findsOneWidget);
+    await tester.enterText(find.byType(EditableText).first, 'science-one');
+    await tester.pump();
+    expect(markCategory, findsNothing);
+    await tester.pump(AppConstants.localSearchDebounce);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ArticleTile, 'science-one'), findsOneWidget);
+    expect(find.text('science-two'), findsNothing);
+    expect(markCategory, findsNothing);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump(AppConstants.localSearchDebounce);
+    await tester.pumpAndSettle();
+    expect(markCategory, findsOneWidget);
+    await tester.tap(markCategory);
+    await tester.pumpAndSettle();
+    expect(find.text('Marking read…'), findsNothing);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Science · 2 unread'), findsOneWidget);
+    await tester.tap(markCategory);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Mark category read'));
+    await tester.pumpAndSettle();
+    expect((await database.articleById('science-one'))?.readAt, isNotNull);
+    expect((await database.articleById('science-two'))?.readAt, isNotNull);
+    expect((await database.articleById('news-one'))?.readAt, isNull);
 
     await tester.tap(find.widgetWithText(Tab, 'Feeds'));
     await tester.pumpAndSettle();
@@ -2337,6 +2338,107 @@ void main() {
     expect(find.text('Nothing is Up next'), findsNothing);
   });
 
+  testWidgets('Up next cancels a drag when the queue changes underneath it', (
+    tester,
+  ) async {
+    final (harness, current, selected, other) = (await tester.runAsync(
+      () async {
+        final harness = createPlaybackHarness();
+        addTearDown(() => disposePlaybackHarness(harness));
+        final (current, selected, other) = await seedPlaybackQueue(harness);
+        return (harness, current, selected, other);
+      },
+    ))!;
+    final handler = harness.handler;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          audioHandlerProvider.overrideWithValue(handler),
+          queuedEpisodesProvider.overrideWith((_) => Stream.value(const {})),
+        ],
+        child: MaterialApp(theme: TrickleTheme.dark, home: const QueuePage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final row = find.byKey(ValueKey(selected.id));
+    final handle = find
+        .descendant(
+          of: row,
+          matching: find.byType(ReorderableDragStartListener),
+        )
+        .last;
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await gesture.moveBy(const Offset(0, 105));
+    await tester.pump();
+
+    // Changing order without changing the item count does not cancel Flutter's
+    // drag automatically.
+    await tester.runAsync(
+      () => handler.updateQueue([other, current, selected]),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(handler.queue.value.map((item) => item.id), [
+      other.id,
+      current.id,
+      selected.id,
+    ]);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('Up next keeps a swiped row when a backup blocks its removal', (
+    tester,
+  ) async {
+    final (harness, selected, finish, restore) = (await tester.runAsync(
+      () async {
+        final harness = createPlaybackHarness();
+        addTearDown(() => disposePlaybackHarness(harness));
+        final entered = Completer<void>();
+        final finish = Completer<void>();
+        final (_, item, _) = await seedPlaybackQueue(harness);
+        final restore = harness.handler.restoreLibrary(() async {
+          entered.complete();
+          await finish.future;
+        });
+        await entered.future;
+        return (harness, item, finish, restore);
+      },
+    ))!;
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            audioHandlerProvider.overrideWithValue(harness.handler),
+            databaseProvider.overrideWithValue(harness.database),
+            queuedEpisodesProvider.overrideWith((_) => Stream.value(const {})),
+          ],
+          child: MaterialApp(theme: TrickleTheme.dark, home: const QueuePage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(ValueKey(selected.id));
+      await tester.drag(row, const Offset(-550, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Wait for the backup to finish restoring.'),
+        findsOneWidget,
+      );
+      expect(row, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(() async {
+        finish.complete();
+        await restore;
+      });
+    }
+  });
+
   testWidgets('explicit badge leads a truncated title', (tester) async {
     const title =
         'A deliberately long episode title that cannot fit on one narrow line';
@@ -2805,6 +2907,7 @@ void main() {
       played: false,
       starred: false,
       automationApplied: false,
+      queueAutomationApplied: false,
     );
     final progress = PlaybackProgressesData(
       episodeId: episode.id,

@@ -49,17 +49,19 @@ Choose an existing category or enter a new one while adding a feed. To change it
 
 To move several feeds at once, open the Feeds tab and choose Organize feeds. Rename changes every feed in a category; renaming to an existing category asks before merging them.
 
-The Feed items tab can show one category at a time, with unread counts in the category picker. Search, filter, sort, or mark the selected category read from the same screen.
+The Feed items tab can show one category at a time, with unread counts in the category picker. Clear your search to mark the whole category read from the Unread view.
 
 ### Playback
 
 Confirm the device is online and the publisher's media URL is still available. Retry the episode after changing networks.
 
-Episodes are marked New until they have saved listening progress, In progress while unfinished, and Played after completion or Mark played. Position is saved every 15 seconds and when playback is paused, changed, or closed. The last unfinished audio returns paused in the footer when you reopen trickle. Clearing Up next keeps it available to resume; removing it from your library removes it from the player.
+Episodes are marked New until they have saved listening progress, In progress while unfinished, and Played after completion or Mark played. Replaying a finished episode puts it back In progress once you have a saved position to resume from. Position is saved every 15 seconds and when playback is paused, changed, or closed. The last unfinished audio returns paused in the footer when you reopen trickle. Clearing Up next keeps it available to resume; removing it from your library removes it from the player.
+
+After a system interruption, audio can resume if the system allows it and you haven't paused it or switched to something else. Unplugging headphones pauses playback until you press Play again.
 
 Open Podcasts, choose Episodes, then In progress to find unfinished episodes, including those kept after unsubscribing. Removing an unsaved video item also closes its player; saved items remain available after unsubscribing.
 
-If a completed download is missing or unusable, trickle falls back to the publisher's stream while the device is online.
+If a completed download is missing or unusable, trickle tries the publisher's stream. Use Retry download to get a new offline copy.
 
 If the operating system stops an episode that was still playing, trickle tries once to restore the audio session and continue. If it still cannot play, the player leaves the loading state and shows Retry.
 
@@ -93,23 +95,27 @@ Open Transcript in Now playing. Search works for every supplied transcript. Time
 
 ### Storage
 
-Open Downloads to see the number of downloads and their stored size. Its menu can remove played downloads or all downloads. Played downloads marked Keep are excluded from the played-only cleanup. Automatic cleanup timing remains in Settings.
+Open Downloads to see the number of downloads and their stored size. Its menu can remove played downloads or all downloads. Downloads marked Keep are excluded from played-only and automatic cleanup. If you manually download an episode you already played, trickle keeps it by default. Choose Allow automatic removal to let the cleanup timing in Settings apply again.
 
 ## Backup and migration
 
 Settings can import and export standard OPML files. Before importing, choose Podcasts, Feeds, or Mixed subscriptions. Use Podcasts for a podcast-player export; mixed files use saved types when available and detect the rest. Export offers podcasts, feeds, or all compatible subscriptions. trickle exports preserve subscription types and store feed categories as OPML folders. Portable URLs with embedded tokens are included; feeds that require separate authorization headers are skipped. Nostr profiles are stored only in trickle backups because OPML does not support them.
 
-You can also share a feed, website, podcast RSS, YouTube, `npub`, or `nprofile` address to trickle from another app. Review or edit the address in Add feed before subscribing.
+You can also share a feed, website, podcast RSS, YouTube, `npub`, or `nprofile` address to trickle from another app. On iOS, open trickle after sharing. Review or edit the address in Add feed before subscribing.
+
+If a public feed permanently moves, refreshing it can update the address without losing saved items or listening progress. A backup of the same subscription won’t roll back a newer address. trickle keeps private and temporary addresses unchanged and doesn’t combine two existing subscriptions automatically.
 
 Articles open in reader view when the page can be downloaded and extracted. Use the text-size menu to adjust the type or refresh the article. Share and Open in browser are in the toolbar. PDF links offer Open PDF, and links without an extractable article can be opened on the original site. A failed request preserves any saved or feed text and offers a retry.
 
-Saving an article keeps its available text for offline use. If a saved article only has feed text, reopen it online to download the readable page. Refresh reader view fetches a new copy of the article. Publisher-hosted images and video still require a connection unless already cached.
+Saving an article bookmarks it immediately. When you save from a list, trickle tries to cache the readable page in the background. If a saved article only has feed text, reopen it online to download the readable page. Refresh reader view fetches a new copy of the article. Publisher-hosted images and video still require a connection unless already cached.
 
 The local ZIP backup includes subscriptions, Nostr profiles, articles, playback and reading state, queues, bookmarks, and settings. It does not include separate authorization headers, passwords, or downloaded media.
 
 New backups support up to 2 GiB of expanded data and are split into smaller chunks to keep large libraries manageable. Backups from older versions are still supported, with their original 50 MiB expanded-data limit. If an older backup exceeds that limit, export a new one from an updated copy of trickle. Keep the ZIP intact; removing a chunk makes it incomplete.
 
-Restore accepts only trickle ZIP backups. An invalid or unsupported archive is rejected without changing existing data. Canceling the picker makes no changes. If a restore is already running, tapping Restore local backup again rejoins that operation instead of opening another picker or applying the backup twice.
+Restore accepts only trickle ZIP backups and merges them into your library. While the backup is applied, podcast playback pauses and Up next edits wait until the queue reloads. Restored episodes are appended after existing Up next entries, including episodes added in the background. An old queue entry is skipped if the episode was marked played more recently on this device and is no longer queued. Restore keeps the more recent playback progress and settings, and keeps the read or unread status of articles already on this device. Saved items and bookmarks merge without duplicates. Offline article text from the backup is used only if the article’s link still matches. An invalid or unsupported archive is rejected without changing existing data. Canceling the picker makes no changes. If a restore is already running, tapping Restore local backup again rejoins that operation.
+
+If a newer local unsubscribe is still recorded, an older backup won’t refill that feed with untouched items. Saved articles and episodes with listening, queue, or bookmark state can still be restored. Private feeds that can be opened with just their URL restore with private access on a new device. Keep any backup that includes those URLs somewhere safe. Backups don’t carry separate passwords or authorization headers.
 
 ## Project
 

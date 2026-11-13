@@ -9,13 +9,15 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../data/database/app_database.dart';
 import '../core/constants.dart';
 import '../core/errors.dart';
 import '../core/feed_category.dart';
 import '../core/feed_identity.dart';
 import '../core/formatters.dart';
 import '../core/nostr_identifier.dart';
+import '../core/url_identity.dart';
+import '../data/database/app_database.dart';
+import '../data/nostr/nostr_event.dart';
 import '../data/security/private_feed_store.dart';
 import 'backup_archive.dart';
 
@@ -35,14 +37,17 @@ final class BackupService {
     this._database, {
     PrivateFeedStore? privateFeeds,
     Future<XFile?> Function()? pickFile,
+    Future<void> Function(Future<void> Function())? applyRestore,
     Future<void> Function()? onImported,
   }) : _privateFeeds = privateFeeds,
        _pickFile = pickFile ?? _pickBackupFile,
+       _applyRestore = applyRestore,
        _onImported = onImported;
 
   final AppDatabase _database;
   final PrivateFeedStore? _privateFeeds;
   final Future<XFile?> Function() _pickFile;
+  final Future<void> Function(Future<void> Function())? _applyRestore;
   final Future<void> Function()? _onImported;
   Future<BackupResult?>? _activeImport;
 
@@ -79,13 +84,10 @@ final class BackupService {
   Future<void> _exportRecords(BackupArchive archive) async {
     final portableFeeds = await _portableFeeds();
     final feedIds = portableFeeds.map((feed) => feed.id).toSet();
-    final privateFeedIds =
-        (await (_database.selectOnly(_database.feeds)
-                  ..addColumns([_database.feeds.id])
-                  ..where(_database.feeds.isPrivate.equals(true)))
-                .get())
-            .map((row) => row.read(_database.feeds.id)!)
-            .toSet();
+    final privateFeedIds = portableFeeds
+        .where((feed) => feed.isPrivate)
+        .map((feed) => feed.id)
+        .toSet();
     final episodeIds = <String>{};
     final articleIds = <String>{};
     Stream<Map<String, Object?>> episodes() async* {
@@ -98,7 +100,7 @@ final class BackupService {
           episode = episode.copyWith(enclosureUrl: url);
         }
         episodeIds.add(episode.id);
-        yield episode.toJson();
+        yield episode.toJson()..remove('refreshId');
       }
     }
 
@@ -106,13 +108,23 @@ final class BackupService {
       await for (final article in _rows(_database.articles)) {
         if (!feedIds.contains(article.feedId)) continue;
         articleIds.add(article.id);
-        yield article.toJson();
+        yield article.toJson()..remove('refreshId');
       }
     }
 
     await archive.write(
       'feeds',
-      Stream.fromIterable(portableFeeds.map((row) => row.toJson())),
+      Stream.fromIterable(
+        portableFeeds.map((feed) {
+          final json = feed.toJson();
+          if (feed.isPrivate) {
+            // Older versions can still import the portable URL.
+            json['isPrivate'] = false;
+            json['portablePrivate'] = true;
+          }
+          return json;
+        }),
+      ),
     );
     await archive.write('episodes', episodes());
     await archive.write('articles', articles());
@@ -122,17 +134,29 @@ final class BackupService {
           .where((item) => episodeIds.contains(item.episodeId))
           .map((row) => row.toJson()),
     );
-    // Queue order is independent of insertion order after a restore or reorder.
+    // Preserve the visible order, then append background additions not merged yet.
     final queue = await (_database.select(
       _database.queueEntries,
     )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
+    final queuedIds = queue.map((item) => item.episodeId).toSet();
+    final staged = await (_database.select(
+      _database.pendingQueueAdds,
+    )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
     await archive.write(
       'queue',
-      Stream.fromIterable(
-        queue
-            .where((item) => episodeIds.contains(item.episodeId))
-            .map((row) => row.toJson()),
-      ),
+      Stream.fromIterable(<QueueEntry>[
+        for (final item in queue)
+          if (episodeIds.contains(item.episodeId)) item,
+        for (final item in staged)
+          if (!queuedIds.contains(item.episodeId) &&
+              episodeIds.contains(item.episodeId))
+            QueueEntry(
+              id: stableContentId('queue', item.episodeId),
+              episodeId: item.episodeId,
+              sortKey: item.sortKey,
+              addedAt: item.addedAt,
+            ),
+      ]).map((item) => item.toJson()),
     );
     await archive.write(
       'bookmarks',
@@ -206,8 +230,16 @@ final class BackupService {
       throw const BackupException('Couldn’t open the file picker.');
     }
     if (picked == null) return null;
+    final int size;
+    try {
+      size = await picked.length();
+    } on Object {
+      throw const BackupException('Couldn’t read that backup file.');
+    }
+    if (size > BackupArchive.maxFileBytes) {
+      throw const BackupException('Backup exceeds the 2 GiB size limit.');
+    }
     final temporary = await Directory.systemTemp.createTemp('trickle-import-');
-    late BackupResult result;
     try {
       final file = File(p.join(temporary.path, 'backup.zip'));
       try {
@@ -215,18 +247,10 @@ final class BackupService {
       } catch (_) {
         throw const BackupException('Couldn’t read that backup file.');
       }
-      result = await importFile(file);
+      return await importFile(file);
     } finally {
       await temporary.delete(recursive: true);
     }
-    try {
-      await _onImported?.call();
-    } on Object {
-      throw const BackupException(
-        'Backup restored, but playback state couldn’t reload. Restart trickle to finish.',
-      );
-    }
-    return result;
   }
 
   Future<BackupResult> importFile(File file) async {
@@ -244,6 +268,7 @@ final class BackupService {
 
   Future<BackupResult> _importRecords(BackupArchive archive) async {
     final acceptedFeeds = <String, String>{};
+    final olderSubscribedFeeds = <String>{};
     final feedTitles = <String, String>{};
     final feedKinds = <String, FeedKind>{};
     final feedProtocols = <String, FeedProtocol>{};
@@ -264,23 +289,6 @@ final class BackupService {
       } on Object {
         // Invalid child records are ignored without rejecting usable content.
       }
-    }
-    final existingQueue = await (_database.select(
-      _database.queueEntries,
-    )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
-    final existingQueueIds = {
-      for (final entry in existingQueue) entry.episodeId: entry.id,
-    };
-    final existingFeeds = await _database.select(_database.feeds).get();
-    final existingFeedsById = {for (final feed in existingFeeds) feed.id: feed};
-    final existingFeedsByUrl = {
-      for (final feed in existingFeeds) feed.feedUrl: feed,
-    };
-    final existingNostrFeedsByKey = <String, Feed>{};
-    for (final profile
-        in await _database.select(_database.nostrProfiles).get()) {
-      final feed = existingFeedsById[profile.feedId];
-      if (feed != null) existingNostrFeedsByKey[profile.publicKey] = feed;
     }
     final backupFeedsWithEpisodes = <String>{};
     final nostrAudioIds = <String>{};
@@ -314,11 +322,43 @@ final class BackupService {
         }
       }
     }
-    var nextQueueSortKey = existingQueue.isEmpty
-        ? 0
-        : existingQueue.last.sortKey + 1024;
-    await _database.transaction(() async {
+    final privateStore = _privateFeeds;
+    final newPrivateCredentials = <String>{};
+    final newPrivateMedia = <String>{};
+    Future<void> restore() async {
+      await _database.mergePendingQueueAdditions();
+      final existingQueue = await (_database.select(
+        _database.queueEntries,
+      )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
+      final existingQueueIds = existingQueue
+          .map((entry) => entry.episodeId)
+          .toSet();
+      var nextQueueSortKey = existingQueue.isEmpty
+          ? 0
+          : existingQueue.last.sortKey + 1024;
+      final existingFeeds = await _database.select(_database.feeds).get();
+      final existingFeedsById = {
+        for (final feed in existingFeeds) feed.id: feed,
+      };
+      final existingFeedsByUrl = {
+        for (final feed in existingFeeds) feedUrlIdentity(feed.feedUrl): feed,
+      };
+      if (privateStore != null) {
+        for (final feed in existingFeeds) {
+          final url = await _portablePrivateFeedUrl(feed, privateStore);
+          if (url != null) {
+            existingFeedsByUrl.putIfAbsent(feedUrlIdentity(url), () => feed);
+          }
+        }
+      }
+      final existingNostrFeedsByKey = <String, Feed>{};
+      for (final profile
+          in await _database.select(_database.nostrProfiles).get()) {
+        final feed = existingFeedsById[profile.feedId];
+        if (feed != null) existingNostrFeedsByKey[profile.publicKey] = feed;
+      }
       final searchItems = <SearchIndexEntry>[];
+      final retainedNostrFeeds = <String>{};
       Future<void> index(SearchIndexEntry item) async {
         searchItems.add(item);
         if (searchItems.length >= 100) {
@@ -356,70 +396,201 @@ final class BackupService {
             feed.kind > 2) {
           continue;
         }
+        final identity = feedUrlIdentity(feed.feedUrl);
         final sameUrl =
-            (importedNostrKey == null
-                ? null
-                : existingNostrFeedsByKey[importedNostrKey]) ??
-            existingFeedsByUrl[feed.feedUrl];
+            (addressKey == null ? null : existingNostrFeedsByKey[addressKey]) ??
+            existingFeedsByUrl[identity];
         final idCollision = existingFeedsById[feed.id];
-        final actualFeedId =
-            sameUrl?.id ??
-            (idCollision == null
-                ? feed.id
-                : stableContentId('feed', feed.feedUrl));
         final importedKind = feed.kind == 2
             ? (backupFeedsWithEpisodes.contains(feed.id)
                   ? FeedKind.podcast
                   : FeedKind.reader)
             : FeedKind.values[feed.kind];
-        final existingKind = sameUrl?.kind;
+        // Public redirects preserve the ID and creation time. Match that
+        // record before looking up an old URL that another feed may now use.
+        final samePublicFeed =
+            idCollision != null &&
+            protocol == FeedProtocol.syndication &&
+            idCollision.protocol == protocol.index &&
+            idCollision.kind == importedKind.index &&
+            idCollision.createdAt.isAtSameMomentAs(feed.createdAt) &&
+            !idCollision.isPrivate &&
+            json['portablePrivate'] != true &&
+            !url!.hasQuery &&
+            Uri.tryParse(idCollision.feedUrl)?.hasQuery == false;
+        final existing = samePublicFeed ? idCollision : sameUrl;
+        final actualFeedId =
+            existing?.id ??
+            (idCollision == null ? feed.id : stableContentId('feed', identity));
+        final existingKind = existing?.kind;
         final kind =
             existingKind != null &&
                 existingKind >= 0 &&
                 existingKind < FeedKind.values.length
             ? FeedKind.values[existingKind]
             : importedKind;
-        final sanitized = feed.copyWith(
+        final latest =
+            existing != null && !feed.updatedAt.isAfter(existing.updatedAt)
+            ? existing
+            : feed;
+        if (feed.subscribed && !latest.subscribed) {
+          olderSubscribedFeeds.add(feed.id);
+        }
+        if (addressKey != null && identical(latest, existing)) {
+          retainedNostrFeeds.add(actualFeedId);
+        }
+        final restorePrivate =
+            existing == null &&
+            protocol == FeedProtocol.syndication &&
+            (json['portablePrivate'] == true ||
+                feedUrlMayContainCredentials(url!));
+        var credentialRef = existing?.credentialRef;
+        if (restorePrivate) {
+          if (privateStore == null) {
+            throw const BackupException(
+              'Couldn’t restore private feed access.',
+            );
+          }
+          credentialRef = await privateStore.save(
+            PrivateFeedSecret(url: Uri.parse(identity), headers: const {}),
+          );
+          newPrivateCredentials.add(credentialRef);
+        }
+        final useImportedAddress =
+            samePublicFeed &&
+            identical(latest, feed) &&
+            (sameUrl == null || sameUrl.id == actualFeedId);
+        final storedUrl = restorePrivate
+            ? 'private://$credentialRef'
+            : useImportedAddress
+            ? identity
+            : existing?.feedUrl ?? identity;
+        final keepRefreshState =
+            !samePublicFeed || storedUrl == feedUrlIdentity(latest.feedUrl);
+        final sanitized = latest.copyWith(
           id: actualFeedId,
+          feedUrl: storedUrl,
           kind: kind.index,
           protocol: protocol.index,
           category: Value(
             kind == FeedKind.reader
-                ? normalizeFeedCategory(feed.category)
+                ? normalizeFeedCategory(latest.category)
                 : null,
           ),
-          isPrivate: false,
-          credentialRef: const Value(null),
-          siteUrl: Value(_https(feed.siteUrl)),
-          imageUrl: Value(_https(feed.imageUrl)),
-          autoDownloadLimit: feed.autoDownloadLimit.clamp(1, 10),
-          introSkipMs: feed.introSkipMs.clamp(0, 600000),
-          outroSkipMs: feed.outroSkipMs.clamp(0, 600000),
+          isPrivate: restorePrivate || existing?.isPrivate == true,
+          credentialRef: Value(credentialRef),
+          etag: Value(keepRefreshState ? latest.etag : null),
+          lastModified: Value(keepRefreshState ? latest.lastModified : null),
+          lastRefresh: Value(keepRefreshState ? latest.lastRefresh : null),
+          refreshError: Value(keepRefreshState ? latest.refreshError : null),
+          siteUrl: Value(_https(latest.siteUrl)),
+          imageUrl: Value(_https(latest.imageUrl)),
+          autoDownloadLimit: latest.autoDownloadLimit.clamp(1, 10),
+          introSkipMs: latest.introSkipMs.clamp(0, 600000),
+          outroSkipMs: latest.outroSkipMs.clamp(0, 600000),
         );
         await _database.into(_database.feeds).insertOnConflictUpdate(sanitized);
         existingFeedsById[actualFeedId] = sanitized;
-        existingFeedsByUrl[feed.feedUrl] = sanitized;
-        if (importedNostrKey != null) {
-          existingNostrFeedsByKey[importedNostrKey] = sanitized;
+        if (useImportedAddress && existing!.feedUrl != storedUrl) {
+          existingFeedsByUrl.remove(feedUrlIdentity(existing.feedUrl));
+        }
+        existingFeedsByUrl[sanitized.isPrivate
+                ? identity
+                : feedUrlIdentity(storedUrl)] =
+            sanitized;
+        if (addressKey != null) {
+          existingNostrFeedsByKey[addressKey] = sanitized;
         }
         acceptedFeeds[feed.id] = actualFeedId;
-        feedTitles[actualFeedId] = feed.title;
+        feedTitles[actualFeedId] = sanitized.title;
         feedKinds[actualFeedId] = kind;
         feedProtocols[actualFeedId] = protocol;
-        await index(
-          SearchIndexEntry(
-            entityId: actualFeedId,
-            kind: 'feed',
-            title: feed.title,
-            body: '${feed.author ?? ''} ${plainText(feed.description)}',
-            feedTitle: feed.title,
-          ),
-        );
+        if (sanitized.subscribed) {
+          await index(
+            SearchIndexEntry(
+              entityId: actualFeedId,
+              kind: 'feed',
+              title: sanitized.title,
+              body:
+                  '${sanitized.author ?? ''} ${plainText(sanitized.description)}',
+              feedTitle: sanitized.title,
+            ),
+          );
+        } else {
+          await _database.customStatement(
+            "DELETE FROM search_documents WHERE kind = 'feed' AND entity_id = ?",
+            [actualFeedId],
+          );
+        }
       }
+      final nostrDeletions = <String, Map<String, DateTime>>{};
+      final nostrFeedIds = [
+        for (final entry in feedProtocols.entries)
+          if (entry.value == FeedProtocol.nostr) entry.key,
+      ];
+      final deletions = _database.nostrDeletions;
+      for (
+        var start = 0;
+        start < nostrFeedIds.length;
+        start += AppDatabase.safeVariableBatchSize
+      ) {
+        final end = (start + AppDatabase.safeVariableBatchSize).clamp(
+          0,
+          nostrFeedIds.length,
+        );
+        final rows =
+            await (_database.select(deletions)..where(
+                  (row) => row.feedId.isIn(nostrFeedIds.sublist(start, end)),
+                ))
+                .get();
+        for (final row in rows) {
+          nostrDeletions.putIfAbsent(row.feedId, () => {})[row.target] =
+              row.deletedAt;
+        }
+      }
+      bool wasDeleted(String feedId, Article article) {
+        final deletions = nostrDeletions[feedId];
+        return deletions != null &&
+            isNostrPostDeleted(
+              deletions,
+              eventId: article.sourceEventId,
+              address: article.sourceAddress,
+              publishedAt: article.publishedAt,
+            );
+      }
+
+      final otherRevisionArticles = <String>{};
+      final retainedEpisodeIds = <String>{};
+      if (olderSubscribedFeeds.isNotEmpty) {
+        await for (final json in archive.records('progress')) {
+          final position = json['positionMs'];
+          final id = json['episodeId'];
+          if (position is int && position > 0 && id is String) {
+            retainedEpisodeIds.add(id);
+          }
+        }
+        await for (final json in archive.records('queue')) {
+          if (json['episodeId'] case final String id) {
+            retainedEpisodeIds.add(id);
+          }
+        }
+        await for (final json in archive.records('bookmarks')) {
+          final position = json['positionMs'];
+          final id = json['episodeId'];
+          if (position is int &&
+              position >= 0 &&
+              position <= _maxMediaDurationMs &&
+              id is String) {
+            retainedEpisodeIds.add(id);
+          }
+        }
+      }
+
       await for (final json in archive.records('episodes')) {
         var episode = Episode.fromJson({
           ...json,
           'automationApplied': json['automationApplied'] ?? false,
+          'queueAutomationApplied': json['queueAutomationApplied'] ?? false,
         });
         final enclosure = Uri.tryParse(episode.enclosureUrl);
         final actualFeedId = acceptedFeeds[episode.feedId];
@@ -449,6 +620,7 @@ final class BackupService {
             });
             final mediaUrl = _https(attachment.url);
             if (article.feedId == episode.feedId && mediaUrl != null) {
+              if (wasDeleted(actualFeedId, article)) continue;
               var articleIds = articleIdentities[actualFeedId];
               if (articleIds == null) {
                 articleIds = await _existingArticleIdentities(actualFeedId);
@@ -463,36 +635,81 @@ final class BackupService {
                 actualArticleId,
                 '${attachment.position.clamp(0, 1000)}:$mediaUrl',
               );
+              final articles = _database.articles;
+              final revision =
+                  await (_database.selectOnly(articles)
+                        ..addColumns([articles.sourceEventId])
+                        ..where(articles.id.equals(actualArticleId)))
+                      .getSingleOrNull();
+              if (revision != null &&
+                  revision.read(articles.sourceEventId) !=
+                      article.sourceEventId) {
+                final attachments = _database.articleAttachments;
+                final currentAttachment =
+                    await (_database.selectOnly(attachments)
+                          ..addColumns([attachments.id])
+                          ..where(attachments.id.equals(linkedAttachmentId)))
+                        .getSingleOrNull();
+                if (currentAttachment == null) continue;
+              }
               episode = episode.copyWith(
                 guid: Value('nostr-media:$actualArticleId'),
               );
             }
           }
         }
+        final private =
+            privateStore != null &&
+            existingFeedsById[actualFeedId]?.isPrivate == true;
         var identities = episodeIdentities[actualFeedId];
         if (identities == null) {
           final existing = await _database
               .customSelect(
                 'SELECT id,feed_id,guid,title,enclosure_url,published_at,discovered_at,'
-                'explicit,played,starred,automation_applied FROM episodes WHERE feed_id = ?',
+                'explicit,played,starred,automation_applied,queue_automation_applied '
+                'FROM episodes WHERE feed_id = ?',
                 variables: [Variable(actualFeedId)],
               )
               .asyncMap(_database.episodes.mapFromRow)
               .get();
-          identities = {
-            for (final item in existing) _episodeIdentity(item): item.id,
-          };
+          identities = {};
+          for (var item in existing) {
+            if (private && (item.guid?.trim().isEmpty ?? true)) {
+              final media = await privateStore.readMediaUrl(item.id);
+              if (media != null) {
+                item = item.copyWith(enclosureUrl: media.toString());
+              }
+            }
+            final identity = _episodeIdentity(item);
+            if (!identities.containsKey(identity) ||
+                item.id == stableContentId(actualFeedId, identity)) {
+              identities[identity] = item.id;
+            }
+          }
           episodeIdentities[actualFeedId] = identities;
         }
         final identity = _episodeIdentity(episode);
+        if (olderSubscribedFeeds.contains(episode.feedId) &&
+            !episode.starred &&
+            !retainedEpisodeIds.contains(episode.id) &&
+            !identities.containsKey(identity)) {
+          continue;
+        }
         final actualEpisodeId =
             linkedAttachmentId ??
             identities[identity] ??
             stableContentId(actualFeedId, identity);
         identities[identity] = actualEpisodeId;
+        if (private &&
+            await privateStore.readMediaUrl(actualEpisodeId) == null) {
+          newPrivateMedia.add(actualEpisodeId);
+          await privateStore.saveMediaUrl(actualEpisodeId, enclosure);
+        }
         final sanitized = episode.copyWith(
           id: actualEpisodeId,
           feedId: actualFeedId,
+          refreshId: const Value(null),
+          enclosureUrl: private ? 'private-media://$actualEpisodeId' : null,
           imageUrl: Value(_https(episode.imageUrl)),
           chaptersUrl: Value(_https(episode.chaptersUrl)),
           fileSize: Value(
@@ -508,16 +725,28 @@ final class BackupService {
                 : null,
           ),
         );
-        await _database
+        final merged = await _database
             .into(_database.episodes)
-            .insertOnConflictUpdate(sanitized);
+            .insertReturning(
+              sanitized,
+              onConflict: DoUpdate.withExcluded(
+                (old, incoming) => EpisodesCompanion.custom(
+                  starred: old.starred | incoming.starred,
+                  automationApplied:
+                      old.automationApplied | incoming.automationApplied,
+                  queueAutomationApplied:
+                      old.queueAutomationApplied |
+                      incoming.queueAutomationApplied,
+                ),
+              ),
+            );
         acceptedEpisodes[episode.id] = actualEpisodeId;
         await index(
           SearchIndexEntry(
             entityId: actualEpisodeId,
             kind: 'episode',
-            title: episode.title,
-            body: plainText(episode.description),
+            title: merged.title,
+            body: plainText(merged.description),
             feedTitle: feedTitles[actualFeedId] ?? '',
           ),
         );
@@ -531,7 +760,8 @@ final class BackupService {
         });
         final actualFeedId = acceptedFeeds[article.feedId];
         if (actualFeedId == null ||
-            feedKinds[actualFeedId] != FeedKind.reader) {
+            feedKinds[actualFeedId] != FeedKind.reader ||
+            wasDeleted(actualFeedId, article)) {
           continue;
         }
         var identities = articleIdentities[actualFeedId];
@@ -540,12 +770,18 @@ final class BackupService {
           articleIdentities[actualFeedId] = identities;
         }
         final identity = _articleIdentity(article);
+        if (olderSubscribedFeeds.contains(article.feedId) &&
+            !article.starred &&
+            !identities.containsKey(identity)) {
+          continue;
+        }
         final actualArticleId =
             identities[identity] ?? stableContentId(actualFeedId, identity);
         identities[identity] = actualArticleId;
         final sanitized = article.copyWith(
           id: actualArticleId,
           feedId: actualFeedId,
+          refreshId: const Value(null),
           canonicalUrl: Value(
             feedProtocols[actualFeedId] == FeedProtocol.nostr &&
                     Uri.tryParse(article.canonicalUrl ?? '')?.scheme == 'nostr'
@@ -562,39 +798,71 @@ final class BackupService {
             ArticleMediaKind.values.length - 1,
           ),
         );
-        await _database
+        final merged = await _database
             .into(_database.articles)
-            .insertOnConflictUpdate(sanitized);
+            .insertReturning(
+              sanitized,
+              onConflict: DoUpdate.withExcluded((old, incoming) {
+                final useImportedReader =
+                    incoming.readerHtml.isNotNull() &
+                    old.canonicalUrl.isExp(incoming.canonicalUrl) &
+                    (old.readerHtml.isNull() |
+                        old.readerFetchedAt.isNull() |
+                        incoming.readerFetchedAt.isBiggerThan(
+                          old.readerFetchedAt,
+                        ));
+                return ArticlesCompanion.custom(
+                  starred: old.starred | incoming.starred,
+                  readerHtml: CaseWhenExpression(
+                    cases: [
+                      CaseWhen(useImportedReader, then: incoming.readerHtml),
+                    ],
+                    orElse: old.readerHtml,
+                  ),
+                  readerFetchedAt: CaseWhenExpression(
+                    cases: [
+                      CaseWhen(
+                        useImportedReader,
+                        then: incoming.readerFetchedAt,
+                      ),
+                    ],
+                    orElse: old.readerFetchedAt,
+                  ),
+                );
+              }),
+            );
         acceptedArticles[article.id] = actualArticleId;
+        if (feedProtocols[actualFeedId] == FeedProtocol.nostr &&
+            merged.sourceEventId != article.sourceEventId) {
+          otherRevisionArticles.add(article.id);
+        }
         await index(
           SearchIndexEntry(
             entityId: actualArticleId,
             kind: 'article',
-            title: article.title,
+            title: merged.title,
             body:
-                '${article.author ?? ''} ${plainText(article.readerHtml ?? article.contentHtml ?? article.summary)}',
+                '${merged.author ?? ''} ${plainText(merged.readerHtml ?? merged.contentHtml ?? merged.summary)}',
             feedTitle: feedTitles[actualFeedId] ?? '',
           ),
         );
       }
-      final clearedAttachmentArticles = <String>{};
       await for (final json in archive.records('articleAttachments')) {
         final attachment = ArticleAttachment.fromJson(json);
         final actualArticleId = acceptedArticles[attachment.articleId];
         final mediaUrl = _https(attachment.url);
-        if (actualArticleId == null || mediaUrl == null) continue;
-        if (clearedAttachmentArticles.add(actualArticleId)) {
-          await (_database.delete(
-            _database.articleAttachments,
-          )..where((row) => row.articleId.equals(actualArticleId))).go();
+        if (actualArticleId == null ||
+            mediaUrl == null ||
+            otherRevisionArticles.contains(attachment.articleId)) {
+          continue;
         }
         await _database
             .into(_database.articleAttachments)
-            .insertOnConflictUpdate(
+            .insert(
               attachment.copyWith(
                 id: stableContentId(
                   actualArticleId,
-                  '${attachment.position}:$mediaUrl',
+                  '${attachment.position.clamp(0, 1000)}:$mediaUrl',
                 ),
                 articleId: actualArticleId,
                 position: attachment.position.clamp(0, 1000),
@@ -607,6 +875,7 @@ final class BackupService {
                 ),
                 fallbackUrls: Value(_portableUrlList(attachment.fallbackUrls)),
               ),
+              onConflict: DoNothing(target: const []),
             );
       }
       await for (final json in archive.records('nostrProfiles')) {
@@ -627,7 +896,6 @@ final class BackupService {
             .insertOnConflictUpdate(profile.copyWith(feedId: actualFeedId));
       }
       final relayCounts = <String, int>{};
-      final clearedRelayFeeds = <String>{};
       await for (final json in archive.records('nostrRelays')) {
         NostrRelay relay;
         try {
@@ -639,11 +907,12 @@ final class BackupService {
         final uri = normalizeNostrRelay(relay.url);
         if (actualFeedId == null ||
             feedProtocols[actualFeedId] != FeedProtocol.nostr ||
+            retainedNostrFeeds.contains(actualFeedId) ||
             uri == null ||
             (relayCounts[actualFeedId] ?? 0) >= 4) {
           continue;
         }
-        if (clearedRelayFeeds.add(actualFeedId)) {
+        if (!relayCounts.containsKey(actualFeedId)) {
           await (_database.delete(
             _database.nostrRelays,
           )..where((row) => row.feedId.equals(actualFeedId))).go();
@@ -656,6 +925,7 @@ final class BackupService {
             );
       }
       await _database.indexSearchItems(searchItems);
+      final restoredProgressIds = <String>{};
       await for (final json in archive.records('progress')) {
         final progress = PlaybackProgressesData.fromJson({
           ...json,
@@ -663,36 +933,68 @@ final class BackupService {
         });
         final actualEpisodeId = acceptedEpisodes[progress.episodeId];
         if (actualEpisodeId == null) continue;
-        await _database
+        final sanitized = progress.copyWith(
+          episodeId: actualEpisodeId,
+          positionMs: progress.positionMs.clamp(0, _maxMediaDurationMs),
+          durationMs: Value(progress.durationMs?.clamp(0, _maxMediaDurationMs)),
+        );
+        final updated = await _database
             .into(_database.playbackProgresses)
-            .insertOnConflictUpdate(
-              progress.copyWith(
-                episodeId: actualEpisodeId,
-                positionMs: progress.positionMs.clamp(0, _maxMediaDurationMs),
-                durationMs: Value(
-                  progress.durationMs?.clamp(0, _maxMediaDurationMs),
-                ),
+            .insertReturningOrNull(
+              sanitized,
+              onConflict: DoUpdate(
+                (_) => sanitized,
+                where: (old) =>
+                    old.updatedAt.isSmallerThanValue(progress.updatedAt),
               ),
             );
+        if (updated != null) {
+          restoredProgressIds.add(actualEpisodeId);
+          await (_database.update(_database.episodes)
+                ..where((row) => row.id.equals(actualEpisodeId)))
+              .write(EpisodesCompanion(played: Value(updated.completed)));
+        }
       }
       await for (final json in archive.records('queue')) {
         final entry = QueueEntry.fromJson(json);
         final actualEpisodeId = acceptedEpisodes[entry.episodeId];
         if (actualEpisodeId == null) continue;
-        if (existingQueueIds.containsKey(actualEpisodeId)) continue;
-        final actualQueueId = stableContentId('queue', actualEpisodeId);
-        existingQueueIds[actualEpisodeId] = actualQueueId;
-        await _database
-            .into(_database.queueEntries)
-            .insertOnConflictUpdate(
-              entry.copyWith(
-                id: actualQueueId,
-                episodeId: actualEpisodeId,
-                sortKey: nextQueueSortKey,
-              ),
+        if (!existingQueueIds.contains(actualEpisodeId)) {
+          // Only local completion history can veto a restored queue entry.
+          // A backup may intentionally contain an episode marked played.
+          final inserted = await _database.customWriteReturning(
+            'INSERT INTO queue_entries (id, episode_id, sort_key, added_at) '
+            'SELECT ?, ?, ?, ? WHERE ? OR NOT EXISTS ('
+            'SELECT 1 FROM playback_progresses WHERE episode_id = ? '
+            'AND completed = 1 AND COALESCE(completed_at, updated_at) > ?) '
+            'RETURNING episode_id',
+            variables: [
+              Variable(stableContentId('queue', actualEpisodeId)),
+              Variable(actualEpisodeId),
+              Variable(nextQueueSortKey),
+              Variable(entry.addedAt),
+              Variable(restoredProgressIds.contains(actualEpisodeId)),
+              Variable(actualEpisodeId),
+              Variable(entry.addedAt),
+            ],
+            updates: {_database.queueEntries},
+            updateKind: UpdateKind.insert,
+          );
+          if (inserted.isEmpty) continue;
+          existingQueueIds.add(actualEpisodeId);
+          nextQueueSortKey += 1024;
+        }
+        await (_database.update(_database.episodes)..where(
+              (row) =>
+                  row.id.equals(actualEpisodeId) &
+                  row.automationApplied.equals(false) &
+                  row.queueAutomationApplied.equals(false),
+            ))
+            .write(
+              const EpisodesCompanion(queueAutomationApplied: Value(true)),
             );
-        nextQueueSortKey += 1024;
       }
+      Map<String, Set<(int, int, String?)>>? bookmarkIdentities;
       await for (final json in archive.records('bookmarks')) {
         final bookmark = Bookmark.fromJson(json);
         final actualEpisodeId = acceptedEpisodes[bookmark.episodeId];
@@ -701,23 +1003,64 @@ final class BackupService {
             bookmark.positionMs > _maxMediaDurationMs) {
           continue;
         }
-        await _database
-            .into(_database.bookmarks)
-            .insertOnConflictUpdate(
-              bookmark.copyWith(
-                id: stableContentId(actualEpisodeId, bookmark.id),
-                episodeId: actualEpisodeId,
-              ),
-            );
+        bookmarkIdentities ??= await _existingBookmarkIdentities();
+        final known = bookmarkIdentities.putIfAbsent(actualEpisodeId, () => {});
+        if (known.add(_bookmarkIdentity(bookmark))) {
+          await _database
+              .into(_database.bookmarks)
+              .insert(
+                bookmark.copyWith(episodeId: actualEpisodeId),
+                onConflict: DoNothing(),
+              );
+        }
       }
       await for (final json in archive.records('settings')) {
         final setting = AppSetting.fromJson(json);
         if (!_validSetting(setting)) continue;
         await _database
             .into(_database.appSettings)
-            .insertOnConflictUpdate(setting);
+            .insert(
+              setting,
+              onConflict: DoUpdate(
+                (_) => setting,
+                where: (old) =>
+                    old.updatedAt.isSmallerThanValue(setting.updatedAt),
+              ),
+            );
       }
-    });
+    }
+
+    var committed = false;
+    try {
+      Future<void> apply() async {
+        await _database.transaction(restore);
+        committed = true;
+        await _onImported?.call();
+      }
+
+      await (_applyRestore?.call(apply) ?? apply());
+    } on Object {
+      if (committed) {
+        throw const BackupException(
+          'Backup restored, but playback state couldn’t reload. Restart trickle to finish.',
+        );
+      }
+      for (final episodeId in newPrivateMedia) {
+        try {
+          await privateStore?.deleteMediaUrl(episodeId);
+        } on Object {
+          // Keep the restore error if secure-storage cleanup also fails.
+        }
+      }
+      for (final ref in newPrivateCredentials) {
+        try {
+          await privateStore?.delete(ref);
+        } on Object {
+          // Keep the restore error if secure-storage cleanup also fails.
+        }
+      }
+      rethrow;
+    }
     return BackupResult(
       feeds: acceptedFeeds.length,
       episodes: acceptedEpisodes.length,
@@ -769,27 +1112,29 @@ final class BackupService {
         result.add(feed);
         continue;
       }
-      final store = _privateFeeds;
-      if (store == null) continue;
-      try {
-        final secret = await store.read(feed.credentialRef ?? '');
-        if (secret == null ||
-            secret.headers.isNotEmpty ||
-            _https(secret.url.toString()) == null) {
-          continue;
-        }
+      final url = await _portablePrivateFeedUrl(feed, _privateFeeds);
+      if (url != null) {
         result.add(
-          feed.copyWith(
-            feedUrl: secret.url.toString(),
-            isPrivate: false,
-            credentialRef: const Value(null),
-          ),
+          feed.copyWith(feedUrl: url, credentialRef: const Value(null)),
         );
-      } on Object {
-        // A missing secure-store entry cannot be exported safely.
       }
     }
     return result;
+  }
+
+  Future<String?> _portablePrivateFeedUrl(
+    Feed feed,
+    PrivateFeedStore? store,
+  ) async {
+    final ref = feed.credentialRef;
+    if (!feed.isPrivate || store == null || ref == null) return null;
+    try {
+      final secret = await store.read(ref);
+      if (secret == null || secret.headers.isNotEmpty) return null;
+      return _https(secret.url.toString());
+    } on Object {
+      return null;
+    }
   }
 
   String? _portableUrlList(String? raw) {
@@ -812,12 +1157,23 @@ final class BackupService {
   String _episodeIdentity(Episode episode) {
     final uri = Uri.tryParse(episode.enclosureUrl);
     if (uri == null) return episode.enclosureUrl;
-    return publicEpisodeIdentity(
+    return episodeIdentity(
       guid: episode.guid,
       enclosureUrl: uri,
       publishedAt: episode.publishedAt,
       title: episode.title,
     );
+  }
+
+  Future<Map<String, Set<(int, int, String?)>>>
+  _existingBookmarkIdentities() async {
+    final identities = <String, Set<(int, int, String?)>>{};
+    await for (final bookmark in _rows(_database.bookmarks)) {
+      identities
+          .putIfAbsent(bookmark.episodeId, () => {})
+          .add(_bookmarkIdentity(bookmark));
+    }
+    return identities;
   }
 
   Future<Map<String, String>> _existingArticleIdentities(String feedId) async {
@@ -829,14 +1185,21 @@ final class BackupService {
         )
         .asyncMap(_database.articles.mapFromRow)
         .get();
-    return {for (final article in rows) _articleIdentity(article): article.id};
+    final identities = <String, String>{};
+    for (final article in rows) {
+      final identity = _articleIdentity(article);
+      if (!identities.containsKey(identity) ||
+          article.id == stableContentId(feedId, identity)) {
+        identities[identity] = article.id;
+      }
+    }
+    return identities;
   }
 
   String _articleIdentity(Article article) {
-    final uri = Uri.tryParse(article.canonicalUrl ?? '');
-    return publicArticleIdentity(
+    return articleIdentity(
       guid: article.guid,
-      canonicalUrl: uri != null && uri.host.isNotEmpty ? uri : null,
+      canonicalUrl: Uri.tryParse(article.canonicalUrl ?? ''),
       publishedAt: article.publishedAt,
       title: article.title,
     );
@@ -860,3 +1223,9 @@ Future<XFile?> _pickBackupFile() => openFile(
 );
 
 const _maxMediaDurationMs = 365 * 24 * 60 * 60 * 1000;
+
+(int, int, String?) _bookmarkIdentity(Bookmark bookmark) => (
+  bookmark.positionMs,
+  bookmark.createdAt.millisecondsSinceEpoch ~/ 1000,
+  bookmark.note,
+);

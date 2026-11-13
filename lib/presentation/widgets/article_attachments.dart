@@ -1,12 +1,11 @@
 import 'dart:convert';
 
-import '../../core/constants.dart';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/app_providers.dart';
+import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../data/database/app_database.dart';
 import '../../features/video/video_session.dart';
@@ -36,7 +35,11 @@ final class ArticleAttachmentsView extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (final attachment in attachments)
-                      _Attachment(article: article, attachment: attachment),
+                      _Attachment(
+                        key: ValueKey(attachment.id),
+                        article: article,
+                        attachment: attachment,
+                      ),
                     const SizedBox(height: AppSpacing.sm),
                   ],
                 ),
@@ -45,7 +48,11 @@ final class ArticleAttachmentsView extends ConsumerWidget {
 }
 
 final class _Attachment extends ConsumerStatefulWidget {
-  const _Attachment({required this.article, required this.attachment});
+  const _Attachment({
+    required this.article,
+    required this.attachment,
+    super.key,
+  });
 
   final Article article;
   final ArticleAttachment attachment;
@@ -113,7 +120,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
     final active = ref.watch(videoSessionProvider);
     final isActive =
         active?.articleId == widget.article.id &&
-        active?.sourceUri.toString() == widget.attachment.url;
+        active?.attachmentId == widget.attachment.id;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
       child: Column(
@@ -154,14 +161,18 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
         }
         return;
       }
-      final media = await _resolveMedia();
-      final episode = await ref
-          .read(nostrRepositoryProvider)
-          .cacheAudioAttachment(
-            article: widget.article,
-            attachment: widget.attachment.copyWith(url: media.toString()),
-          );
-      await handler.playStandaloneEpisode(episode.id);
+      final articleId = widget.article.id;
+      final attachment = widget.attachment;
+      final repository = ref.read(nostrRepositoryProvider);
+      await handler.playPreviewEpisode(() async {
+        final media = await _resolveMedia();
+        if (!mounted) return null;
+        final episode = await repository.cacheAudioAttachment(
+          articleId: articleId,
+          attachment: attachment.copyWith(url: media.toString()),
+        );
+        return mounted ? episode.id : null;
+      }, standalone: true);
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     } finally {
@@ -176,28 +187,30 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
     }
     setState(() => _busy = true);
     final handler = ref.read(audioHandlerProvider);
-    final intent = handler.beginWebVideoPlayback();
+    final article = widget.article;
+    final attachment = widget.attachment;
     try {
-      final media = await _resolveMedia();
-      if (!handler.isWebVideoPlaybackCurrent(intent) ||
-          !await handler.prepareWebVideoPlayback(intent)) {
-        return;
-      }
-      if (!mounted) {
-        await handler.endWebVideoPlayback(intent);
-        return;
-      }
-      ref
-          .read(videoSessionProvider.notifier)
-          .open(
-            intentRevision: intent,
-            articleId: widget.article.id,
-            title: widget.article.title,
-            sourceUri: media,
-            playbackUri: media,
-          );
+      await handler.playVideoAfterResolving(
+        () async {
+          final uri = await _resolveMedia();
+          return mounted ? uri : null;
+        },
+        (intent, uri) {
+          if (!mounted) return false;
+          ref
+              .read(videoSessionProvider.notifier)
+              .open(
+                intentRevision: intent,
+                articleId: article.id,
+                title: article.title,
+                sourceUri: uri,
+                playbackUri: uri,
+                attachmentId: attachment.id,
+              );
+          return true;
+        },
+      );
     } on Object catch (error) {
-      await handler.endWebVideoPlayback(intent).catchError((Object _) {});
       if (mounted) showErrorSnackBar(context, error);
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -205,10 +218,11 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
   }
 
   Future<Uri> _resolveMedia() async {
+    final network = ref.read(networkProvider);
     Object? lastError;
     for (final candidate in _mediaCandidates(widget.attachment)) {
       try {
-        return (await ref.read(networkProvider).resolveResource(candidate)).url;
+        return (await network.resolveResource(candidate)).url;
       } on Object catch (error) {
         lastError = error;
       }
@@ -220,6 +234,7 @@ final class _AttachmentState extends ConsumerState<_Attachment> {
     setState(() => _busy = true);
     try {
       final uri = await _resolveMedia();
+      if (!mounted) return;
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         throw const NetworkException('Couldn’t open this attachment.');
       }

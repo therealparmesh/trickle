@@ -14,62 +14,8 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('download limit does not cap automatic queueing', () async {
-    final now = DateTime.utc(2026, 7, 16);
-    await database
-        .into(database.feeds)
-        .insert(
-          FeedsCompanion.insert(
-            id: 'feed',
-            title: 'Feed',
-            feedUrl: 'https://example.com/feed',
-            autoDownload: const Value(true),
-            autoQueue: const Value(true),
-            autoDownloadLimit: const Value(2),
-            createdAt: now,
-            updatedAt: now,
-          ),
-        );
-    for (var index = 0; index < 4; index++) {
-      await database
-          .into(database.episodes)
-          .insert(
-            EpisodesCompanion.insert(
-              id: 'episode-$index',
-              feedId: 'feed',
-              title: 'Episode $index',
-              enclosureUrl: 'https://example.com/$index.mp3',
-              publishedAt: Value(now.add(Duration(hours: index))),
-              discoveredAt: now,
-            ),
-          );
-    }
-    final queued = <String>[];
-    final downloaded = <String>[];
-    var queueBatches = 0;
-
-    await applyPodcastAutomation(
-      database: database,
-      queueEpisodes: (ids) async {
-        queueBatches++;
-        queued.addAll(ids);
-      },
-      downloadEpisode: (id) async => downloaded.add(id),
-    );
-
-    expect(queueBatches, 1);
-    expect(queued, ['episode-3', 'episode-2', 'episode-1', 'episode-0']);
-    expect(downloaded, ['episode-3', 'episode-2']);
-    expect(
-      (await database.select(database.episodes).get()).every(
-        (episode) => episode.automationApplied,
-      ),
-      isTrue,
-    );
-  });
-
   test(
-    'a failed selected action remains pending without draining history',
+    'download retries respect the limit and do not restore a cleared queue',
     () async {
       final now = DateTime.utc(2026, 7, 16);
       await database
@@ -79,13 +25,14 @@ void main() {
               id: 'feed',
               title: 'Feed',
               feedUrl: 'https://example.com/feed',
+              autoDownload: const Value(true),
               autoQueue: const Value(true),
-              autoDownloadLimit: const Value(1),
+              autoDownloadLimit: const Value(2),
               createdAt: now,
               updatedAt: now,
             ),
           );
-      for (var index = 0; index < 2; index++) {
+      for (var index = 0; index < 4; index++) {
         await database
             .into(database.episodes)
             .insert(
@@ -99,21 +46,97 @@ void main() {
               ),
             );
       }
-
-      await applyPodcastAutomation(
+      final downloaded = <String>[];
+      Future<void> run({required bool canDownload}) => applyPodcastAutomation(
         database: database,
-        queueEpisodes: (_) => throw StateError('queue unavailable'),
-        downloadEpisode: (_) async {},
+        canStartDownload: () => canDownload,
+        downloadEpisode: (id) async => downloaded.add(id),
       );
+      await run(canDownload: false);
+      final staged = await (database.select(
+        database.pendingQueueAdds,
+      )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
+      expect(staged.map((row) => row.episodeId), [
+        'episode-3',
+        'episode-2',
+        'episode-1',
+        'episode-0',
+      ]);
+      expect(downloaded, isEmpty);
 
-      final rows = {
-        for (final episode in await database.select(database.episodes).get())
-          episode.id: episode,
-      };
-      expect(rows['episode-1']!.automationApplied, isFalse);
-      expect(rows['episode-0']!.automationApplied, isFalse);
+      // Clear the queue, then try a stale request from another refresh as well
+      // as a new refresh that can retry the downloads.
+      await database.delete(database.pendingQueueAdds).go();
+      await database.stageAutomaticQueueAdditions(['episode-3']);
+      await run(canDownload: true);
+      expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
+      expect(downloaded, ['episode-3', 'episode-2']);
+      expect(
+        (await database.select(database.episodes).get()).where(
+          (row) => !row.automationApplied,
+        ),
+        isEmpty,
+      );
     },
   );
+
+  test('failed queue staging rolls back its batch and can retry', () async {
+    final now = DateTime.utc(2026, 7, 16);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'feed',
+            title: 'Feed',
+            feedUrl: 'https://example.com/feed',
+            autoQueue: const Value(true),
+            autoDownloadLimit: const Value(1),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    for (var index = 0; index < 2; index++) {
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: 'episode-$index',
+              feedId: 'feed',
+              title: 'Episode $index',
+              enclosureUrl: 'https://example.com/$index.mp3',
+              publishedAt: Value(now.add(Duration(hours: index))),
+              discoveredAt: now,
+            ),
+          );
+    }
+
+    await database.customStatement('''
+        CREATE TRIGGER reject_queue_stage BEFORE INSERT ON pending_queue_adds
+        WHEN NEW.episode_id = 'episode-0'
+        BEGIN SELECT RAISE(ABORT, 'queue unavailable'); END
+      ''');
+    await applyPodcastAutomation(
+      database: database,
+      downloadEpisode: (_) async {},
+    );
+
+    expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
+    expect(
+      (await database.select(database.episodes).get()).where(
+        (row) => row.automationApplied || row.queueAutomationApplied,
+      ),
+      isEmpty,
+    );
+    await database.customStatement('DROP TRIGGER reject_queue_stage');
+    await applyPodcastAutomation(
+      database: database,
+      downloadEpisode: (_) async {},
+    );
+    expect(
+      await database.select(database.pendingQueueAdds).get(),
+      hasLength(2),
+    );
+  });
 
   test('failed and canceled automatic downloads are retried', () async {
     final now = DateTime.utc(2026, 7, 17);
@@ -165,7 +188,6 @@ void main() {
 
     await applyPodcastAutomation(
       database: database,
-      queueEpisodes: (_) async {},
       downloadEpisode: (id) async => retried.add(id),
     );
 
@@ -217,7 +239,6 @@ void main() {
 
     await applyPodcastAutomation(
       database: database,
-      queueEpisodes: (_) async {},
       downloadEpisode: (_) => throw StateError('enqueue failed'),
     );
 

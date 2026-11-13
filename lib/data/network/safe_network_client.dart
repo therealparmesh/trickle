@@ -19,12 +19,14 @@ final class NetworkDocument {
     required this.statusCode,
     required this.bytes,
     required this.headers,
+    this.permanentRedirectTarget,
   });
 
   final Uri url;
   final int statusCode;
   final Uint8List bytes;
   final Map<String, String> headers;
+  final Uri? permanentRedirectTarget;
 
   String get text {
     if (bytes.isEmpty) return '';
@@ -178,6 +180,7 @@ final class SafeNetworkClient {
     final stopwatch = Stopwatch()..start();
     var current = normalizeHttps(requested);
     var requestHeaders = Map<String, String>.of(headers);
+    var canKeepRedirectTarget = !current.hasQuery;
     for (var redirects = 0; redirects <= 5; redirects++) {
       final dnsBudget = _remaining(totalTimeout, stopwatch);
       final validator = _addressValidator;
@@ -188,6 +191,7 @@ final class SafeNetworkClient {
       }
       final cancelToken = CancelToken();
       var deadlineExpired = false;
+      var bodyRead = false;
       final timer = Timer(_remaining(totalTimeout, stopwatch), () {
         deadlineExpired = true;
         cancelToken.cancel('request deadline exceeded');
@@ -210,7 +214,6 @@ final class SafeNetworkClient {
             entry.key.toLowerCase(): entry.value.join(', '),
         };
         if (status == HttpStatus.notModified) {
-          cancelToken.cancel('not modified body is not needed');
           return NetworkDocument(
             url: current,
             statusCode: status,
@@ -230,8 +233,19 @@ final class SafeNetworkClient {
               'The server redirected too many times.',
             );
           }
-          cancelToken.cancel('redirect body is not needed');
           final next = normalizeHttps(current.resolve(location));
+          final permanent = status == 301 || status == 308;
+          canKeepRedirectTarget =
+              canKeepRedirectTarget && permanent && !next.hasQuery;
+          if (current != next) {
+            // A validator describes the representation at the old address.
+            requestHeaders.removeWhere(
+              (name, _) => const {
+                'if-none-match',
+                'if-modified-since',
+              }.contains(name.toLowerCase()),
+            );
+          }
           if (!sameOrigin(current, next)) {
             requestHeaders = Map<String, String>.of(requestHeaders)
               ..removeWhere(
@@ -246,11 +260,9 @@ final class SafeNetworkClient {
           continue;
         }
         if (status < 200 || status >= 300) {
-          cancelToken.cancel('error body is not needed');
           throw NetworkException('The server returned HTTP $status.');
         }
         if (readBody?.call(flattenedHeaders['content-type']) == false) {
-          cancelToken.cancel('response body is not needed');
           return NetworkDocument(
             url: current,
             statusCode: status,
@@ -262,7 +274,6 @@ final class SafeNetworkClient {
           response.headers.value(Headers.contentLengthHeader) ?? '',
         );
         if (contentLength != null && contentLength > maxBytes) {
-          cancelToken.cancel('response limit exceeded');
           throw const NetworkException(
             'The response is too large to open safely.',
           );
@@ -278,18 +289,21 @@ final class SafeNetworkClient {
         await for (final chunk in body.stream) {
           received += chunk.length;
           if (received > maxBytes) {
-            cancelToken.cancel('response limit exceeded');
             throw const NetworkException(
               'The response is too large to open safely.',
             );
           }
           builder.add(chunk);
         }
+        bodyRead = true;
         return NetworkDocument(
           url: current,
           statusCode: status,
           bytes: builder.takeBytes(),
           headers: flattenedHeaders,
+          permanentRedirectTarget: redirects > 0 && canKeepRedirectTarget
+              ? current
+              : null,
         );
       } on DioException catch (error) {
         if (deadlineExpired) {
@@ -298,6 +312,9 @@ final class SafeNetworkClient {
         throw NetworkException(_dioMessage(error));
       } finally {
         timer.cancel();
+        if (!bodyRead && !cancelToken.isCancelled) {
+          cancelToken.cancel('response body is no longer needed');
+        }
       }
     }
     throw const NetworkException('The server redirected too many times.');
@@ -361,7 +378,6 @@ final class SafeNetworkClient {
             );
           }
           redirects++;
-          cancelToken.cancel('redirect body is not needed');
           final next = normalizeHttps(current.resolve(location));
           if (!sameOrigin(current, next)) {
             requestHeaders = Map<String, String>.of(requestHeaders)
@@ -381,11 +397,9 @@ final class SafeNetworkClient {
           // A minority of media origins reject range requests even though a
           // normal streaming GET succeeds. Retry once without Range while
           // retaining the same validation, redirect, and absolute deadline.
-          cancelToken.cancel('range request was not supported');
           useRange = false;
           continue;
         }
-        cancelToken.cancel('media preflight body is not needed');
         if (status < 200 || status >= 300) {
           throw NetworkException('The media server returned HTTP $status.');
         }
@@ -414,6 +428,9 @@ final class SafeNetworkClient {
         throw NetworkException(_dioMessage(error));
       } finally {
         timer.cancel();
+        if (!cancelToken.isCancelled) {
+          cancelToken.cancel('media preflight body is not needed');
+        }
       }
     }
   }

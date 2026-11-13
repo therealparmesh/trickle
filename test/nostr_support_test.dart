@@ -7,13 +7,82 @@ import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/core/constants.dart';
+import 'package:trickle/core/errors.dart';
 import 'package:trickle/core/nostr_identifier.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/nostr/nostr_event.dart';
+import 'package:trickle/data/repositories/article_repository.dart';
+import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/nostr_repository.dart';
+import 'package:trickle/data/security/private_feed_store.dart';
 
 void main() {
+  test(
+    'audio attachments use the resolved URL and cannot reopen a removed post',
+    () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final network = SafeNetworkClient.forTesting(
+        Dio(),
+        addressValidator: (_) async {},
+      );
+      addTearDown(database.close);
+      addTearDown(network.close);
+      final repository = NostrRepository(database: database, network: network);
+      final now = DateTime.utc(2026, 10, 3);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'profile',
+              title: 'Profile',
+              feedUrl: 'nostr:profile',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.articles)
+          .insert(
+            ArticlesCompanion.insert(
+              id: 'post',
+              feedId: 'profile',
+              title: 'Audio post',
+              discoveredAt: now,
+            ),
+          );
+      final attachment = await database
+          .into(database.articleAttachments)
+          .insertReturning(
+            ArticleAttachmentsCompanion.insert(
+              id: 'audio',
+              articleId: 'post',
+              position: 0,
+              url: 'https://primary.example/audio.mp3',
+            ),
+          );
+      final resolved = attachment.copyWith(
+        url: 'https://fallback.example/audio.mp3',
+      );
+      final cached = await repository.cacheAudioAttachment(
+        articleId: 'post',
+        attachment: resolved,
+      );
+      expect(cached.enclosureUrl, resolved.url);
+
+      await (database.delete(
+        database.articles,
+      )..where((row) => row.id.equals('post'))).go();
+      await expectLater(
+        repository.cacheAudioAttachment(
+          articleId: 'post',
+          attachment: resolved,
+        ),
+        throwsA(isA<FeedParseException>()),
+      );
+    },
+  );
+
   test(
     'NIP-19 profile identifiers match the published interoperability vectors',
     () {
@@ -176,6 +245,66 @@ void main() {
     );
   });
 
+  test(
+    'relay refresh remembers deletions without hiding newer edits',
+    () async {
+      const privateKey =
+          '0000000000000000000000000000000000000000000000000000000000000003';
+      final publicKey = bip340.getPublicKey(privateKey);
+      Map<String, Object?> signed(
+        int date,
+        int kind,
+        List<List<String>> tags,
+        String body,
+      ) => _signedEvent(
+        privateKey: privateKey,
+        publicKey: publicKey,
+        createdAt: date,
+        kind: kind,
+        tags: tags,
+        content: body,
+      );
+      final note = signed(100, 1, [], 'Deleted note');
+      final article = signed(100, 30023, [
+        ['d', 'daily'],
+        ['title', 'Old edit'],
+      ], 'Old body');
+      final deletion = signed(101, 5, [
+        ['e', note['id'] as String],
+        ['a', '30023:$publicKey:daily'],
+      ], '');
+      final newEdit = signed(102, 30023, [
+        ['d', 'daily'],
+        ['title', 'New edit'],
+      ], 'New body');
+      var events = [note, article];
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final network = _testNetwork(() => _ScriptedRelaySocket(events: events));
+      addTearDown(database.close);
+      addTearDown(network.close);
+      final repository = NostrRepository(database: database, network: network);
+      final feed = await repository.subscribe(encodeNpub(publicKey));
+      expect(await database.select(database.articles).get(), hasLength(2));
+
+      events = [deletion];
+      expect(await repository.refresh(feed), isTrue);
+      expect(await database.select(database.articles).get(), isEmpty);
+
+      // A different repository and a relay that does not return the deletion.
+      final next = NostrRepository(database: database, network: network);
+      events = [note, article];
+      expect(await next.refresh(feed), isTrue);
+      expect(await database.select(database.articles).get(), isEmpty);
+
+      events = [newEdit];
+      expect(await next.refresh(feed), isTrue);
+      expect(
+        (await database.select(database.articles).getSingle()).title,
+        'New edit',
+      );
+    },
+  );
+
   test('post attachment parsing is bounded for hostile relay data', () {
     const privateKey =
         '0000000000000000000000000000000000000000000000000000000000000003';
@@ -258,47 +387,55 @@ void main() {
     },
   );
 
-  test('valid relay events survive a cleanup write failure', () async {
-    const privateKey =
-        '0000000000000000000000000000000000000000000000000000000000000003';
-    final publicKey = bip340.getPublicKey(privateKey);
-    final event = _signedEvent(
-      privateKey: privateKey,
-      publicKey: publicKey,
-      createdAt: 110,
-      kind: 1,
-      tags: const [],
-      content: 'Keep this post',
-    );
-    final sockets = <_ScriptedRelaySocket>[];
-    final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final network = SafeNetworkClient.forTesting(
-      Dio(),
-      addressValidator: (_) async {},
-      webSocketConnector: (_, _) async {
-        final socket = _ScriptedRelaySocket(
-          events: [event],
-          failCloseMessage: true,
-        );
-        sockets.add(socket);
-        return socket;
-      },
-    );
-    final repository = NostrRepository(database: database, network: network);
+  test(
+    'valid relay events survive a failed close message and a stalled handshake',
+    () async {
+      const privateKey =
+          '0000000000000000000000000000000000000000000000000000000000000003';
+      final publicKey = bip340.getPublicKey(privateKey);
+      final event = _signedEvent(
+        privateKey: privateKey,
+        publicKey: publicKey,
+        createdAt: 110,
+        kind: 1,
+        tags: const [],
+        content: 'Keep this post',
+      );
+      final sockets = <_ScriptedRelaySocket>[];
+      final closeGate = Completer<void>();
+      addTearDown(closeGate.complete);
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final network = SafeNetworkClient.forTesting(
+        Dio(),
+        addressValidator: (_) async {},
+        webSocketConnector: (_, _) async {
+          final socket = _ScriptedRelaySocket(
+            events: [event],
+            failCloseMessage: true,
+            closeGate: closeGate.future,
+          );
+          sockets.add(socket);
+          return socket;
+        },
+      );
+      final repository = NostrRepository(database: database, network: network);
 
-    try {
-      final feed = await repository.subscribe(encodeNpub(publicKey));
-      final articles = await database.select(database.articles).get();
+      try {
+        final feed = await repository
+            .subscribe(encodeNpub(publicKey))
+            .timeout(const Duration(seconds: 3));
+        final articles = await database.select(database.articles).get();
 
-      expect(feed.refreshError, isNull);
-      expect(articles.single.title, 'Keep this post');
-      expect(sockets, hasLength(3));
-      expect(sockets.every((socket) => socket.closed), isTrue);
-    } finally {
-      network.close();
-      await database.close();
-    }
-  });
+        expect(feed.refreshError, isNull);
+        expect(articles.single.title, 'Keep this post');
+        expect(sockets, hasLength(3));
+        expect(sockets.every((socket) => socket.closed), isTrue);
+      } finally {
+        network.close();
+        await database.close();
+      }
+    },
+  );
 
   test(
     'a relay that closes without data is not reported as refreshed',
@@ -332,7 +469,7 @@ void main() {
     },
   );
 
-  test('an older relay response cannot replace newer content', () async {
+  test('older relay posts cannot replace a stored edit', () async {
     const privateKey =
         '0000000000000000000000000000000000000000000000000000000000000003';
     final publicKey = bip340.getPublicKey(privateKey);
@@ -377,8 +514,9 @@ void main() {
         },
       ),
     );
+    var currentEvents = [newerEvent];
     final newerNetwork = _testNetwork(
-      () => _ScriptedRelaySocket(events: [newerEvent]),
+      () => _ScriptedRelaySocket(events: currentEvents),
     );
     final olderRepository = NostrRepository(
       database: database,
@@ -400,6 +538,39 @@ void main() {
       expect(articles, hasLength(1));
       expect(articles.single.title, 'Newer article');
       expect(articles.single.summary, isNull);
+
+      // The next request is current, but a lagging relay still sends the old
+      // signed version of the same article.
+      expect(await olderRepository.refresh(feed), isTrue);
+      expect(
+        (await database.select(database.articles).getSingle()).sourceEventId,
+        newerEvent['id'],
+      );
+
+      final sameSecond = _signedEvent(
+        privateKey: privateKey,
+        publicKey: publicKey,
+        createdAt: 112,
+        kind: 30023,
+        tags: const [
+          ['d', 'daily'],
+          ['title', 'Same-second edit'],
+        ],
+        content: 'Other body',
+      );
+      final ordered = [newerEvent, sameSecond]
+        ..sort(
+          (left, right) =>
+              (left['id'] as String).compareTo(right['id'] as String),
+        );
+      currentEvents = ordered.reversed.toList();
+      expect(await newerRepository.refresh(feed), isTrue);
+      currentEvents = [ordered.last];
+      expect(await newerRepository.refresh(feed), isTrue);
+      expect(
+        (await database.select(database.articles).getSingle()).sourceEventId,
+        ordered.first['id'],
+      );
     } finally {
       if (!releaseOlder.isCompleted) releaseOlder.complete();
       initialNetwork.close();
@@ -408,6 +579,105 @@ void main() {
       await database.close();
     }
   });
+
+  for (final keepSaved in [false, true]) {
+    test(
+      'resubscribing bypasses an old refresh with ${keepSaved ? 'retained' : 'deleted'} posts',
+      () async {
+        const privateKey =
+            '0000000000000000000000000000000000000000000000000000000000000003';
+        final publicKey = bip340.getPublicKey(privateKey);
+        Map<String, Object?> post(int date, String body) => _signedEvent(
+          privateKey: privateKey,
+          publicKey: publicKey,
+          createdAt: date,
+          kind: 1,
+          tags: const [],
+          content: body,
+        );
+        final database = AppDatabase.forTesting(NativeDatabase.memory());
+        final releaseOld = Completer<void>();
+        final oldStarted = Completer<void>();
+        var requests = 0;
+        var refreshingOld = false;
+        var initial = true;
+        final savedPost = post(100, 'Saved post');
+        final oldPost = post(101, 'Obsolete response');
+        final newPost = post(102, 'New subscription');
+        final network = _testNetwork(
+          () => _ScriptedRelaySocket(
+            events: [
+              if (initial)
+                savedPost
+              else if (refreshingOld)
+                oldPost
+              else
+                newPost,
+            ],
+            release: refreshingOld ? releaseOld.future : null,
+            onRequest: refreshingOld
+                ? () {
+                    if (++requests == 3) oldStarted.complete();
+                  }
+                : null,
+          ),
+        );
+        final nostr = NostrRepository(database: database, network: network);
+        final privateFeeds = PrivateFeedStore();
+        final repository = FeedRepository(
+          database: database,
+          network: network,
+          privateFeeds: privateFeeds,
+          nostr: nostr,
+        );
+        final feed = await nostr.subscribe(encodeNpub(publicKey));
+        final saved = (await database.select(database.articles).get()).single;
+        if (keepSaved) {
+          await ArticleRepository(
+            database,
+            network,
+            privateFeeds,
+          ).setSaved(saved.id, saved: true);
+        }
+        initial = false;
+        refreshingOld = true;
+        final oldRefresh = repository.refreshFeed(feed);
+        Future<Feed>? resubscribe;
+        try {
+          await oldStarted.future.timeout(const Duration(seconds: 3));
+          await repository.deleteFeed(feed.id);
+          final removed = await database.feedById(feed.id);
+          expect(removed?.subscribed, keepSaved ? isFalse : isNull);
+          refreshingOld = false;
+          resubscribe = removed == null
+              ? nostr.subscribe(encodeNpub(publicKey))
+              : repository.resubscribe(removed);
+          final renewed = await resubscribe.timeout(const Duration(seconds: 3));
+          expect(renewed.subscribed, isTrue);
+          expect(renewed.id, keepSaved ? feed.id : isNot(feed.id));
+          releaseOld.complete();
+          await oldRefresh;
+          final articles = await database.select(database.articles).get();
+          expect(
+            articles.map((a) => a.title),
+            unorderedEquals([if (keepSaved) 'Saved post', 'New subscription']),
+          );
+          if (keepSaved) {
+            expect(
+              articles.singleWhere((a) => a.id == saved.id).starred,
+              isTrue,
+            );
+          }
+        } finally {
+          if (!releaseOld.isCompleted) releaseOld.complete();
+          await oldRefresh;
+          await resubscribe;
+          network.close();
+          await database.close();
+        }
+      },
+    );
+  }
 }
 
 Map<String, Object?> _signedEvent({
@@ -437,6 +707,7 @@ final class _ScriptedRelaySocket implements NetworkWebSocket {
     this.closeBeforeData = false,
     this.failCloseMessage = false,
     this.release,
+    this.closeGate,
     this.onRequest,
   });
 
@@ -444,6 +715,7 @@ final class _ScriptedRelaySocket implements NetworkWebSocket {
   final bool closeBeforeData;
   final bool failCloseMessage;
   final Future<void>? release;
+  final Future<void>? closeGate;
   final void Function()? onRequest;
   final StreamController<Object?> _messages = StreamController<Object?>();
   bool closed = false;
@@ -479,6 +751,7 @@ final class _ScriptedRelaySocket implements NetworkWebSocket {
   Future<void> close() async {
     if (closed) return;
     closed = true;
+    await closeGate;
     await _messages.close();
   }
 }

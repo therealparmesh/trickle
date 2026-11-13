@@ -31,10 +31,10 @@ abstract final class AppConstants {
   static const networkConnectionTimeout = Duration(seconds: 10);
   static const interactiveRequestTimeout = Duration(seconds: 15);
   static const contentRequestTimeout = Duration(seconds: 30);
+  static const audioSourceLoadTimeout = contentRequestTimeout;
   static const videoSourceLoadTimeout = networkConnectionTimeout;
   static const backgroundRefreshBudget = interactiveRequestTimeout;
   static const feedRefreshTimeout = contentRequestTimeout;
-  static const opmlImportFeedTimeout = contentRequestTimeout;
   static const localSearchDebounce = Duration(milliseconds: 250);
   static const catalogSearchDebounce = Duration(milliseconds: 500);
 
@@ -43,6 +43,7 @@ abstract final class AppConstants {
   static const rewind = Duration(seconds: 15);
   static const forward = Duration(seconds: 30);
   static const progressCheckpoint = Duration(seconds: 15);
+  static const androidInterruptionTimeout = Duration(minutes: 10);
   static const playbackPositionThreshold = Duration(seconds: 10);
   static const playbackCompletionWindow = Duration(minutes: 1);
   static const sleepFadeSteps = 4;

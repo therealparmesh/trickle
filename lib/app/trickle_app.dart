@@ -26,16 +26,18 @@ final class TrickleApp extends ConsumerStatefulWidget {
 class _TrickleAppState extends ConsumerState<TrickleApp>
     with WidgetsBindingObserver {
   final _navigatorKey = GlobalKey<NavigatorState>();
-  final _incomingShares = IncomingShareService();
+  late final IncomingShareService _incomingShares;
   late final GoRouter _router = createRouter(navigatorKey: _navigatorKey);
   DateTime? _lastForegroundRefresh;
-  String? _pendingShareInput;
-  bool _shareDialogOpen = false;
+  bool _checkShareAgain = false;
   bool _checkingShare = false;
 
   @override
   void initState() {
     super.initState();
+    _incomingShares = IncomingShareService(
+      onAvailable: () => unawaited(_openPendingShare()),
+    );
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -97,42 +99,33 @@ class _TrickleAppState extends ConsumerState<TrickleApp>
   }
 
   Future<void> _openPendingShare() async {
-    if (_shareDialogOpen || _checkingShare || !mounted) return;
+    if (!mounted || _navigatorKey.currentContext == null) return;
+    if (_checkingShare) {
+      _checkShareAgain = true;
+      return;
+    }
     _checkingShare = true;
-    var shared = _pendingShareInput;
-    if (shared == null) {
-      try {
-        shared = await _incomingShares.takePendingText();
-      } on MissingPluginException {
-        _checkingShare = false;
-        return;
-      } on PlatformException {
-        _checkingShare = false;
-        return;
-      }
-    }
-    final input = feedInputFromSharedText(shared);
-    final context = _navigatorKey.currentContext;
-    if (input == null) {
-      _checkingShare = false;
-      return;
-    }
-    if (context == null || !mounted || !context.mounted) {
-      _pendingShareInput = input;
-      _checkingShare = false;
-      return;
-    }
-    _pendingShareInput = null;
-    _shareDialogOpen = true;
     try {
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AddFeedDialog(initialInput: input),
-      );
+      do {
+        _checkShareAgain = false;
+        final input = feedInputFromSharedText(
+          await _incomingShares.takePendingText(),
+        );
+        final context = _navigatorKey.currentContext;
+        if (input != null && mounted && context != null && context.mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (_) => AddFeedDialog(initialInput: input),
+          );
+          _checkShareAgain = true;
+        }
+      } while (mounted && _checkShareAgain);
+    } on MissingPluginException {
+      // No native share handoff is installed on this platform.
+    } on PlatformException {
+      // The next resume or share notification can retry the handoff.
     } finally {
-      _shareDialogOpen = false;
       _checkingShare = false;
-      unawaited(_openPendingShare());
     }
   }
 }

@@ -553,6 +553,90 @@ void main() {
     await database.close();
   });
 
+  testWidgets('removing a private podcast works without its saved credential', (
+    tester,
+  ) async {
+    final database = AppDatabase.forTesting(NativeDatabase.memory());
+    final network = SafeNetworkClient.forTesting(
+      Dio(),
+      addressValidator: (_) async {
+        throw StateError('Unsubscribing should not make a network request');
+      },
+    );
+    FlutterSecureStorage.setMockInitialValues({
+      'private-feed:broken': 'invalid JSON',
+    });
+    final privateFeeds = PrivateFeedStore(
+      storage: const FlutterSecureStorage(),
+    );
+    final repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+    final audio = TrickleAudioHandler(
+      database: database,
+      settings: SettingsRepository(database),
+      sourceResolver: PlaybackSourceResolver(database, privateFeeds, network),
+    );
+    final now = DateTime.utc(2026, 7, 22);
+    await database
+        .into(database.feeds)
+        .insert(
+          FeedsCompanion.insert(
+            id: 'private-show',
+            title: 'Private podcast',
+            feedUrl: 'private://broken',
+            kind: Value(FeedKind.podcast.index),
+            isPrivate: const Value(true),
+            credentialRef: const Value('broken'),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    final router = GoRouter(
+      initialLocation: '/feed',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const Scaffold(body: Text('Library')),
+        ),
+        GoRoute(
+          path: '/feed',
+          builder: (_, _) => const FeedDetailPage(feedId: 'private-show'),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          feedRepositoryProvider.overrideWithValue(repository),
+          privateFeedStoreProvider.overrideWithValue(privateFeeds),
+          audioHandlerProvider.overrideWithValue(audio),
+          remoteImagesProvider.overrideWith((_) => Stream.value(false)),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Subscribed'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Unsubscribe'));
+    await tester.pumpAndSettle();
+    expect(await database.feedById('private-show'), isNull);
+    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('Subscribe'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    router.dispose();
+    await tester.pump(const Duration(milliseconds: 1));
+    final disposal = audio.disposeHandler();
+    await tester.pumpAndSettle();
+    await disposal;
+    network.close();
+    await database.close();
+  });
+
   testWidgets('catalog podcast loads real metadata without subscribing', (
     tester,
   ) async {

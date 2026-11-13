@@ -11,6 +11,9 @@ String? normalizeFeedCategory(String? value) {
 String? feedCategoryIdentity(String? value) =>
     normalizeFeedCategory(value)?.toLowerCase();
 
+bool matchesFeedCategory(String? label, String identity) =>
+    feedCategoryIdentity(label) == identity;
+
 List<String> feedCategoryOptions(Iterable<String?> values) {
   final categories = <String, String>{};
   for (final value in values) {

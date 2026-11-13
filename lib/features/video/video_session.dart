@@ -48,11 +48,6 @@ bool shouldAcceptVideoStateRevision({
   required int revision,
 }) => observerToken == activeObserverToken && revision > lastRevision;
 
-bool shouldApplyVideoPlaybackState({
-  required bool awaitingPictureInPictureResume,
-  required bool isPictureInPictureResumeResult,
-}) => !awaitingPictureInPictureResume || isPictureInPictureResumeResult;
-
 extension VideoPlaybackSourceFallback on VideoPlaybackSource {
   VideoPlaybackSource? get fallbackAfterFailure => switch (this) {
     VideoPlaybackSource.privacyWrapper => VideoPlaybackSource.officialYouTube,
@@ -69,6 +64,7 @@ final class VideoSession {
     required this.sourceUri,
     required this.playbackUri,
     required this.presentation,
+    this.attachmentId,
   });
 
   final int intentRevision;
@@ -77,6 +73,7 @@ final class VideoSession {
   final Uri sourceUri;
   final Uri playbackUri;
   final VideoPresentation presentation;
+  final String? attachmentId;
 
   VideoPlaybackSource get initialPlaybackSource =>
       youtubeVideoId(sourceUri) == null
@@ -99,6 +96,7 @@ final class VideoSession {
     sourceUri: sourceUri,
     playbackUri: playbackUri,
     presentation: presentation ?? this.presentation,
+    attachmentId: attachmentId,
   );
 }
 
@@ -117,6 +115,7 @@ final class VideoSessionNotifier extends Notifier<VideoSession?> {
     required String title,
     required Uri sourceUri,
     required Uri playbackUri,
+    String? attachmentId,
   }) {
     state = VideoSession(
       intentRevision: intentRevision,
@@ -125,6 +124,7 @@ final class VideoSessionNotifier extends Notifier<VideoSession?> {
       sourceUri: sourceUri,
       playbackUri: playbackUri,
       presentation: VideoPresentation.expanded,
+      attachmentId: attachmentId,
     );
   }
 

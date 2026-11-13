@@ -117,6 +117,113 @@ void main() {
     },
   );
 
+  test(
+    'version 8 migration adds indexed refresh IDs without re-keying items',
+    () async {
+      await database.close();
+      final underlying = sqlite3.openInMemory();
+      addTearDown(underlying.close);
+      database = AppDatabase.forTesting(
+        NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+      );
+      await database.customStatement(
+        "INSERT INTO feeds(id,title,feed_url,kind,created_at,updated_at) VALUES ('podcast','Podcast','https://example.test/feed',0,1,1)",
+      );
+      await database.customStatement(
+        "INSERT INTO episodes(id,feed_id,title,enclosure_url,discovered_at,queue_automation_applied) VALUES ('episode','podcast','Episode','https://example.test/audio.mp3',1,1)",
+      );
+      await database.customStatement(
+        "INSERT INTO playback_progresses(episode_id,position_ms,updated_at) VALUES ('episode',18000,1)",
+      );
+      await database.close();
+      _removeRefreshIdentitySchema(underlying);
+      underlying.userVersion = 8;
+      database = AppDatabase.forTesting(
+        NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+      );
+
+      final episode = (await database.episodeById('episode'))!;
+      expect(episode.refreshId, isNull);
+      expect(episode.queueAutomationApplied, isTrue);
+      expect(
+        (await database.watchPlaybackProgressForEpisode('episode').first)
+            ?.positionMs,
+        18000,
+      );
+      for (final table in ['episodes', 'articles']) {
+        final plan = await database
+            .customSelect(
+              'EXPLAIN QUERY PLAN SELECT * FROM $table WHERE id IN (?, ?) OR refresh_id IN (?, ?)',
+              variables: const [
+                Variable('a'),
+                Variable('b'),
+                Variable('a'),
+                Variable('b'),
+              ],
+            )
+            .get();
+        expect(
+          plan.map((row) => row.read<String>('detail')).join('\n'),
+          contains('idx_${table}_refresh_id'),
+        );
+      }
+    },
+  );
+
+  test('version 9 upgrade retains items and adds Nostr deletion storage', () async {
+    await database.close();
+    final underlying = sqlite3.openInMemory();
+    addTearDown(underlying.close);
+    database = AppDatabase.forTesting(
+      NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+    );
+    await database.customStatement(
+      "INSERT INTO feeds(id,title,feed_url,created_at,updated_at) VALUES ('reader','Reader','https://example.test/feed',1,1)",
+    );
+    await database.customStatement(
+      "INSERT INTO articles(id,feed_id,title,discovered_at,starred) VALUES ('saved','reader','Saved',1,1)",
+    );
+    await database.customStatement(
+      "INSERT INTO episodes(id,feed_id,title,enclosure_url,discovered_at) VALUES ('episode','reader','Episode','https://example.test/audio.mp3',1)",
+    );
+    await database.customStatement(
+      "INSERT INTO playback_progresses(episode_id,position_ms,updated_at) VALUES ('episode',18000,1)",
+    );
+    await database.customStatement(
+      "INSERT INTO queue_entries(id,episode_id,sort_key,added_at) VALUES ('queued','episode',1024,1)",
+    );
+    await database.close();
+    underlying.execute('DROP TABLE nostr_deletions');
+    underlying.userVersion = 9;
+    database = AppDatabase.forTesting(
+      NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+    );
+
+    expect((await database.articleById('saved'))?.starred, isTrue);
+    expect((await database.watchQueuedEpisodes().first).single.id, 'episode');
+    expect(
+      (await database.watchPlaybackProgressForEpisode('episode').first)
+          ?.positionMs,
+      18000,
+    );
+    expect(await database.select(database.nostrDeletions).get(), isEmpty);
+    await database
+        .into(database.nostrDeletions)
+        .insert(
+          NostrDeletionsCompanion.insert(
+            feedId: 'reader',
+            target: 'deleted-event',
+            deletedAt: DateTime.utc(2026),
+          ),
+        );
+    await database.delete(database.feeds).go();
+    expect(await database.select(database.nostrDeletions).get(), isEmpty);
+    expect(
+      await database.customSelect('PRAGMA foreign_key_check').get(),
+      isEmpty,
+    );
+  });
+
   test('version 5 migration preserves enriched search content and item state', () async {
     await database.close();
     final underlying = sqlite3.openInMemory();
@@ -155,7 +262,11 @@ void main() {
       'ALTER TABLE articles DROP COLUMN reader_fetched_at',
     );
     await database.close();
+    _removeRefreshIdentitySchema(underlying);
     underlying.userVersion = 5;
+    underlying.execute(
+      'ALTER TABLE episodes DROP COLUMN queue_automation_applied',
+    );
     database = AppDatabase.forTesting(
       NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
     );
@@ -226,14 +337,14 @@ void main() {
       }
 
       final query = (
-        category: 'science',
+        categoryFeedIdsJson: '["science"]',
         sort: ContentSort.oldest,
         filter: ArticleFeedFilter.unread,
         query: 'SIGNAL',
       );
       final items = await database
           .watchFilteredArticles(
-            category: query.category,
+            categoryFeedIdsJson: query.categoryFeedIdsJson,
             limit: 100,
             sort: query.sort,
             filter: query.filter,
@@ -242,7 +353,7 @@ void main() {
           .first;
       final count = await database
           .watchFilteredArticleCount(
-            category: query.category,
+            categoryFeedIdsJson: query.categoryFeedIdsJson,
             filter: query.filter,
             query: query.query,
           )
@@ -264,7 +375,7 @@ void main() {
           .first;
       final hiddenFromTimeline = await database
           .watchFilteredArticleCount(
-            category: 'science',
+            categoryFeedIdsJson: '["science"]',
             filter: ArticleFeedFilter.all,
           )
           .first;
@@ -324,34 +435,38 @@ void main() {
           ),
         );
 
-    final inProgress = await database
-        .watchFilteredEpisodesForFeed(
-          feedId: 'podcast',
-          limit: 100,
-          sort: ContentSort.newest,
-          filter: EpisodeFeedFilter.inProgress,
-          query: 'SIGNAL',
-        )
-        .first;
-    final inProgressCount = await database
-        .watchFilteredEpisodeCountForFeed(
-          feedId: 'podcast',
-          filter: EpisodeFeedFilter.inProgress,
-          query: 'signal',
-        )
-        .first;
-    final downloaded = await database
-        .watchFilteredEpisodesForFeed(
-          feedId: 'podcast',
-          limit: 100,
-          sort: ContentSort.oldest,
-          filter: EpisodeFeedFilter.downloaded,
-        )
-        .first;
-
-    expect(inProgress.map((episode) => episode.id), ['progress']);
-    expect(inProgressCount, 1);
-    expect(downloaded.map((episode) => episode.id), ['download']);
+    for (final entry in {
+      EpisodeFeedFilter.all: ['download', 'progress'],
+      EpisodeFeedFilter.unplayed: ['download', 'progress'],
+      EpisodeFeedFilter.inProgress: ['progress'],
+      EpisodeFeedFilter.saved: <String>[],
+      EpisodeFeedFilter.downloaded: ['download'],
+    }.entries) {
+      final count = await database
+          .watchFilteredEpisodeCountForFeed(
+            feedId: 'podcast',
+            filter: entry.key,
+            query: 'signal',
+          )
+          .first;
+      expect(count, entry.value.length, reason: entry.key.name);
+      for (final sort in ContentSort.values) {
+        final rows = await database
+            .watchFilteredEpisodesForFeed(
+              feedId: 'podcast',
+              limit: 100,
+              sort: sort,
+              filter: entry.key,
+              query: 'SIGNAL',
+            )
+            .first;
+        expect(
+          rows.map((episode) => episode.id),
+          sort == ContentSort.newest ? entry.value : entry.value.reversed,
+          reason: '${entry.key.name}, ${sort.name}',
+        );
+      }
+    }
   });
 
   test('episode children cascade when a feed is deleted', () async {
@@ -738,6 +853,71 @@ void main() {
   });
 
   test(
+    'version 7 migration preserves queued and still-pending automation',
+    () async {
+      await database.close();
+      final underlying = sqlite3.openInMemory();
+      addTearDown(underlying.close);
+      database = AppDatabase.forTesting(
+        NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+      );
+      await database.customStatement(
+        "INSERT INTO feeds(id,title,feed_url,auto_queue,created_at,updated_at) "
+        "VALUES ('feed','Podcast','https://example.test/feed',1,1,1)",
+      );
+      for (final id in ['queued', 'staged', 'untouched']) {
+        await database.customStatement(
+          'INSERT INTO episodes(id,feed_id,title,enclosure_url,discovered_at) '
+          "VALUES (?,'feed',?,'https://example.test/audio.mp3',1)",
+          [id, id],
+        );
+      }
+      await database.customStatement(
+        "INSERT INTO queue_entries VALUES ('entry','queued',0,1)",
+      );
+      await database.customStatement(
+        "INSERT INTO pending_queue_adds VALUES ('staged',0,1)",
+      );
+      await database.close();
+      underlying.execute(
+        'ALTER TABLE episodes DROP COLUMN queue_automation_applied',
+      );
+      _removeRefreshIdentitySchema(underlying);
+      underlying.userVersion = 7;
+      database = AppDatabase.forTesting(
+        NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
+      );
+
+      expect((await database.watchQueuedEpisodes().first).single.id, 'queued');
+      expect(
+        (await database.select(database.pendingQueueAdds).getSingle())
+            .episodeId,
+        'staged',
+      );
+      await database.batch((batch) {
+        batch.deleteAll(database.queueEntries);
+        batch.deleteAll(database.pendingQueueAdds);
+      });
+      await database.stageAutomaticQueueAdditions([
+        'queued',
+        'staged',
+        'untouched',
+      ]);
+      expect(
+        (await database.select(database.pendingQueueAdds).getSingle())
+            .episodeId,
+        'untouched',
+      );
+      expect(
+        (await database.select(database.episodes).get()).where(
+          (row) => row.automationApplied,
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
     'version 4 migration preserves Up next and adds queue staging',
     () async {
       await database.close();
@@ -779,6 +959,9 @@ void main() {
               addedAt: now,
             ),
           );
+      await (database.update(database.feeds)
+            ..where((row) => row.id.equals('podcast')))
+          .write(const FeedsCompanion(autoQueue: Value(true)));
       await database.customStatement('DROP TABLE pending_queue_adds');
       await database.customStatement(
         'ALTER TABLE articles DROP COLUMN reader_html',
@@ -787,15 +970,23 @@ void main() {
         'ALTER TABLE articles DROP COLUMN reader_fetched_at',
       );
       await database.close();
+      _removeRefreshIdentitySchema(underlying);
       underlying.userVersion = 4;
+      underlying.execute(
+        'ALTER TABLE episodes DROP COLUMN queue_automation_applied',
+      );
 
       database = AppDatabase.forTesting(
         NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
       );
-      await database.stageQueueAdditions(const ['episode']);
+      await database.stageAutomaticQueueAdditions(const ['episode']);
 
       expect(await database.select(database.queueEntries).get(), hasLength(1));
       expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
+      expect(
+        (await database.episodeById('episode'))?.queueAutomationApplied,
+        isTrue,
+      );
     },
   );
 
@@ -827,7 +1018,11 @@ void main() {
       'ALTER TABLE articles DROP COLUMN reader_fetched_at',
     );
     await database.close();
+    _removeRefreshIdentitySchema(underlying);
     underlying.userVersion = 3;
+    underlying.execute(
+      'ALTER TABLE episodes DROP COLUMN queue_automation_applied',
+    );
 
     database = AppDatabase.forTesting(
       NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
@@ -936,7 +1131,11 @@ void main() {
       'ALTER TABLE articles DROP COLUMN reader_fetched_at',
     );
     await database.close();
+    _removeRefreshIdentitySchema(underlying);
     underlying.userVersion = 1;
+    underlying.execute(
+      'ALTER TABLE episodes DROP COLUMN queue_automation_applied',
+    );
 
     database = AppDatabase.forTesting(
       NativeDatabase.opened(underlying, closeUnderlyingOnClose: false),
@@ -968,6 +1167,14 @@ void main() {
     );
     expect(await database.search('podcast article'), isEmpty);
   });
+}
+
+void _removeRefreshIdentitySchema(Database database) {
+  database.execute('DROP TABLE nostr_deletions');
+  for (final table in ['episodes', 'articles']) {
+    database.execute('DROP INDEX idx_${table}_refresh_id');
+    database.execute('ALTER TABLE $table DROP COLUMN refresh_id');
+  }
 }
 
 final class _SelectLog extends QueryInterceptor {

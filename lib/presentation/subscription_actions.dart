@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,21 +5,6 @@ import '../app/app_providers.dart';
 import '../core/constants.dart';
 import '../core/youtube_support.dart';
 import '../data/database/app_database.dart';
-
-Future<void> deleteSubscriptionThenCleanup({
-  required Future<void> Function() deleteSubscription,
-  required Iterable<Future<void> Function()> cleanupOperations,
-}) async {
-  await deleteSubscription();
-  for (final cleanup in cleanupOperations) {
-    try {
-      await cleanup();
-    } on Object {
-      // The database commit is authoritative. Continue best-effort cleanup
-      // without presenting a failed deletion for a subscription that is gone.
-    }
-  }
-}
 
 Future<bool> confirmUnsubscribe(BuildContext context, Feed feed) async {
   final kind = FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
@@ -60,52 +44,12 @@ Future<bool> confirmUnsubscribe(BuildContext context, Feed feed) async {
 }
 
 Future<void> removeSubscription(WidgetRef ref, Feed feed) async {
-  final database = ref.read(databaseProvider);
   final repository = ref.read(feedRepositoryProvider);
   final audioHandler = ref.read(audioHandlerProvider);
-  final downloads = ref.read(downloadCoordinatorProvider);
-  final episodeIds =
-      await (database.selectOnly(database.episodes)
-            ..addColumns([database.episodes.id])
-            ..where(database.episodes.feedId.equals(feed.id)))
-          .map((row) => row.read(database.episodes.id)!)
-          .get();
-  final downloadRows =
-      await (database.select(database.mediaDownloads).join([
-            innerJoin(
-              database.episodes,
-              database.episodes.id.equalsExp(database.mediaDownloads.episodeId),
-            ),
-          ])..where(database.episodes.feedId.equals(feed.id)))
-          .map((row) => row.readTable(database.mediaDownloads))
-          .get();
-  var removedEpisodeIds = const <String>[];
-  var removedDownloads = const <MediaDownload>[];
-  await deleteSubscriptionThenCleanup(
-    deleteSubscription: () async {
-      await repository.deleteFeed(feed.id);
-      final retainedEpisodeIds =
-          (await (database.selectOnly(database.episodes)
-                    ..addColumns([database.episodes.id])
-                    ..where(database.episodes.feedId.equals(feed.id)))
-                  .map((row) => row.read(database.episodes.id)!)
-                  .get())
-              .toSet();
-      final removedEpisodeIdSet = episodeIds
-          .where((id) => !retainedEpisodeIds.contains(id))
-          .toSet();
-      removedEpisodeIds = removedEpisodeIdSet.toList(growable: false);
-      removedDownloads = downloadRows
-          .where((download) => removedEpisodeIdSet.contains(download.episodeId))
-          .toList(growable: false);
-    },
-    cleanupOperations: [
-      () => removedEpisodeIds.isEmpty
-          ? Future<void>.value()
-          : audioHandler.removeEpisodesFromLibrary(removedEpisodeIds),
-      () => removedDownloads.isEmpty
-          ? Future<void>.value()
-          : downloads.discardTasksForDeletedEpisodes(removedDownloads),
-    ],
-  );
+  final removedEpisodes = await repository.deleteFeed(feed.id);
+  try {
+    await audioHandler.removeEpisodesFromLibrary(removedEpisodes);
+  } on Object {
+    // Unsubscribe already committed; do not report it as failed.
+  }
 }

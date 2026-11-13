@@ -83,8 +83,9 @@ class MainActivity : AudioServiceActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val shared = captureSharedText(intent)
-        if (shared != null) incomingShareChannel?.invokeMethod("sharedText", shared)
+        if (captureSharedText(intent)) {
+            incomingShareChannel?.invokeMethod("shareAvailable", null)
+        }
     }
 
     override fun onPictureInPictureModeChanged(
@@ -177,9 +178,9 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    private fun captureSharedText(intent: Intent?): String? {
+    private fun captureSharedText(intent: Intent?): Boolean {
         if (intent?.action != Intent.ACTION_SEND || intent.type != "text/plain") {
-            return null
+            return false
         }
         val shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -187,7 +188,7 @@ class MainActivity : AudioServiceActivity() {
             pendingSharedText = shared
             intent.removeExtra(Intent.EXTRA_TEXT)
         }
-        return shared
+        return shared != null
     }
 
     @RequiresApi(Build.VERSION_CODES.O)

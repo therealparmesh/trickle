@@ -10,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/constants.dart';
 import '../core/content_filters.dart';
+import '../core/feed_category.dart';
 import '../data/database/app_database.dart';
 import '../data/network/safe_network_client.dart';
 import '../data/repositories/article_repository.dart';
@@ -222,13 +223,29 @@ typedef ArticleListQuery = ({
   ArticleFeedFilter filter,
   String query,
 });
+// Keep the query input stable when a refresh only changes feed metadata.
+final _categoryFeedIdsJsonProvider = Provider.autoDispose
+    .family<String, String>(
+      (ref, identity) => jsonEncode(
+        [
+          for (final feed
+              in ref.watch(readerFeedsProvider).value ?? const <Feed>[])
+            if (matchesFeedCategory(feed.category, identity)) feed.id,
+        ]..sort(),
+      ),
+    );
 final filteredArticlesProvider = StreamProvider.autoDispose
     .family<List<Article>, ArticleListQuery>(
       (ref, value) => ref
           .watch(databaseProvider)
           .watchFilteredArticles(
             feedId: value.feedId,
-            category: value.category,
+            categoryFeedIdsJson: switch (feedCategoryIdentity(value.category)) {
+              final identity? => ref.watch(
+                _categoryFeedIdsJsonProvider(identity),
+              ),
+              null => null,
+            },
             limit: value.limit,
             sort: value.sort,
             filter: value.filter,
@@ -247,7 +264,12 @@ final filteredArticleCountProvider = StreamProvider.autoDispose
           .watch(databaseProvider)
           .watchFilteredArticleCount(
             feedId: value.feedId,
-            category: value.category,
+            categoryFeedIdsJson: switch (feedCategoryIdentity(value.category)) {
+              final identity? => ref.watch(
+                _categoryFeedIdsJsonProvider(identity),
+              ),
+              null => null,
+            },
             filter: value.filter,
             query: value.query,
           ),
@@ -287,11 +309,10 @@ final episodeProgressSnapshotProvider = Provider.autoDispose
 final articleProvider = StreamProvider.autoDispose.family<Article?, String>(
   (ref, id) => ref.watch(databaseProvider).watchArticleById(id),
 );
-final articleAttachmentsProvider = FutureProvider.autoDispose
-    .family<List<ArticleAttachment>, String>((ref, id) {
-      ref.watch(articleProvider(id));
-      return ref.watch(databaseProvider).attachmentsForArticle(id);
-    });
+final articleAttachmentsProvider = StreamProvider.autoDispose
+    .family<List<ArticleAttachment>, String>(
+      (ref, id) => ref.watch(databaseProvider).watchArticleAttachments(id),
+    );
 final articlePreviewImageProvider = FutureProvider.autoDispose
     .family<String?, ({String id, String? url})>((ref, source) async {
       final repository = ref.watch(articleRepositoryProvider);

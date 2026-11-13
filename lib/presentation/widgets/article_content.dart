@@ -9,6 +9,11 @@ import '../../data/security/private_feed_store.dart';
 import 'article_image.dart';
 import 'common.dart';
 
+double? _imageDimension(String? attribute) {
+  final value = double.tryParse(attribute ?? '');
+  return value != null && value.isFinite && value > 0 ? value : null;
+}
+
 final class ArticleContent extends StatelessWidget {
   const ArticleContent({
     required this.html,
@@ -49,8 +54,8 @@ final class ArticleContent extends StatelessWidget {
         source: source,
         allowed: allowRemoteImages,
         alt: element.attributes['alt'],
-        declaredWidth: double.tryParse(element.attributes['width'] ?? ''),
-        declaredHeight: double.tryParse(element.attributes['height'] ?? ''),
+        declaredWidth: _imageDimension(element.attributes['width']),
+        declaredHeight: _imageDimension(element.attributes['height']),
         secret: privateSecret,
       );
     },

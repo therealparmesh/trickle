@@ -291,6 +291,64 @@ void main() {
     client.close();
   });
 
+  test('rejected redirects cancel their unread bodies', () async {
+    final uri = Uri.parse('https://example.test/redirect');
+    for (final media in [false, true]) {
+      final canceled = Completer<void>();
+      final body = StreamController<Uint8List>(onCancel: canceled.complete);
+      final client = _client(
+        _FakeAdapter((_, _) async => ResponseBody(body.stream, 302)),
+      );
+      try {
+        await expectLater(
+          media ? client.resolveResource(uri) : client.get(uri),
+          throwsA(
+            isA<NetworkException>().having(
+              (error) => error.message,
+              'message',
+              contains('invalid redirect'),
+            ),
+          ),
+        );
+        await canceled.future.timeout(const Duration(seconds: 1));
+      } finally {
+        await body.close();
+        client.close();
+      }
+    }
+  });
+
+  test(
+    'the absolute deadline cancels a body that stalls after headers',
+    () async {
+      final canceled = Completer<void>();
+      final body = StreamController<Uint8List>(onCancel: canceled.complete);
+      body.add(Uint8List.fromList([1, 2, 3]));
+      final client = _client(
+        _FakeAdapter((_, _) async => ResponseBody(body.stream, 200)),
+      );
+      try {
+        await expectLater(
+          client.get(
+            Uri.parse('https://example.test/feed'),
+            totalTimeout: const Duration(milliseconds: 100),
+          ),
+          throwsA(
+            isA<NetworkException>().having(
+              (error) => error.message,
+              'message',
+              'The request timed out.',
+            ),
+          ),
+        );
+        expect(canceled.isCompleted, isTrue);
+      } finally {
+        await body.close();
+        client.close();
+      }
+    },
+  );
+
   test('test clients cannot open live WebSocket connections', () async {
     var validated = false;
     final client = SafeNetworkClient.forTesting(

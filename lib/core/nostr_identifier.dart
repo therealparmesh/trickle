@@ -64,7 +64,9 @@ NostrProfileAddress parseNostrProfile(String input) {
     if (type == 0 && length == 32 && publicKey == null) {
       publicKey = _hex(field);
     } else if (type == 1) {
-      final relay = _safeRelay(utf8.decode(field, allowMalformed: true));
+      final relay = normalizeNostrRelay(
+        utf8.decode(field, allowMalformed: true),
+      );
       if (relay != null && !relays.contains(relay)) relays.add(relay);
     }
   }
@@ -98,8 +100,6 @@ String _encodeHex(String hrp, String value) {
   final checksum = _createChecksum(hrp, data);
   return '${hrp}1${[...data, ...checksum].map((value) => _bech32Alphabet[value]).join()}';
 }
-
-Uri? normalizeNostrRelay(String raw) => _safeRelay(raw);
 
 ({String hrp, List<int> bytes}) _decodeBech32(String input) {
   if (input.length > 5000 ||
@@ -194,7 +194,7 @@ int _polymod(List<int> values) {
   return checksum;
 }
 
-Uri? _safeRelay(String raw) {
+Uri? normalizeNostrRelay(String raw) {
   final uri = Uri.tryParse(raw.trim());
   if (uri == null ||
       uri.scheme.toLowerCase() != 'wss' ||

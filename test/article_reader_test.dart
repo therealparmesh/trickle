@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/app/theme.dart';
 import 'package:trickle/core/constants.dart';
+import 'package:trickle/core/content_filters.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/article_repository.dart';
@@ -82,6 +83,54 @@ void main() {
           result.html,
         );
       }
+    },
+  );
+
+  test(
+    'saving from a list keeps the article before its offline copy downloads',
+    () async {
+      await _seed(database, content: '<p>Feed summary</p>');
+      final row =
+          (await database
+                  .watchFilteredArticles(
+                    limit: 1,
+                    sort: ContentSort.newest,
+                    filter: ArticleFeedFilter.all,
+                  )
+                  .first)
+              .single;
+      final started = Completer<void>();
+      final respond = Completer<void>();
+      adapter.beforeResponse = () {
+        started.complete();
+        return respond.future;
+      };
+      adapter.body =
+          '<article><p>The full text should be available offline, '
+          'even when the article is saved from a list without the body.</p></article>';
+      final saving = repository.setSaved(
+        row.id,
+        saved: true,
+        cacheForOffline: true,
+      );
+      final offlineCopy = database
+          .watchArticleById(row.id)
+          .firstWhere((article) => article?.readerHtml != null);
+      try {
+        await started.future.timeout(const Duration(seconds: 3));
+        await saving.timeout(const Duration(seconds: 3));
+        expect((await database.articleById(row.id))?.starred, isTrue);
+      } finally {
+        respond.complete();
+      }
+      final saved = (await offlineCopy.timeout(const Duration(seconds: 3)))!;
+      adapter.statusCode = 503;
+      expect((await repository.load(saved)).text, contains('The full text'));
+      expect(adapter.requests, hasLength(1));
+
+      await repository.setSaved(row.id, saved: false);
+      expect((await database.articleById(row.id))?.starred, isFalse);
+      expect(adapter.requests, hasLength(1));
     },
   );
 
@@ -195,6 +244,151 @@ void main() {
       expect(images, everyElement('https://publisher.test/cover.jpg'));
       expect(adapter.requests, hasLength(1));
       expect((await database.articleById(article.id))?.imageUrl, images.first);
+    },
+  );
+
+  testWidgets('reader never shows the previous source under a new title', (
+    tester,
+  ) async {
+    final original = await _seed(
+      database,
+      content: '<p>Original feed text</p>',
+    );
+    final changes = StreamController<Article>();
+    final response = Completer<void>();
+    adapter.statusCode = 503;
+    adapter.beforeResponse = () async {
+      if (adapter.requests.length > 1) await response.future;
+    };
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          articleProvider.overrideWith((_, _) => changes.stream),
+          articleRepositoryProvider.overrideWithValue(repository),
+          feedRepositoryProvider.overrideWithValue(
+            FeedRepository(
+              database: database,
+              network: network,
+              privateFeeds: secrets,
+            ),
+          ),
+          readerTextScaleProvider.overrideWith((_) => Stream.value(100)),
+        ],
+        child: MaterialApp(home: ArticlePage(articleId: original.id)),
+      ),
+    );
+    addTearDown(() async {
+      if (!response.isCompleted) response.complete();
+      await changes.close();
+    });
+    Future<void> pumpUntil(Finder finder) async {
+      for (
+        var attempt = 0;
+        attempt < 40 && finder.evaluate().isEmpty;
+        attempt++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(finder, findsOneWidget);
+    }
+
+    changes.add(original);
+    final oldText = find.text('Original feed text', findRichText: true);
+    await pumpUntil(oldText);
+    final corrected = original.copyWith(
+      title: 'Corrected title',
+      canonicalUrl: const Value('https://publisher.test/corrected'),
+      contentHtml: const Value('<p>Corrected feed text</p>'),
+    );
+    changes.add(corrected);
+    await tester.pump();
+    expect(oldText, findsNothing);
+
+    response.complete();
+    await pumpUntil(find.text('Corrected feed text', findRichText: true));
+    final updated = corrected.copyWith(
+      contentHtml: const Value('<p>Updated at the same address</p>'),
+    );
+    changes.add(updated);
+    final updatedText = find.text(
+      'Updated at the same address',
+      findRichText: true,
+    );
+    await pumpUntil(updatedText);
+    final requests = adapter.requests.length;
+    changes.add(updated.copyWith(starred: true));
+    await tester.pump();
+    expect(adapter.requests, hasLength(requests));
+    expect(updatedText, findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets(
+    'saving stays responsive and marking unread survives closing the reader',
+    (tester) async {
+      final readWrite = _DelayedReadWrite();
+      await database.close();
+      database = AppDatabase.forTesting(
+        NativeDatabase.memory().interceptWith(readWrite),
+      );
+      final article = await _seed(
+        database,
+        canonicalUrl: null,
+        content: '<p>Feed text</p>',
+      );
+      await database
+          .update(database.articles)
+          .write(ArticlesCompanion(readAt: Value(article.discoveredAt)));
+      readWrite.enabled = true;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            articleRepositoryProvider.overrideWithValue(
+              ArticleRepository(database, network, secrets),
+            ),
+            feedRepositoryProvider.overrideWithValue(
+              FeedRepository(
+                database: database,
+                network: network,
+                privateFeeds: secrets,
+              ),
+            ),
+            readerTextScaleProvider.overrideWith((_) => Stream.value(100)),
+          ],
+          child: MaterialApp(home: ArticlePage(articleId: article.id)),
+        ),
+      );
+      try {
+        final save = find.widgetWithText(FilledButton, 'Save');
+        for (
+          var attempt = 0;
+          attempt < 40 && save.evaluate().isEmpty;
+          attempt++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(readWrite.started, isTrue);
+        await tester.tap(save);
+        await tester.pumpAndSettle();
+        expect((await database.articleById(article.id))?.starred, isTrue);
+        await tester.tap(find.widgetWithText(FilledButton, 'Mark unread'));
+        await tester.pumpWidget(const SizedBox.shrink());
+      } finally {
+        readWrite.release.complete();
+        await tester.pumpAndSettle();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+      expect((await database.articleById(article.id))?.readAt, isNull);
     },
   );
 
@@ -348,7 +542,7 @@ void main() {
   });
 
   testWidgets(
-    'reader images obey privacy settings and never forward credentials to other hosts',
+    'reader images handle invalid dimensions and keep credentials on their host',
     (tester) async {
       final enabled = StreamController<bool>();
       addTearDown(enabled.close);
@@ -384,7 +578,7 @@ void main() {
                 child: ArticleContent(
                   html:
                       '<a href="https://publisher.test/full"><img src="https://publisher.test/cover.jpg" width="320" height="180"></a>'
-                      '<table><tr><td><img src="https://cdn.test/cover.jpg"></td></tr></table><img src="file:///private/key">',
+                      '<table><tr><td><img src="https://cdn.test/cover.jpg" width="-1" height="NaN"></td></tr></table><img src="file:///private/key">',
                   scale: 1,
                   privateSecret: PrivateFeedSecret(
                     url: Uri.parse('https://publisher.test/feed'),
@@ -423,7 +617,7 @@ void main() {
 Future<Article> _seed(
   AppDatabase database, {
   String? content,
-  String canonicalUrl = 'https://publisher.test/launch',
+  String? canonicalUrl = 'https://publisher.test/launch',
 }) async {
   final now = DateTime.utc(2026, 10, 7);
   await database
@@ -451,6 +645,25 @@ Future<Article> _seed(
         ),
       );
   return (await database.articleById('article'))!;
+}
+
+final class _DelayedReadWrite extends QueryInterceptor {
+  final release = Completer<void>();
+  bool enabled = false;
+  bool started = false;
+
+  @override
+  Future<int> runUpdate(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) async {
+    if (enabled && !started && statement.contains('"read_at"')) {
+      started = true;
+      await release.future;
+    }
+    return super.runUpdate(executor, statement, args);
+  }
 }
 
 final class _PageAdapter implements HttpClientAdapter {

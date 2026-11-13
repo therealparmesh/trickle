@@ -71,6 +71,12 @@ jobs:
           test -n "$apksigner"
           "$apksigner" verify --verbose "dist/$filename"
 
+          # These controls are resolved by name, outside Android's resource graph.
+          resources="$("$(dirname "$apksigner")/aapt2" dump resources "dist/$filename")"
+          for icon in ic_stat_trickle audio_service_play_arrow audio_service_pause audio_service_fast_rewind audio_service_fast_forward audio_service_skip_next; do
+            printf '%s\n' "$resources" | grep -F "drawable/$icon"
+          done
+
           expected="d92e9c5ffe5901296c3b2886ad7b751750d8239e48322aa15cd4ba4ee87b77e2"
           certificates="$("$apksigner" verify --print-certs "dist/$filename" 2>&1)"
           printf '%s\n' "$certificates"

@@ -22,7 +22,7 @@ sqlite3 "$database" >/dev/null <<'SQL'
 PRAGMA foreign_keys = ON;
 BEGIN IMMEDIATE;
 
-DELETE FROM search_index;
+DELETE FROM search_documents;
 DELETE FROM queue_entries;
 DELETE FROM playback_progresses;
 DELETE FROM media_downloads;
@@ -177,12 +177,12 @@ INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES
   ('remote_images', 'true', unixepoch('now')),
   ('refresh_interval', 'weekly', unixepoch('now'));
 
-INSERT INTO search_index (entity_id, kind, title, body, feed_title)
+INSERT INTO search_documents (entity_id, kind, title, body, feed_title)
 SELECT id, 'feed', title, COALESCE(description, ''), title FROM feeds;
-INSERT INTO search_index (entity_id, kind, title, body, feed_title)
+INSERT INTO search_documents (entity_id, kind, title, body, feed_title)
 SELECT episodes.id, 'episode', episodes.title, COALESCE(episodes.description, ''), feeds.title
 FROM episodes JOIN feeds ON feeds.id = episodes.feed_id;
-INSERT INTO search_index (entity_id, kind, title, body, feed_title)
+INSERT INTO search_documents (entity_id, kind, title, body, feed_title)
 SELECT articles.id, 'article', articles.title,
   COALESCE(articles.author, '') || ' ' || COALESCE(articles.summary, ''), feeds.title
 FROM articles JOIN feeds ON feeds.id = articles.feed_id;

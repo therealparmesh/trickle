@@ -42,6 +42,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   late int _tabIndex;
   late _ReaderFilter _filter;
   int _limit = _pageSize;
+  bool _confirmingMarkRead = false;
   bool _markingAllRead = false;
   bool _organizingFeeds = false;
   final TextEditingController _search = TextEditingController();
@@ -121,14 +122,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       0,
       (total, feed) => total + (unreadByFeed[feed.id] ?? 0),
     );
-    final selectedCategory =
-        categories.any(
-          (category) => feedCategoryIdentity(category) == _category,
-        )
-        ? categories.firstWhere(
-            (category) => feedCategoryIdentity(category) == _category,
-          )
-        : null;
+    final selectedCategory = categories
+        .where((category) => matchesFeedCategory(category, _category))
+        .firstOrNull;
+    final selectedUnread = selectedCategory == null
+        ? allUnread
+        : unreadByCategory[_category] ?? 0;
     final filter = switch (_filter) {
       _ReaderFilter.unread => ArticleFeedFilter.unread,
       _ReaderFilter.all => ArticleFeedFilter.all,
@@ -221,7 +220,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   }),
                   accent: AppConstants.magenta,
                 ),
-                if (_filter == _ReaderFilter.unread && total > 0)
+                if (_filter == _ReaderFilter.unread &&
+                    _search.text.trim().isEmpty &&
+                    _query.isEmpty &&
+                    selectedUnread > 0)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
                       AppSpacing.lg,
@@ -232,7 +234,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: _markingAllRead
+                        onPressed: _markingAllRead || _confirmingMarkRead
                             ? null
                             : () => _markAllRead(selectedCategory),
                         icon: _markingAllRead
@@ -404,8 +406,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   Future<void> _markAllRead(String? category) async {
-    if (_markingAllRead) return;
-    setState(() => _markingAllRead = true);
+    if (_markingAllRead || _confirmingMarkRead) return;
+    setState(() => _confirmingMarkRead = true);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -432,10 +434,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       ),
     );
     if (!mounted) return;
-    if (confirmed != true) {
-      setState(() => _markingAllRead = false);
-      return;
-    }
+    setState(() {
+      _confirmingMarkRead = false;
+      _markingAllRead = confirmed == true;
+    });
+    if (confirmed != true) return;
     try {
       await ref
           .read(feedRepositoryProvider)

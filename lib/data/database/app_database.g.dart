@@ -1397,6 +1397,17 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _refreshIdMeta = const VerificationMeta(
+    'refreshId',
+  );
+  @override
+  late final GeneratedColumn<String> refreshId = GeneratedColumn<String>(
+    'refresh_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _feedIdMeta = const VerificationMeta('feedId');
   @override
   late final GeneratedColumn<String> feedId = GeneratedColumn<String>(
@@ -1584,9 +1595,25 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _queueAutomationAppliedMeta =
+      const VerificationMeta('queueAutomationApplied');
+  @override
+  late final GeneratedColumn<bool> queueAutomationApplied =
+      GeneratedColumn<bool>(
+        'queue_automation_applied',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("queue_automation_applied" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    refreshId,
     feedId,
     guid,
     title,
@@ -1603,6 +1630,7 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
     played,
     starred,
     automationApplied,
+    queueAutomationApplied,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1620,6 +1648,12 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
+    }
+    if (data.containsKey('refresh_id')) {
+      context.handle(
+        _refreshIdMeta,
+        refreshId.isAcceptableOrUnknown(data['refresh_id']!, _refreshIdMeta),
+      );
     }
     if (data.containsKey('feed_id')) {
       context.handle(
@@ -1743,6 +1777,15 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         ),
       );
     }
+    if (data.containsKey('queue_automation_applied')) {
+      context.handle(
+        _queueAutomationAppliedMeta,
+        queueAutomationApplied.isAcceptableOrUnknown(
+          data['queue_automation_applied']!,
+          _queueAutomationAppliedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1756,6 +1799,10 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
+      refreshId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refresh_id'],
+      ),
       feedId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}feed_id'],
@@ -1820,6 +1867,10 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
         DriftSqlType.bool,
         data['${effectivePrefix}automation_applied'],
       )!,
+      queueAutomationApplied: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}queue_automation_applied'],
+      )!,
     );
   }
 
@@ -1831,6 +1882,7 @@ class $EpisodesTable extends Episodes with TableInfo<$EpisodesTable, Episode> {
 
 class Episode extends DataClass implements Insertable<Episode> {
   final String id;
+  final String? refreshId;
   final String feedId;
   final String? guid;
   final String title;
@@ -1847,8 +1899,10 @@ class Episode extends DataClass implements Insertable<Episode> {
   final bool played;
   final bool starred;
   final bool automationApplied;
+  final bool queueAutomationApplied;
   const Episode({
     required this.id,
+    this.refreshId,
     required this.feedId,
     this.guid,
     required this.title,
@@ -1865,11 +1919,15 @@ class Episode extends DataClass implements Insertable<Episode> {
     required this.played,
     required this.starred,
     required this.automationApplied,
+    required this.queueAutomationApplied,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    if (!nullToAbsent || refreshId != null) {
+      map['refresh_id'] = Variable<String>(refreshId);
+    }
     map['feed_id'] = Variable<String>(feedId);
     if (!nullToAbsent || guid != null) {
       map['guid'] = Variable<String>(guid);
@@ -1902,12 +1960,16 @@ class Episode extends DataClass implements Insertable<Episode> {
     map['played'] = Variable<bool>(played);
     map['starred'] = Variable<bool>(starred);
     map['automation_applied'] = Variable<bool>(automationApplied);
+    map['queue_automation_applied'] = Variable<bool>(queueAutomationApplied);
     return map;
   }
 
   EpisodesCompanion toCompanion(bool nullToAbsent) {
     return EpisodesCompanion(
       id: Value(id),
+      refreshId: refreshId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refreshId),
       feedId: Value(feedId),
       guid: guid == null && nullToAbsent ? const Value.absent() : Value(guid),
       title: Value(title),
@@ -1938,6 +2000,7 @@ class Episode extends DataClass implements Insertable<Episode> {
       played: Value(played),
       starred: Value(starred),
       automationApplied: Value(automationApplied),
+      queueAutomationApplied: Value(queueAutomationApplied),
     );
   }
 
@@ -1948,6 +2011,7 @@ class Episode extends DataClass implements Insertable<Episode> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Episode(
       id: serializer.fromJson<String>(json['id']),
+      refreshId: serializer.fromJson<String?>(json['refreshId']),
       feedId: serializer.fromJson<String>(json['feedId']),
       guid: serializer.fromJson<String?>(json['guid']),
       title: serializer.fromJson<String>(json['title']),
@@ -1964,6 +2028,9 @@ class Episode extends DataClass implements Insertable<Episode> {
       played: serializer.fromJson<bool>(json['played']),
       starred: serializer.fromJson<bool>(json['starred']),
       automationApplied: serializer.fromJson<bool>(json['automationApplied']),
+      queueAutomationApplied: serializer.fromJson<bool>(
+        json['queueAutomationApplied'],
+      ),
     );
   }
   @override
@@ -1971,6 +2038,7 @@ class Episode extends DataClass implements Insertable<Episode> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'refreshId': serializer.toJson<String?>(refreshId),
       'feedId': serializer.toJson<String>(feedId),
       'guid': serializer.toJson<String?>(guid),
       'title': serializer.toJson<String>(title),
@@ -1987,11 +2055,13 @@ class Episode extends DataClass implements Insertable<Episode> {
       'played': serializer.toJson<bool>(played),
       'starred': serializer.toJson<bool>(starred),
       'automationApplied': serializer.toJson<bool>(automationApplied),
+      'queueAutomationApplied': serializer.toJson<bool>(queueAutomationApplied),
     };
   }
 
   Episode copyWith({
     String? id,
+    Value<String?> refreshId = const Value.absent(),
     String? feedId,
     Value<String?> guid = const Value.absent(),
     String? title,
@@ -2008,8 +2078,10 @@ class Episode extends DataClass implements Insertable<Episode> {
     bool? played,
     bool? starred,
     bool? automationApplied,
+    bool? queueAutomationApplied,
   }) => Episode(
     id: id ?? this.id,
+    refreshId: refreshId.present ? refreshId.value : this.refreshId,
     feedId: feedId ?? this.feedId,
     guid: guid.present ? guid.value : this.guid,
     title: title ?? this.title,
@@ -2026,10 +2098,13 @@ class Episode extends DataClass implements Insertable<Episode> {
     played: played ?? this.played,
     starred: starred ?? this.starred,
     automationApplied: automationApplied ?? this.automationApplied,
+    queueAutomationApplied:
+        queueAutomationApplied ?? this.queueAutomationApplied,
   );
   Episode copyWithCompanion(EpisodesCompanion data) {
     return Episode(
       id: data.id.present ? data.id.value : this.id,
+      refreshId: data.refreshId.present ? data.refreshId.value : this.refreshId,
       feedId: data.feedId.present ? data.feedId.value : this.feedId,
       guid: data.guid.present ? data.guid.value : this.guid,
       title: data.title.present ? data.title.value : this.title,
@@ -2060,6 +2135,9 @@ class Episode extends DataClass implements Insertable<Episode> {
       automationApplied: data.automationApplied.present
           ? data.automationApplied.value
           : this.automationApplied,
+      queueAutomationApplied: data.queueAutomationApplied.present
+          ? data.queueAutomationApplied.value
+          : this.queueAutomationApplied,
     );
   }
 
@@ -2067,6 +2145,7 @@ class Episode extends DataClass implements Insertable<Episode> {
   String toString() {
     return (StringBuffer('Episode(')
           ..write('id: $id, ')
+          ..write('refreshId: $refreshId, ')
           ..write('feedId: $feedId, ')
           ..write('guid: $guid, ')
           ..write('title: $title, ')
@@ -2082,7 +2161,8 @@ class Episode extends DataClass implements Insertable<Episode> {
           ..write('explicit: $explicit, ')
           ..write('played: $played, ')
           ..write('starred: $starred, ')
-          ..write('automationApplied: $automationApplied')
+          ..write('automationApplied: $automationApplied, ')
+          ..write('queueAutomationApplied: $queueAutomationApplied')
           ..write(')'))
         .toString();
   }
@@ -2090,6 +2170,7 @@ class Episode extends DataClass implements Insertable<Episode> {
   @override
   int get hashCode => Object.hash(
     id,
+    refreshId,
     feedId,
     guid,
     title,
@@ -2106,12 +2187,14 @@ class Episode extends DataClass implements Insertable<Episode> {
     played,
     starred,
     automationApplied,
+    queueAutomationApplied,
   );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Episode &&
           other.id == this.id &&
+          other.refreshId == this.refreshId &&
           other.feedId == this.feedId &&
           other.guid == this.guid &&
           other.title == this.title &&
@@ -2127,11 +2210,13 @@ class Episode extends DataClass implements Insertable<Episode> {
           other.explicit == this.explicit &&
           other.played == this.played &&
           other.starred == this.starred &&
-          other.automationApplied == this.automationApplied);
+          other.automationApplied == this.automationApplied &&
+          other.queueAutomationApplied == this.queueAutomationApplied);
 }
 
 class EpisodesCompanion extends UpdateCompanion<Episode> {
   final Value<String> id;
+  final Value<String?> refreshId;
   final Value<String> feedId;
   final Value<String?> guid;
   final Value<String> title;
@@ -2148,9 +2233,11 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   final Value<bool> played;
   final Value<bool> starred;
   final Value<bool> automationApplied;
+  final Value<bool> queueAutomationApplied;
   final Value<int> rowid;
   const EpisodesCompanion({
     this.id = const Value.absent(),
+    this.refreshId = const Value.absent(),
     this.feedId = const Value.absent(),
     this.guid = const Value.absent(),
     this.title = const Value.absent(),
@@ -2167,10 +2254,12 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.played = const Value.absent(),
     this.starred = const Value.absent(),
     this.automationApplied = const Value.absent(),
+    this.queueAutomationApplied = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   EpisodesCompanion.insert({
     required String id,
+    this.refreshId = const Value.absent(),
     required String feedId,
     this.guid = const Value.absent(),
     required String title,
@@ -2187,6 +2276,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     this.played = const Value.absent(),
     this.starred = const Value.absent(),
     this.automationApplied = const Value.absent(),
+    this.queueAutomationApplied = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        feedId = Value(feedId),
@@ -2195,6 +2285,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
        discoveredAt = Value(discoveredAt);
   static Insertable<Episode> custom({
     Expression<String>? id,
+    Expression<String>? refreshId,
     Expression<String>? feedId,
     Expression<String>? guid,
     Expression<String>? title,
@@ -2211,10 +2302,12 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     Expression<bool>? played,
     Expression<bool>? starred,
     Expression<bool>? automationApplied,
+    Expression<bool>? queueAutomationApplied,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (refreshId != null) 'refresh_id': refreshId,
       if (feedId != null) 'feed_id': feedId,
       if (guid != null) 'guid': guid,
       if (title != null) 'title': title,
@@ -2231,12 +2324,15 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       if (played != null) 'played': played,
       if (starred != null) 'starred': starred,
       if (automationApplied != null) 'automation_applied': automationApplied,
+      if (queueAutomationApplied != null)
+        'queue_automation_applied': queueAutomationApplied,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   EpisodesCompanion copyWith({
     Value<String>? id,
+    Value<String?>? refreshId,
     Value<String>? feedId,
     Value<String?>? guid,
     Value<String>? title,
@@ -2253,10 +2349,12 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     Value<bool>? played,
     Value<bool>? starred,
     Value<bool>? automationApplied,
+    Value<bool>? queueAutomationApplied,
     Value<int>? rowid,
   }) {
     return EpisodesCompanion(
       id: id ?? this.id,
+      refreshId: refreshId ?? this.refreshId,
       feedId: feedId ?? this.feedId,
       guid: guid ?? this.guid,
       title: title ?? this.title,
@@ -2273,6 +2371,8 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
       played: played ?? this.played,
       starred: starred ?? this.starred,
       automationApplied: automationApplied ?? this.automationApplied,
+      queueAutomationApplied:
+          queueAutomationApplied ?? this.queueAutomationApplied,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2282,6 +2382,9 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (refreshId.present) {
+      map['refresh_id'] = Variable<String>(refreshId.value);
     }
     if (feedId.present) {
       map['feed_id'] = Variable<String>(feedId.value);
@@ -2331,6 +2434,11 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
     if (automationApplied.present) {
       map['automation_applied'] = Variable<bool>(automationApplied.value);
     }
+    if (queueAutomationApplied.present) {
+      map['queue_automation_applied'] = Variable<bool>(
+        queueAutomationApplied.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2341,6 +2449,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
   String toString() {
     return (StringBuffer('EpisodesCompanion(')
           ..write('id: $id, ')
+          ..write('refreshId: $refreshId, ')
           ..write('feedId: $feedId, ')
           ..write('guid: $guid, ')
           ..write('title: $title, ')
@@ -2357,6 +2466,7 @@ class EpisodesCompanion extends UpdateCompanion<Episode> {
           ..write('played: $played, ')
           ..write('starred: $starred, ')
           ..write('automationApplied: $automationApplied, ')
+          ..write('queueAutomationApplied: $queueAutomationApplied, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2376,6 +2486,17 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _refreshIdMeta = const VerificationMeta(
+    'refreshId',
+  );
+  @override
+  late final GeneratedColumn<String> refreshId = GeneratedColumn<String>(
+    'refresh_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _feedIdMeta = const VerificationMeta('feedId');
   @override
@@ -2589,6 +2710,7 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    refreshId,
     feedId,
     guid,
     title,
@@ -2625,6 +2747,12 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
+    }
+    if (data.containsKey('refresh_id')) {
+      context.handle(
+        _refreshIdMeta,
+        refreshId.isAcceptableOrUnknown(data['refresh_id']!, _refreshIdMeta),
+      );
     }
     if (data.containsKey('feed_id')) {
       context.handle(
@@ -2786,6 +2914,10 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
+      refreshId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refresh_id'],
+      ),
       feedId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}feed_id'],
@@ -2873,6 +3005,7 @@ class $ArticlesTable extends Articles with TableInfo<$ArticlesTable, Article> {
 
 class Article extends DataClass implements Insertable<Article> {
   final String id;
+  final String? refreshId;
   final String feedId;
   final String? guid;
   final String title;
@@ -2894,6 +3027,7 @@ class Article extends DataClass implements Insertable<Article> {
   final bool starred;
   const Article({
     required this.id,
+    this.refreshId,
     required this.feedId,
     this.guid,
     required this.title,
@@ -2918,6 +3052,9 @@ class Article extends DataClass implements Insertable<Article> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    if (!nullToAbsent || refreshId != null) {
+      map['refresh_id'] = Variable<String>(refreshId);
+    }
     map['feed_id'] = Variable<String>(feedId);
     if (!nullToAbsent || guid != null) {
       map['guid'] = Variable<String>(guid);
@@ -2969,6 +3106,9 @@ class Article extends DataClass implements Insertable<Article> {
   ArticlesCompanion toCompanion(bool nullToAbsent) {
     return ArticlesCompanion(
       id: Value(id),
+      refreshId: refreshId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refreshId),
       feedId: Value(feedId),
       guid: guid == null && nullToAbsent ? const Value.absent() : Value(guid),
       title: Value(title),
@@ -3022,6 +3162,7 @@ class Article extends DataClass implements Insertable<Article> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Article(
       id: serializer.fromJson<String>(json['id']),
+      refreshId: serializer.fromJson<String?>(json['refreshId']),
       feedId: serializer.fromJson<String>(json['feedId']),
       guid: serializer.fromJson<String?>(json['guid']),
       title: serializer.fromJson<String>(json['title']),
@@ -3048,6 +3189,7 @@ class Article extends DataClass implements Insertable<Article> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'refreshId': serializer.toJson<String?>(refreshId),
       'feedId': serializer.toJson<String>(feedId),
       'guid': serializer.toJson<String?>(guid),
       'title': serializer.toJson<String>(title),
@@ -3072,6 +3214,7 @@ class Article extends DataClass implements Insertable<Article> {
 
   Article copyWith({
     String? id,
+    Value<String?> refreshId = const Value.absent(),
     String? feedId,
     Value<String?> guid = const Value.absent(),
     String? title,
@@ -3093,6 +3236,7 @@ class Article extends DataClass implements Insertable<Article> {
     bool? starred,
   }) => Article(
     id: id ?? this.id,
+    refreshId: refreshId.present ? refreshId.value : this.refreshId,
     feedId: feedId ?? this.feedId,
     guid: guid.present ? guid.value : this.guid,
     title: title ?? this.title,
@@ -3124,6 +3268,7 @@ class Article extends DataClass implements Insertable<Article> {
   Article copyWithCompanion(ArticlesCompanion data) {
     return Article(
       id: data.id.present ? data.id.value : this.id,
+      refreshId: data.refreshId.present ? data.refreshId.value : this.refreshId,
       feedId: data.feedId.present ? data.feedId.value : this.feedId,
       guid: data.guid.present ? data.guid.value : this.guid,
       title: data.title.present ? data.title.value : this.title,
@@ -3170,6 +3315,7 @@ class Article extends DataClass implements Insertable<Article> {
   String toString() {
     return (StringBuffer('Article(')
           ..write('id: $id, ')
+          ..write('refreshId: $refreshId, ')
           ..write('feedId: $feedId, ')
           ..write('guid: $guid, ')
           ..write('title: $title, ')
@@ -3194,8 +3340,9 @@ class Article extends DataClass implements Insertable<Article> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
+    refreshId,
     feedId,
     guid,
     title,
@@ -3215,12 +3362,13 @@ class Article extends DataClass implements Insertable<Article> {
     discoveredAt,
     readAt,
     starred,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Article &&
           other.id == this.id &&
+          other.refreshId == this.refreshId &&
           other.feedId == this.feedId &&
           other.guid == this.guid &&
           other.title == this.title &&
@@ -3244,6 +3392,7 @@ class Article extends DataClass implements Insertable<Article> {
 
 class ArticlesCompanion extends UpdateCompanion<Article> {
   final Value<String> id;
+  final Value<String?> refreshId;
   final Value<String> feedId;
   final Value<String?> guid;
   final Value<String> title;
@@ -3266,6 +3415,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   final Value<int> rowid;
   const ArticlesCompanion({
     this.id = const Value.absent(),
+    this.refreshId = const Value.absent(),
     this.feedId = const Value.absent(),
     this.guid = const Value.absent(),
     this.title = const Value.absent(),
@@ -3289,6 +3439,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   });
   ArticlesCompanion.insert({
     required String id,
+    this.refreshId = const Value.absent(),
     required String feedId,
     this.guid = const Value.absent(),
     required String title,
@@ -3315,6 +3466,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
        discoveredAt = Value(discoveredAt);
   static Insertable<Article> custom({
     Expression<String>? id,
+    Expression<String>? refreshId,
     Expression<String>? feedId,
     Expression<String>? guid,
     Expression<String>? title,
@@ -3338,6 +3490,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (refreshId != null) 'refresh_id': refreshId,
       if (feedId != null) 'feed_id': feedId,
       if (guid != null) 'guid': guid,
       if (title != null) 'title': title,
@@ -3363,6 +3516,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
 
   ArticlesCompanion copyWith({
     Value<String>? id,
+    Value<String?>? refreshId,
     Value<String>? feedId,
     Value<String?>? guid,
     Value<String>? title,
@@ -3386,6 +3540,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   }) {
     return ArticlesCompanion(
       id: id ?? this.id,
+      refreshId: refreshId ?? this.refreshId,
       feedId: feedId ?? this.feedId,
       guid: guid ?? this.guid,
       title: title ?? this.title,
@@ -3414,6 +3569,9 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (refreshId.present) {
+      map['refresh_id'] = Variable<String>(refreshId.value);
     }
     if (feedId.present) {
       map['feed_id'] = Variable<String>(feedId.value);
@@ -3482,6 +3640,7 @@ class ArticlesCompanion extends UpdateCompanion<Article> {
   String toString() {
     return (StringBuffer('ArticlesCompanion(')
           ..write('id: $id, ')
+          ..write('refreshId: $refreshId, ')
           ..write('feedId: $feedId, ')
           ..write('guid: $guid, ')
           ..write('title: $title, ')
@@ -3931,6 +4090,274 @@ class NostrRelaysCompanion extends UpdateCompanion<NostrRelay> {
     return (StringBuffer('NostrRelaysCompanion(')
           ..write('feedId: $feedId, ')
           ..write('url: $url, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $NostrDeletionsTable extends NostrDeletions
+    with TableInfo<$NostrDeletionsTable, NostrDeletion> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NostrDeletionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _feedIdMeta = const VerificationMeta('feedId');
+  @override
+  late final GeneratedColumn<String> feedId = GeneratedColumn<String>(
+    'feed_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES feeds (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _targetMeta = const VerificationMeta('target');
+  @override
+  late final GeneratedColumn<String> target = GeneratedColumn<String>(
+    'target',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [feedId, target, deletedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'nostr_deletions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NostrDeletion> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('feed_id')) {
+      context.handle(
+        _feedIdMeta,
+        feedId.isAcceptableOrUnknown(data['feed_id']!, _feedIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_feedIdMeta);
+    }
+    if (data.containsKey('target')) {
+      context.handle(
+        _targetMeta,
+        target.isAcceptableOrUnknown(data['target']!, _targetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_targetMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deletedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {feedId, target};
+  @override
+  NostrDeletion map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NostrDeletion(
+      feedId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}feed_id'],
+      )!,
+      target: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $NostrDeletionsTable createAlias(String alias) {
+    return $NostrDeletionsTable(attachedDatabase, alias);
+  }
+}
+
+class NostrDeletion extends DataClass implements Insertable<NostrDeletion> {
+  final String feedId;
+  final String target;
+  final DateTime deletedAt;
+  const NostrDeletion({
+    required this.feedId,
+    required this.target,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['feed_id'] = Variable<String>(feedId);
+    map['target'] = Variable<String>(target);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  NostrDeletionsCompanion toCompanion(bool nullToAbsent) {
+    return NostrDeletionsCompanion(
+      feedId: Value(feedId),
+      target: Value(target),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory NostrDeletion.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NostrDeletion(
+      feedId: serializer.fromJson<String>(json['feedId']),
+      target: serializer.fromJson<String>(json['target']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'feedId': serializer.toJson<String>(feedId),
+      'target': serializer.toJson<String>(target),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  NostrDeletion copyWith({
+    String? feedId,
+    String? target,
+    DateTime? deletedAt,
+  }) => NostrDeletion(
+    feedId: feedId ?? this.feedId,
+    target: target ?? this.target,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  NostrDeletion copyWithCompanion(NostrDeletionsCompanion data) {
+    return NostrDeletion(
+      feedId: data.feedId.present ? data.feedId.value : this.feedId,
+      target: data.target.present ? data.target.value : this.target,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NostrDeletion(')
+          ..write('feedId: $feedId, ')
+          ..write('target: $target, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(feedId, target, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NostrDeletion &&
+          other.feedId == this.feedId &&
+          other.target == this.target &&
+          other.deletedAt == this.deletedAt);
+}
+
+class NostrDeletionsCompanion extends UpdateCompanion<NostrDeletion> {
+  final Value<String> feedId;
+  final Value<String> target;
+  final Value<DateTime> deletedAt;
+  final Value<int> rowid;
+  const NostrDeletionsCompanion({
+    this.feedId = const Value.absent(),
+    this.target = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NostrDeletionsCompanion.insert({
+    required String feedId,
+    required String target,
+    required DateTime deletedAt,
+    this.rowid = const Value.absent(),
+  }) : feedId = Value(feedId),
+       target = Value(target),
+       deletedAt = Value(deletedAt);
+  static Insertable<NostrDeletion> custom({
+    Expression<String>? feedId,
+    Expression<String>? target,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (feedId != null) 'feed_id': feedId,
+      if (target != null) 'target': target,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NostrDeletionsCompanion copyWith({
+    Value<String>? feedId,
+    Value<String>? target,
+    Value<DateTime>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return NostrDeletionsCompanion(
+      feedId: feedId ?? this.feedId,
+      target: target ?? this.target,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (feedId.present) {
+      map['feed_id'] = Variable<String>(feedId.value);
+    }
+    if (target.present) {
+      map['target'] = Variable<String>(target.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NostrDeletionsCompanion(')
+          ..write('feedId: $feedId, ')
+          ..write('target: $target, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7771,6 +8198,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ArticlesTable articles = $ArticlesTable(this);
   late final $NostrProfilesTable nostrProfiles = $NostrProfilesTable(this);
   late final $NostrRelaysTable nostrRelays = $NostrRelaysTable(this);
+  late final $NostrDeletionsTable nostrDeletions = $NostrDeletionsTable(this);
   late final $ArticleAttachmentsTable articleAttachments =
       $ArticleAttachmentsTable(this);
   late final $PlaybackProgressesTable playbackProgresses =
@@ -7795,6 +8223,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     articles,
     nostrProfiles,
     nostrRelays,
+    nostrDeletions,
     articleAttachments,
     playbackProgresses,
     queueEntries,
@@ -7835,6 +8264,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('nostr_relays', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'feeds',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('nostr_deletions', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -8027,6 +8463,24 @@ final class $$FeedsTableReferences
     ).filter((f) => f.feedId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_nostrRelaysRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$NostrDeletionsTable, List<NostrDeletion>>
+  _nostrDeletionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.nostrDeletions,
+    aliasName: 'feeds__id__nostr_deletions__feed_id',
+  );
+
+  $$NostrDeletionsTableProcessedTableManager get nostrDeletionsRefs {
+    final manager = $$NostrDeletionsTableTableManager(
+      $_db,
+      $_db.nostrDeletions,
+    ).filter((f) => f.feedId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_nostrDeletionsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -8257,6 +8711,31 @@ class $$FeedsTableFilterComposer extends Composer<_$AppDatabase, $FeedsTable> {
           }) => $$NostrRelaysTableFilterComposer(
             $db: $db,
             $table: $db.nostrRelays,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> nostrDeletionsRefs(
+    Expression<bool> Function($$NostrDeletionsTableFilterComposer f) f,
+  ) {
+    final $$NostrDeletionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.nostrDeletions,
+      getReferencedColumn: (t) => t.feedId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NostrDeletionsTableFilterComposer(
+            $db: $db,
+            $table: $db.nostrDeletions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8607,6 +9086,31 @@ class $$FeedsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> nostrDeletionsRefs<T extends Object>(
+    Expression<T> Function($$NostrDeletionsTableAnnotationComposer a) f,
+  ) {
+    final $$NostrDeletionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.nostrDeletions,
+      getReferencedColumn: (t) => t.feedId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NostrDeletionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.nostrDeletions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$FeedsTableTableManager
@@ -8627,6 +9131,7 @@ class $$FeedsTableTableManager
             bool articlesRefs,
             bool nostrProfilesRefs,
             bool nostrRelaysRefs,
+            bool nostrDeletionsRefs,
           })
         > {
   $$FeedsTableTableManager(_$AppDatabase db, $FeedsTable table)
@@ -8764,6 +9269,7 @@ class $$FeedsTableTableManager
                 articlesRefs = false,
                 nostrProfilesRefs = false,
                 nostrRelaysRefs = false,
+                nostrDeletionsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -8772,6 +9278,7 @@ class $$FeedsTableTableManager
                     if (articlesRefs) db.articles,
                     if (nostrProfilesRefs) db.nostrProfiles,
                     if (nostrRelaysRefs) db.nostrRelays,
+                    if (nostrDeletionsRefs) db.nostrDeletions,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -8852,6 +9359,27 @@ class $$FeedsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (nostrDeletionsRefs)
+                        await $_getPrefetchedData<
+                          Feed,
+                          $FeedsTable,
+                          NostrDeletion
+                        >(
+                          currentTable: table,
+                          referencedTable: $$FeedsTableReferences
+                              ._nostrDeletionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$FeedsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).nostrDeletionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.feedId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -8877,11 +9405,13 @@ typedef $$FeedsTableProcessedTableManager =
         bool articlesRefs,
         bool nostrProfilesRefs,
         bool nostrRelaysRefs,
+        bool nostrDeletionsRefs,
       })
     >;
 typedef $$EpisodesTableCreateCompanionBuilder =
     EpisodesCompanion Function({
       required String id,
+      Value<String?> refreshId,
       required String feedId,
       Value<String?> guid,
       required String title,
@@ -8898,11 +9428,13 @@ typedef $$EpisodesTableCreateCompanionBuilder =
       Value<bool> played,
       Value<bool> starred,
       Value<bool> automationApplied,
+      Value<bool> queueAutomationApplied,
       Value<int> rowid,
     });
 typedef $$EpisodesTableUpdateCompanionBuilder =
     EpisodesCompanion Function({
       Value<String> id,
+      Value<String?> refreshId,
       Value<String> feedId,
       Value<String?> guid,
       Value<String> title,
@@ -8919,6 +9451,7 @@ typedef $$EpisodesTableUpdateCompanionBuilder =
       Value<bool> played,
       Value<bool> starred,
       Value<bool> automationApplied,
+      Value<bool> queueAutomationApplied,
       Value<int> rowid,
     });
 
@@ -9093,6 +9626,11 @@ class $$EpisodesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get refreshId => $composableBuilder(
+    column: $table.refreshId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get guid => $composableBuilder(
     column: $table.guid,
     builder: (column) => ColumnFilters(column),
@@ -9165,6 +9703,11 @@ class $$EpisodesTableFilterComposer
 
   ColumnFilters<bool> get automationApplied => $composableBuilder(
     column: $table.automationApplied,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get queueAutomationApplied => $composableBuilder(
+    column: $table.queueAutomationApplied,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9381,6 +9924,11 @@ class $$EpisodesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get refreshId => $composableBuilder(
+    column: $table.refreshId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get guid => $composableBuilder(
     column: $table.guid,
     builder: (column) => ColumnOrderings(column),
@@ -9456,6 +10004,11 @@ class $$EpisodesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get queueAutomationApplied => $composableBuilder(
+    column: $table.queueAutomationApplied,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$FeedsTableOrderingComposer get feedId {
     final $$FeedsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -9491,6 +10044,9 @@ class $$EpisodesTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get refreshId =>
+      $composableBuilder(column: $table.refreshId, builder: (column) => column);
 
   GeneratedColumn<String> get guid =>
       $composableBuilder(column: $table.guid, builder: (column) => column);
@@ -9548,6 +10104,11 @@ class $$EpisodesTableAnnotationComposer
 
   GeneratedColumn<bool> get automationApplied => $composableBuilder(
     column: $table.automationApplied,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get queueAutomationApplied => $composableBuilder(
+    column: $table.queueAutomationApplied,
     builder: (column) => column,
   );
 
@@ -9789,6 +10350,7 @@ class $$EpisodesTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
+                Value<String?> refreshId = const Value.absent(),
                 Value<String> feedId = const Value.absent(),
                 Value<String?> guid = const Value.absent(),
                 Value<String> title = const Value.absent(),
@@ -9805,9 +10367,11 @@ class $$EpisodesTableTableManager
                 Value<bool> played = const Value.absent(),
                 Value<bool> starred = const Value.absent(),
                 Value<bool> automationApplied = const Value.absent(),
+                Value<bool> queueAutomationApplied = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => EpisodesCompanion(
                 id: id,
+                refreshId: refreshId,
                 feedId: feedId,
                 guid: guid,
                 title: title,
@@ -9824,11 +10388,13 @@ class $$EpisodesTableTableManager
                 played: played,
                 starred: starred,
                 automationApplied: automationApplied,
+                queueAutomationApplied: queueAutomationApplied,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String id,
+                Value<String?> refreshId = const Value.absent(),
                 required String feedId,
                 Value<String?> guid = const Value.absent(),
                 required String title,
@@ -9845,9 +10411,11 @@ class $$EpisodesTableTableManager
                 Value<bool> played = const Value.absent(),
                 Value<bool> starred = const Value.absent(),
                 Value<bool> automationApplied = const Value.absent(),
+                Value<bool> queueAutomationApplied = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => EpisodesCompanion.insert(
                 id: id,
+                refreshId: refreshId,
                 feedId: feedId,
                 guid: guid,
                 title: title,
@@ -9864,6 +10432,7 @@ class $$EpisodesTableTableManager
                 played: played,
                 starred: starred,
                 automationApplied: automationApplied,
+                queueAutomationApplied: queueAutomationApplied,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10111,6 +10680,7 @@ typedef $$EpisodesTableProcessedTableManager =
 typedef $$ArticlesTableCreateCompanionBuilder =
     ArticlesCompanion Function({
       required String id,
+      Value<String?> refreshId,
       required String feedId,
       Value<String?> guid,
       required String title,
@@ -10135,6 +10705,7 @@ typedef $$ArticlesTableCreateCompanionBuilder =
 typedef $$ArticlesTableUpdateCompanionBuilder =
     ArticlesCompanion Function({
       Value<String> id,
+      Value<String?> refreshId,
       Value<String> feedId,
       Value<String?> guid,
       Value<String> title,
@@ -10211,6 +10782,11 @@ class $$ArticlesTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refreshId => $composableBuilder(
+    column: $table.refreshId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10367,6 +10943,11 @@ class $$ArticlesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get refreshId => $composableBuilder(
+    column: $table.refreshId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get guid => $composableBuilder(
     column: $table.guid,
     builder: (column) => ColumnOrderings(column),
@@ -10492,6 +11073,9 @@ class $$ArticlesTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get refreshId =>
+      $composableBuilder(column: $table.refreshId, builder: (column) => column);
 
   GeneratedColumn<String> get guid =>
       $composableBuilder(column: $table.guid, builder: (column) => column);
@@ -10646,6 +11230,7 @@ class $$ArticlesTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
+                Value<String?> refreshId = const Value.absent(),
                 Value<String> feedId = const Value.absent(),
                 Value<String?> guid = const Value.absent(),
                 Value<String> title = const Value.absent(),
@@ -10668,6 +11253,7 @@ class $$ArticlesTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => ArticlesCompanion(
                 id: id,
+                refreshId: refreshId,
                 feedId: feedId,
                 guid: guid,
                 title: title,
@@ -10692,6 +11278,7 @@ class $$ArticlesTableTableManager
           createCompanionCallback:
               ({
                 required String id,
+                Value<String?> refreshId = const Value.absent(),
                 required String feedId,
                 Value<String?> guid = const Value.absent(),
                 required String title,
@@ -10714,6 +11301,7 @@ class $$ArticlesTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => ArticlesCompanion.insert(
                 id: id,
+                refreshId: refreshId,
                 feedId: feedId,
                 guid: guid,
                 title: title,
@@ -11346,6 +11934,292 @@ typedef $$NostrRelaysTableProcessedTableManager =
       $$NostrRelaysTableUpdateCompanionBuilder,
       (NostrRelay, $$NostrRelaysTableReferences),
       NostrRelay,
+      PrefetchHooks Function({bool feedId})
+    >;
+typedef $$NostrDeletionsTableCreateCompanionBuilder =
+    NostrDeletionsCompanion Function({
+      required String feedId,
+      required String target,
+      required DateTime deletedAt,
+      Value<int> rowid,
+    });
+typedef $$NostrDeletionsTableUpdateCompanionBuilder =
+    NostrDeletionsCompanion Function({
+      Value<String> feedId,
+      Value<String> target,
+      Value<DateTime> deletedAt,
+      Value<int> rowid,
+    });
+
+final class $$NostrDeletionsTableReferences
+    extends BaseReferences<_$AppDatabase, $NostrDeletionsTable, NostrDeletion> {
+  $$NostrDeletionsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $FeedsTable _feedIdTable(_$AppDatabase db) =>
+      db.feeds.createAlias('nostr_deletions__feed_id__feeds__id');
+
+  $$FeedsTableProcessedTableManager get feedId {
+    final $_column = $_itemColumn<String>('feed_id')!;
+
+    final manager = $$FeedsTableTableManager(
+      $_db,
+      $_db.feeds,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_feedIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$NostrDeletionsTableFilterComposer
+    extends Composer<_$AppDatabase, $NostrDeletionsTable> {
+  $$NostrDeletionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get target => $composableBuilder(
+    column: $table.target,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$FeedsTableFilterComposer get feedId {
+    final $$FeedsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableFilterComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrDeletionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $NostrDeletionsTable> {
+  $$NostrDeletionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get target => $composableBuilder(
+    column: $table.target,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$FeedsTableOrderingComposer get feedId {
+    final $$FeedsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableOrderingComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrDeletionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NostrDeletionsTable> {
+  $$NostrDeletionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get target =>
+      $composableBuilder(column: $table.target, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  $$FeedsTableAnnotationComposer get feedId {
+    final $$FeedsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.feedId,
+      referencedTable: $db.feeds,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FeedsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.feeds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$NostrDeletionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NostrDeletionsTable,
+          NostrDeletion,
+          $$NostrDeletionsTableFilterComposer,
+          $$NostrDeletionsTableOrderingComposer,
+          $$NostrDeletionsTableAnnotationComposer,
+          $$NostrDeletionsTableCreateCompanionBuilder,
+          $$NostrDeletionsTableUpdateCompanionBuilder,
+          (NostrDeletion, $$NostrDeletionsTableReferences),
+          NostrDeletion,
+          PrefetchHooks Function({bool feedId})
+        > {
+  $$NostrDeletionsTableTableManager(
+    _$AppDatabase db,
+    $NostrDeletionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NostrDeletionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NostrDeletionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NostrDeletionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> feedId = const Value.absent(),
+                Value<String> target = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NostrDeletionsCompanion(
+                feedId: feedId,
+                target: target,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String feedId,
+                required String target,
+                required DateTime deletedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => NostrDeletionsCompanion.insert(
+                feedId: feedId,
+                target: target,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$NostrDeletionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({feedId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (feedId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.feedId,
+                                referencedTable: $$NostrDeletionsTableReferences
+                                    ._feedIdTable(db),
+                                referencedColumn:
+                                    $$NostrDeletionsTableReferences
+                                        ._feedIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$NostrDeletionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NostrDeletionsTable,
+      NostrDeletion,
+      $$NostrDeletionsTableFilterComposer,
+      $$NostrDeletionsTableOrderingComposer,
+      $$NostrDeletionsTableAnnotationComposer,
+      $$NostrDeletionsTableCreateCompanionBuilder,
+      $$NostrDeletionsTableUpdateCompanionBuilder,
+      (NostrDeletion, $$NostrDeletionsTableReferences),
+      NostrDeletion,
       PrefetchHooks Function({bool feedId})
     >;
 typedef $$ArticleAttachmentsTableCreateCompanionBuilder =
@@ -14421,6 +15295,8 @@ class $AppDatabaseManager {
       $$NostrProfilesTableTableManager(_db, _db.nostrProfiles);
   $$NostrRelaysTableTableManager get nostrRelays =>
       $$NostrRelaysTableTableManager(_db, _db.nostrRelays);
+  $$NostrDeletionsTableTableManager get nostrDeletions =>
+      $$NostrDeletionsTableTableManager(_db, _db.nostrDeletions);
   $$ArticleAttachmentsTableTableManager get articleAttachments =>
       $$ArticleAttachmentsTableTableManager(_db, _db.articleAttachments);
   $$PlaybackProgressesTableTableManager get playbackProgresses =>

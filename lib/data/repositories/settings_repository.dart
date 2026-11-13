@@ -30,16 +30,18 @@ final class SettingsRepository {
     await _write(_speedKey, '$value');
   }
 
-  Stream<AutoDeletePolicy> watchAutoDelete() {
-    return _watch(_autoDeleteKey).map((value) {
-      final index = int.tryParse(value ?? '');
-      if (index == null ||
-          index < 0 ||
-          index >= AutoDeletePolicy.values.length) {
-        return AutoDeletePolicy.after1Day;
-      }
-      return AutoDeletePolicy.values[index];
-    });
+  Stream<AutoDeletePolicy> watchAutoDelete() =>
+      _watch(_autoDeleteKey).map(_parseAutoDelete).distinct();
+
+  Future<AutoDeletePolicy> autoDelete() async =>
+      _parseAutoDelete(await _read(_autoDeleteKey));
+
+  AutoDeletePolicy _parseAutoDelete(String? value) {
+    final index = int.tryParse(value ?? '');
+    if (index == null || index < 0 || index >= AutoDeletePolicy.values.length) {
+      return AutoDeletePolicy.after1Day;
+    }
+    return AutoDeletePolicy.values[index];
   }
 
   Future<void> setAutoDelete(AutoDeletePolicy value) {

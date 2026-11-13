@@ -1,5 +1,7 @@
 import '../core/constants.dart';
 
+typedef PodcastPreview = ({Uri feedUrl, ParsedFeed feed});
+
 final class ParsedFeed {
   const ParsedFeed({
     required this.title,

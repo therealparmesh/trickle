@@ -5,9 +5,13 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/core/constants.dart';
+import 'package:trickle/core/content_filters.dart';
 import 'package:trickle/core/errors.dart';
+import 'package:trickle/core/feed_identity.dart';
 import 'package:trickle/data/database/app_database.dart';
 import 'package:trickle/data/network/safe_network_client.dart';
 import 'package:trickle/data/repositories/feed_repository.dart';
@@ -158,41 +162,133 @@ void main() {
     },
   );
 
-  test('mark all read skips retained items from unsubscribed feeds', () async {
-    final now = DateTime.utc(2026, 7, 26);
-    for (final id in const ['retained', 'active']) {
+  test(
+    'category timeline and mark read use the same Unicode category',
+    () async {
+      final now = DateTime.utc(2026, 7, 26);
+      for (final (id, category) in const [
+        ('retained', 'Économie locale'),
+        ('active', 'Économie locale'),
+        ('active-two', 'économie   locale'),
+        ('other', 'Other'),
+      ]) {
+        await database
+            .into(database.feeds)
+            .insert(
+              FeedsCompanion.insert(
+                id: id,
+                title: id,
+                feedUrl: 'https://example.test/$id.xml',
+                category: Value(category),
+                kind: Value(FeedKind.reader.index),
+                createdAt: now,
+                updatedAt: now,
+              ),
+            );
+        await database
+            .into(database.articles)
+            .insert(
+              ArticlesCompanion.insert(
+                id: '$id-article',
+                feedId: id,
+                title: id,
+                discoveredAt: now,
+                starred: Value(id == 'retained'),
+              ),
+            );
+      }
+
+      await repository.deleteFeed('retained');
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(database)],
+      );
+      addTearDown(container.dispose);
+      Future<T> watchOnce<T>(StreamProvider<T> provider) async {
+        final subscription = container.listen(provider, (_, _) {});
+        try {
+          return await container
+              .read(provider.future)
+              .timeout(const Duration(seconds: 3));
+        } finally {
+          subscription.close();
+        }
+      }
+
+      await watchOnce(feedsProvider);
+      const query = (
+        feedId: null,
+        category: 'Économie locale',
+        filter: ArticleFeedFilter.unread,
+        query: '',
+      );
+      expect(await watchOnce(filteredArticleCountProvider(query)), 2);
+      final items = await watchOnce(
+        filteredArticlesProvider((
+          feedId: query.feedId,
+          category: query.category,
+          filter: query.filter,
+          query: query.query,
+          limit: 10,
+          sort: ContentSort.newest,
+        )),
+      );
+      expect(
+        items.map((item) => item.id),
+        unorderedEquals(['active-article', 'active-two-article']),
+      );
+      await repository.markAllArticlesRead(category: query.category);
+      expect((await database.articleById('active-article'))?.readAt, isNotNull);
+      expect(
+        (await database.articleById('active-two-article'))?.readAt,
+        isNotNull,
+      );
+      expect((await database.articleById('other-article'))?.readAt, isNull);
+      await repository.markAllArticlesRead();
+
+      expect((await database.feedById('retained'))?.subscribed, isFalse);
+      expect((await database.articleById('retained-article'))?.readAt, isNull);
+      expect((await database.articleById('other-article'))?.readAt, isNotNull);
+    },
+  );
+
+  test(
+    'unsubscribing preserves staged Up next additions and removes untouched episodes',
+    () async {
+      final feed = await repository.subscribe('https://example.test/feed.xml');
+      final queued = (await database.select(database.episodes).get()).single;
+      await (database.update(database.feeds)
+            ..where((row) => row.id.equals(feed.id)))
+          .write(const FeedsCompanion(autoQueue: Value(true)));
+      await (database.update(database.episodes)
+            ..where((row) => row.id.equals(queued.id)))
+          .write(const EpisodesCompanion(automationApplied: Value(false)));
+      await database.stageAutomaticQueueAdditions([queued.id]);
       await database
-          .into(database.feeds)
+          .into(database.episodes)
           .insert(
-            FeedsCompanion.insert(
-              id: id,
-              title: id,
-              feedUrl: 'https://example.test/$id.xml',
-              kind: Value(FeedKind.reader.index),
-              createdAt: now,
-              updatedAt: now,
+            EpisodesCompanion.insert(
+              id: 'untouched',
+              feedId: feed.id,
+              title: 'Untouched episode',
+              enclosureUrl: 'https://example.test/untouched.mp3',
+              discoveredAt: queued.discoveredAt,
             ),
           );
-      await database
-          .into(database.articles)
-          .insert(
-            ArticlesCompanion.insert(
-              id: '$id-article',
-              feedId: id,
-              title: id,
-              discoveredAt: now,
-              starred: Value(id == 'retained'),
-            ),
-          );
-    }
+      await database.indexSearchItem(
+        entityId: 'untouched',
+        kind: 'episode',
+        title: 'Untouched episode',
+        body: '',
+        feedTitle: feed.title,
+      );
 
-    await repository.deleteFeed('retained');
-    await repository.markAllArticlesRead();
-
-    expect((await database.feedById('retained'))?.subscribed, isFalse);
-    expect((await database.articleById('retained-article'))?.readAt, isNull);
-    expect((await database.articleById('active-article'))?.readAt, isNotNull);
-  });
+      expect(await repository.deleteFeed(feed.id), ['untouched']);
+      expect((await database.feedById(feed.id))?.subscribed, isFalse);
+      expect(await database.search('untouched'), isEmpty);
+      expect(await database.episodeById('untouched'), isNull);
+      expect((await database.loadQueue()).single.$1.id, queued.id);
+    },
+  );
 
   test(
     'catalog preview caching preserves an existing reader subscription',
@@ -215,8 +311,8 @@ void main() {
       await expectLater(
         repository.cachePodcastPreviewEpisode(
           podcast: podcast,
-          details: preview,
-          episode: preview.episodes.single,
+          preview: preview,
+          episode: preview.feed.episodes.single,
         ),
         throwsA(isA<FeedParseException>()),
       );
@@ -226,11 +322,109 @@ void main() {
       await repository.deleteFeed(feed.id);
       final cached = await repository.cachePodcastPreviewEpisode(
         podcast: podcast,
-        details: preview,
-        episode: preview.episodes.single,
+        preview: preview,
+        episode: preview.feed.episodes.single,
       );
       expect((await database.feedById(cached.feedId))?.subscribed, isFalse);
       expect(await database.select(database.articles).get(), isEmpty);
+    },
+  );
+
+  test(
+    'catalog preview and subscription share the discovered podcast address',
+    () async {
+      const url = 'https://example.test/podcast';
+      const discovered = 'https://example.test/feed.xml';
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _FeedAdapter(feedPage: Uri.parse(url).path),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final preview = await repository.loadPodcastPreview(url);
+      final podcast = PodcastSearchResult(
+        name: preview.feed.title,
+        author: '',
+        feedUrl: Uri.parse(url),
+        artworkUrl: null,
+        genre: null,
+        episodeCount: null,
+        explicit: false,
+      );
+      Future<Episode> cache() => repository.cachePodcastPreviewEpisode(
+        podcast: podcast,
+        preview: preview,
+        episode: preview.feed.episodes.single,
+      );
+
+      final cached = await cache();
+      final subscribed = await repository.subscribe(
+        url,
+        expectedKind: FeedKind.podcast,
+      );
+      expect(subscribed.feedUrl, discovered);
+      expect(subscribed.id, cached.feedId);
+      await (database.update(
+        database.episodes,
+      )..where((row) => row.id.equals(cached.id))).write(
+        const EpisodesCompanion(
+          title: Value('Updated title'),
+          starred: Value(true),
+        ),
+      );
+
+      final reopened = await cache();
+      expect(reopened.title, 'Updated title');
+      expect(reopened.starred, isTrue);
+      expect(await database.feedById(cached.feedId), subscribed);
+      expect(await database.feedByUrl(url), isNull);
+      final direct = await repository.subscribe(discovered);
+      expect(direct.id, subscribed.id);
+      expect(await database.select(database.feeds).get(), [direct]);
+    },
+  );
+
+  test(
+    'catalog preview playback reuses the matching private podcast',
+    () async {
+      const url = 'https://example.test/feed.xml?token=private';
+      final other = await repository.subscribe(
+        url,
+        bearerToken: 'separate-account',
+      );
+      final preview = await repository.loadPodcastPreview(url);
+      Future<Episode> cache() => repository.cachePodcastPreviewEpisode(
+        podcast: PodcastSearchResult(
+          name: preview.feed.title,
+          author: '',
+          feedUrl: Uri.parse(url),
+          artworkUrl: null,
+          genre: null,
+          episodeCount: null,
+          explicit: false,
+        ),
+        preview: preview,
+        episode: preview.feed.episodes.single,
+      );
+      final cached = await cache();
+      final retained = (await database.feedById(cached.feedId))!;
+      expect(retained.subscribed, isFalse);
+      expect(retained.isPrivate, isTrue);
+      expect(cached.enclosureUrl, 'private-media://${cached.id}');
+      expect(
+        await privateFeeds.readMediaUrl(cached.id),
+        preview.feed.episodes.single.enclosureUrl,
+      );
+      final feed = await repository.subscribe(url);
+      expect(cached.feedId, feed.id);
+      expect(cached.feedId, isNot(other.id));
+      expect((await cache()).id, cached.id);
+      expect(await database.feedByUrl(url), isNull);
+      expect(await database.select(database.episodes).get(), hasLength(2));
     },
   );
 
@@ -437,6 +631,227 @@ void main() {
     },
   );
 
+  test(
+    'making a restored podcast private preserves its episode history',
+    () async {
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = _RotatingFeedAdapter(),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      const feedId = 'restored-podcast';
+      const address = 'https://example.test/podcast.xml?token=private';
+      final now = DateTime.utc(2026, 10, 2);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: feedId,
+              title: 'Rotating Signal',
+              feedUrl: address,
+              kind: Value(FeedKind.podcast.index),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      const currentUrl =
+          'https://cdn.example.test/audio.mp3?episode=42&token=OLD';
+      const olderUrl = 'https://cdn.example.test/older.mp3?token=OLD';
+      final currentId = stableContentId(
+        feedId,
+        episodeIdentity(
+          guid: null,
+          enclosureUrl: Uri.parse(currentUrl),
+          publishedAt: null,
+          title: 'Stable Dispatch',
+        ),
+      );
+      for (final (id, title, url) in [
+        (currentId, 'Stable Dispatch', currentUrl),
+        ('older', 'Older', olderUrl),
+      ]) {
+        await database
+            .into(database.episodes)
+            .insert(
+              EpisodesCompanion.insert(
+                id: id,
+                feedId: feedId,
+                title: title,
+                enclosureUrl: url,
+                discoveredAt: now,
+                starred: const Value(true),
+              ),
+            );
+        await database
+            .into(database.playbackProgresses)
+            .insert(
+              PlaybackProgressesCompanion.insert(
+                episodeId: id,
+                positionMs: const Value(18000),
+                updatedAt: now,
+              ),
+            );
+      }
+      final feed = await repository.subscribe(address);
+      expect(feed.id, feedId);
+      expect(feed.isPrivate, isTrue);
+      expect(await repository.refreshFeed(feed), isTrue);
+      final episodes = await database.select(database.episodes).get();
+      expect(
+        episodes.map((episode) => episode.id),
+        unorderedEquals([currentId, 'older']),
+      );
+      expect(
+        episodes.every(
+          (episode) =>
+              episode.starred &&
+              episode.enclosureUrl == 'private-media://${episode.id}',
+        ),
+        isTrue,
+      );
+      expect(await privateFeeds.readMediaUrl('older'), Uri.parse(olderUrl));
+      expect(
+        (await privateFeeds.readMediaUrl(currentId))?.queryParameters['token'],
+        'MEDIA_2',
+      );
+      expect(
+        (await database.watchPlaybackProgressForEpisode(currentId).first)
+            ?.positionMs,
+        18000,
+      );
+    },
+  );
+
+  test(
+    'making a restored reader feed private preserves a saved article without merging another link',
+    () async {
+      network.close();
+      network = SafeNetworkClient.forTesting(
+        Dio()
+          ..httpClientAdapter = _ReaderFeedAdapter(
+            includeGuid: false,
+            links: [
+              'https://example.test/other-notes',
+              'https://example.test/field-notes?token=new',
+            ],
+          ),
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      const feedId = 'restored-reader';
+      const address = 'https://example.test/reader.xml?token=private';
+      final now = DateTime.utc(2026, 10, 2);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: feedId,
+              title: 'Written Signal',
+              feedUrl: address,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.articles)
+          .insert(
+            ArticlesCompanion.insert(
+              id: 'saved',
+              feedId: feedId,
+              title: 'Field notes',
+              canonicalUrl: const Value(
+                'https://example.test/field-notes?token=old',
+              ),
+              discoveredAt: now,
+              readAt: Value(now),
+              starred: const Value(true),
+              readerHtml: const Value('<p>Saved offline text</p>'),
+            ),
+          );
+      final feed = await repository.subscribe(address);
+      expect(await repository.refreshFeed(feed), isTrue);
+      final items = await database.select(database.articles).get();
+      expect(items, hasLength(2));
+      final item = items.singleWhere((item) => item.id == 'saved');
+      expect(item.id, 'saved');
+      expect(item.canonicalUrl, 'https://example.test/field-notes?token=new');
+      expect(item.starred, isTrue);
+      expect(item.readAt?.toUtc(), now);
+      expect(item.readerHtml, '<p>Saved offline text</p>');
+      final other = items.singleWhere((item) => item.id != 'saved');
+      expect(other.canonicalUrl, 'https://example.test/other-notes');
+      expect(other.starred, isFalse);
+      expect(other.readAt, isNull);
+    },
+  );
+
+  test(
+    'private refresh matches a legacy saved article only by its stored link',
+    () async {
+      network.close();
+      final adapter = _ReaderFeedAdapter(includeGuid: false);
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = adapter,
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final feed = await repository.subscribe(
+        'https://example.test/reader.xml?token=private',
+      );
+      await database.delete(database.articles).go();
+      final id = stableContentId(
+        feed.id,
+        articleIdentity(
+          guid: null,
+          canonicalUrl: null,
+          publishedAt: null,
+          title: 'Field notes',
+        ),
+      );
+      await database
+          .into(database.articles)
+          .insert(
+            ArticlesCompanion.insert(
+              id: id,
+              feedId: feed.id,
+              title: 'Field notes',
+              discoveredAt: DateTime.utc(2026, 10, 2),
+              canonicalUrl: const Value(
+                'https://example.test/field-notes?token=old',
+              ),
+              starred: const Value(true),
+            ),
+          );
+      adapter.links = ['https://example.test/other-notes'];
+      expect(await repository.refreshFeed(feed), isTrue);
+      adapter.links = [
+        'https://example.test/field-notes?token=new',
+        'https://example.test/other-notes',
+      ];
+      expect(await repository.refreshFeed(feed), isTrue);
+      final items = await database.select(database.articles).get();
+      expect(items, hasLength(2));
+      expect(items.singleWhere((item) => item.starred).id, id);
+      expect(
+        items.singleWhere((item) => item.starred).canonicalUrl,
+        'https://example.test/field-notes?token=new',
+      );
+    },
+  );
+
   test('bounded refresh selects only feeds due before the cutoff', () async {
     final cutoff = DateTime.utc(2026, 7, 19, 12);
     Future<void> insertFeed(String id, DateTime? lastRefresh) {
@@ -470,12 +885,153 @@ void main() {
     expect(progress, [(0, 3)]);
   });
 
+  test(
+    'a slow feed does not block free refresh slots or healthy feeds',
+    () async {
+      for (final name in ['a-slow', 'b-failed', 'c-healthy']) {
+        await repository.subscribe('https://example.test/$name.xml');
+      }
+      final slowStarted = Completer<void>();
+      final releaseSlow = Completer<void>();
+      final healthyStarted = Completer<void>();
+      network.close();
+      final dio = Dio()
+        ..httpClientAdapter = _FeedTitleAdapter('Updated podcast');
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) async {
+            if (options.path.endsWith('/a-slow.xml')) {
+              slowStarted.complete();
+              await releaseSlow.future;
+            } else if (options.path.endsWith('/b-failed.xml')) {
+              handler.resolve(
+                Response(requestOptions: options, statusCode: 500),
+              );
+              return;
+            } else {
+              healthyStarted.complete();
+            }
+            handler.next(options);
+          },
+        ),
+      );
+      network = SafeNetworkClient.forTesting(
+        dio,
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final failedFeed = (await database.feedByUrl(
+        'https://example.test/b-failed.xml',
+      ))!;
+      final oldest = DateTime.utc(2026, 7, 18);
+      await (database.update(database.feeds)
+            ..where((row) => row.feedUrl.like('%/a-slow.xml')))
+          .write(FeedsCompanion(lastRefresh: Value(oldest)));
+      await (database.update(
+        database.feeds,
+      )..where((row) => row.id.equals(failedFeed.id))).write(
+        FeedsCompanion(
+          lastRefresh: Value(oldest.add(const Duration(seconds: 1))),
+        ),
+      );
+      await database.customStatement('''
+      CREATE TRIGGER reject_refresh_failure BEFORE UPDATE OF refresh_error ON feeds
+      WHEN NEW.refresh_error IS NOT NULL
+      BEGIN SELECT RAISE(FAIL, 'forced failure saving the refresh error'); END
+    ''');
+      final before = (await database.feedById(failedFeed.id))!.updatedAt;
+      final refresh = repository.refreshAll(maxConcurrent: 2);
+      try {
+        await slowStarted.future.timeout(const Duration(seconds: 3));
+        await healthyStarted.future.timeout(const Duration(seconds: 3));
+      } finally {
+        releaseSlow.complete();
+      }
+      expect((await refresh).failedFeeds, 1);
+      expect((await database.feedById(failedFeed.id))!.updatedAt, before);
+      expect(
+        (await database.feedByUrl('https://example.test/c-healthy.xml'))?.title,
+        'Updated podcast',
+      );
+    },
+  );
+
+  test(
+    'unreadable private credentials do not abort refresh for other feeds',
+    () async {
+      final privateFeed = await repository.subscribe(
+        'https://example.test/private.xml?token=private',
+      );
+      final publicFeed = await repository.subscribe(
+        'https://example.test/public.xml',
+      );
+      await const FlutterSecureStorage().write(
+        key: 'private-feed:${privateFeed.credentialRef}',
+        value: 'invalid secure-store record',
+      );
+      final before = (await database.feedById(publicFeed.id))!.updatedAt;
+
+      final result = await repository.refreshAll(maxConcurrent: 1);
+
+      expect(result.failedFeeds, 1);
+      expect(
+        (await database.feedById(privateFeed.id))?.refreshError,
+        isNotNull,
+      );
+      expect(
+        (await database.feedById(publicFeed.id))!.updatedAt.isAfter(before),
+        isTrue,
+      );
+    },
+  );
+
+  test('a permanent move keeps the podcast and its episode history', () async {
+    const oldUrl = 'https://example.test/old.xml';
+    const newUrl = 'https://example.test/new.xml';
+    final adapter = _MovedFeedAdapter();
+    network.close();
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+    final original = await repository.subscribe(oldUrl);
+    final episode = await database.select(database.episodes).getSingle();
+    await repository.starEpisode(episode.id, starred: true);
+
+    adapter.redirect = true;
+    expect(await repository.refreshFeed(original), isTrue);
+    expect((await database.feedById(original.id))?.feedUrl, newUrl);
+    expect((await repository.subscribe(newUrl)).id, original.id);
+    expect((await repository.subscribe(oldUrl)).id, original.id);
+    expect((await database.episodeById(episode.id))?.starred, isTrue);
+    expect(await database.select(database.feeds).get(), hasLength(1));
+
+    adapter.redirect = false;
+    final replacement = await repository.subscribe(oldUrl);
+    expect(replacement.id, isNot(original.id));
+    adapter.redirect = true;
+    expect(await repository.refreshFeed(replacement), isTrue);
+    expect((await database.feedById(replacement.id))?.feedUrl, oldUrl);
+    expect((await database.feedById(original.id))?.feedUrl, newUrl);
+    expect((await database.episodeById(episode.id))?.starred, isTrue);
+  });
+
   test('a signed redirect is not persisted as the refresh address', () async {
     network.close();
     await database.close();
     database = AppDatabase.forTesting(NativeDatabase.memory());
+    final adapter = _SignedRedirectAdapter();
     network = SafeNetworkClient.forTesting(
-      Dio()..httpClientAdapter = _SignedRedirectAdapter(),
+      Dio()..httpClientAdapter = adapter,
       addressValidator: (_) async {},
     );
     privateFeeds = PrivateFeedStore(storage: const FlutterSecureStorage());
@@ -491,11 +1047,23 @@ void main() {
     expect(feed.isPrivate, isFalse);
     expect(feed.credentialRef, isNull);
     expect(feed.feedUrl, 'https://example.test/discover.xml');
+    expect(feed.etag, isNull);
     expect(feed.feedUrl, isNot(contains('REDIRECT_SECRET')));
     expect(
       jsonEncode((await database.select(database.feeds).get()).single.toJson()),
       isNot(contains('REDIRECT_SECRET')),
     );
+
+    // An older app may have persisted a validator from the signed target.
+    await database
+        .update(database.feeds)
+        .write(const FeedsCompanion(etag: Value('"old-target"')));
+    adapter.redirectStatus = 302;
+    expect(await repository.refreshFeed(feed), isTrue);
+    final refreshed = await database.feedById(feed.id);
+    expect(refreshed?.title, 'Refreshed feed');
+    expect(refreshed?.etag, isNull);
+    expect(refreshed?.feedUrl, feed.feedUrl);
   });
 
   test(
@@ -681,6 +1249,62 @@ void main() {
     expect(refreshed?.refreshError, isNull);
   });
 
+  test(
+    'a retained private podcast resubscribes without waiting for an old refresh',
+    () async {
+      final old = _BlockingSuccessfulFeedAdapter('Obsolete response');
+      final dio = Dio()..httpClientAdapter = _FeedTitleAdapter('New response');
+      final requests = <RequestOptions>[];
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requests.add(options);
+            dio.httpClientAdapter = requests.length == 2
+                ? old
+                : _FeedTitleAdapter('New response');
+            handler.next(options);
+          },
+        ),
+      );
+      final refreshNetwork = SafeNetworkClient.forTesting(
+        dio,
+        addressValidator: (_) async {},
+      );
+      addTearDown(refreshNetwork.close);
+      final freshRepository = FeedRepository(
+        database: database,
+        network: refreshNetwork,
+        privateFeeds: privateFeeds,
+      );
+      final feed = await freshRepository.subscribe(
+        'https://example.test/feed.xml?token=private',
+      );
+      final kept = await database.select(database.episodes).getSingle();
+      await freshRepository.starEpisode(kept.id, starred: true);
+      await database
+          .update(database.feeds)
+          .write(const FeedsCompanion(etag: Value('old-etag')));
+      final oldRefresh = freshRepository.refreshFeed(feed);
+      try {
+        await old.started.future.timeout(const Duration(seconds: 3));
+        await freshRepository.deleteFeed(feed.id);
+        final retained = (await database.feedById(feed.id))!;
+        final renewed = await freshRepository
+            .resubscribe(retained)
+            .timeout(const Duration(seconds: 3));
+        expect(renewed.subscribed, isTrue);
+        expect(renewed.id, feed.id);
+        expect(requests[1].headers['If-None-Match'], 'old-etag');
+        expect(requests[2].headers, isNot(contains('If-None-Match')));
+      } finally {
+        old.release.complete();
+        await oldRefresh;
+      }
+      expect((await database.feedById(feed.id))?.title, 'New response');
+      expect((await database.episodeById(kept.id))?.starred, isTrue);
+    },
+  );
+
   test('an older successful refresh cannot overwrite newer content', () async {
     final subscribed = await repository.subscribe(
       'https://example.test/feed.xml',
@@ -715,6 +1339,81 @@ void main() {
 
     expect((await database.feedById(subscribed.id))?.title, 'Newer response');
   });
+
+  test('an in-flight refresh cannot resubscribe a retained podcast', () async {
+    final subscribed = await repository.subscribe(
+      'https://example.test/feed.xml',
+    );
+    await database
+        .update(database.episodes)
+        .write(const EpisodesCompanion(starred: Value(true)));
+    final adapter = _BlockingSuccessfulFeedAdapter('Late response');
+    final refreshNetwork = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    addTearDown(refreshNetwork.close);
+    final backgroundRepository = FeedRepository(
+      database: database,
+      network: refreshNetwork,
+      privateFeeds: privateFeeds,
+    );
+    final refresh = backgroundRepository.refreshFeed(subscribed);
+    await adapter.started.future;
+
+    await repository.deleteFeed(subscribed.id);
+    // The write guard must also hold if both operations share the same stored
+    // timestamp, for example after restoring a backup of the retained feed.
+    await (database.update(database.feeds)
+          ..where((row) => row.id.equals(subscribed.id)))
+        .write(FeedsCompanion(updatedAt: Value(subscribed.updatedAt)));
+    adapter.release.complete();
+
+    expect(await refresh, isFalse);
+    final retained = await database.feedById(subscribed.id);
+    expect(retained?.subscribed, isFalse);
+    expect(retained?.title, subscribed.title);
+    expect(
+      (await database.select(database.episodes).getSingle()).starred,
+      isTrue,
+    );
+  });
+
+  test(
+    'a deleted public feed cannot share the ID of an in-flight refresh',
+    () async {
+      const url = 'https://example.test/feed.xml';
+      final feed = await repository.subscribe(url);
+      final adapter = _BlockingSuccessfulFeedAdapter('Deleted subscription');
+      final refreshNetwork = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = adapter,
+        addressValidator: (_) async {},
+      );
+      addTearDown(refreshNetwork.close);
+      final backgroundRepository = FeedRepository(
+        database: database,
+        network: refreshNetwork,
+        privateFeeds: privateFeeds,
+      );
+      final refresh = backgroundRepository.refreshFeed(feed);
+      try {
+        await adapter.started.future.timeout(const Duration(seconds: 3));
+        await repository.deleteFeed(feed.id);
+        final renewed = await repository.subscribe(url);
+        // SQLite stores the revision to the second. Make a same-second
+        // recreation deterministic instead of relying on the wall clock.
+        await (database.update(database.feeds)
+              ..where((row) => row.id.equals(renewed.id)))
+            .write(FeedsCompanion(updatedAt: Value(feed.updatedAt)));
+        adapter.release.complete();
+        await refresh;
+        expect((await database.feedByUrl(url))?.title, renewed.title);
+      } finally {
+        if (!adapter.release.isCompleted) adapter.release.complete();
+        await refresh;
+      }
+    },
+  );
 
   test(
     'refresh uses current feed state when its caller has a stale row',
@@ -815,6 +1514,96 @@ void main() {
     },
   );
 
+  test(
+    'private refresh preserves the original episode and separates media selectors',
+    () async {
+      network.close();
+      final adapter = _RotatingFeedAdapter(episodeNumbers: [41, 42]);
+      network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = adapter,
+        addressValidator: (_) async {},
+      );
+      repository = FeedRepository(
+        database: database,
+        network: network,
+        privateFeeds: privateFeeds,
+      );
+      final now = DateTime.utc(2026, 10, 2);
+      const feedId = 'private-podcast';
+      const feedUrl = 'https://example.test/feed.xml?token=private';
+      final ref = await privateFeeds.save(
+        PrivateFeedSecret(url: Uri.parse(feedUrl), headers: const {}),
+      );
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: feedId,
+              title: 'Rotating Signal',
+              feedUrl: 'private://$ref',
+              isPrivate: const Value(true),
+              credentialRef: Value(ref),
+              kind: Value(FeedKind.podcast.index),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      final url = Uri.parse(
+        'https://cdn.example.test/audio.mp3?episode=42&token=OLD',
+      );
+      final oldId = stableContentId(
+        feedId,
+        legacyPrivateEpisodeIdentity(
+          enclosureUrl: url,
+          publishedAt: null,
+          title: 'Stable Dispatch',
+        ),
+      );
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: oldId,
+              feedId: feedId,
+              title: 'Stable Dispatch',
+              enclosureUrl: 'private-media://$oldId',
+              discoveredAt: now,
+              starred: const Value(true),
+            ),
+          );
+      await privateFeeds.saveMediaUrl(oldId, url);
+      await database
+          .into(database.playbackProgresses)
+          .insert(
+            PlaybackProgressesCompanion.insert(
+              episodeId: oldId,
+              positionMs: const Value(18000),
+              updatedAt: now,
+            ),
+          );
+      final feed = (await database.feedById(feedId))!;
+      expect(await repository.refreshFeed(feed), isTrue);
+      adapter.episodeNumbers = [42, 41];
+      expect(await repository.refreshFeed(feed), isTrue);
+      final episodes = await database.select(database.episodes).get();
+      expect(episodes, hasLength(2));
+      for (final episode in episodes) {
+        final media = (await privateFeeds.readMediaUrl(episode.id))!;
+        expect(
+          media.queryParameters['episode'],
+          episode.id == oldId ? '42' : '41',
+        );
+        expect(media.queryParameters['token'], 'MEDIA_2');
+        expect(episode.starred, episode.id == oldId);
+      }
+      expect(
+        (await database.watchPlaybackProgressForEpisode(oldId).first)
+            ?.positionMs,
+        18000,
+      );
+    },
+  );
+
   test('updates private access without replacing local state', () async {
     final feed = await repository.subscribe(
       'https://example.test/feed.xml?access_token=ORIGINAL',
@@ -833,12 +1622,13 @@ void main() {
 
     final updatedFeed = await database.feedById(feed.id);
     final updatedEpisode = await database.episodeById(episode.id);
-    final secret = await privateFeeds.read(feed.credentialRef!);
+    final secret = await privateFeeds.read(updatedFeed!.credentialRef!);
     expect(await database.select(database.feeds).get(), hasLength(1));
-    expect(updatedFeed?.id, feed.id);
+    expect(updatedFeed.id, feed.id);
     expect(updatedEpisode?.played, isTrue);
     expect(updatedEpisode?.starred, isTrue);
     expect(secret?.url.queryParameters['access_token'], 'REPLACEMENT');
+    expect(await privateFeeds.read(feed.credentialRef!), isNull);
   });
 
   test('failed private access update restores the previous secret', () async {
@@ -877,9 +1667,10 @@ void main() {
       'https://example.test/feed.xml?access_token=REPAIRED',
     );
 
+    final repaired = (await database.feedById(feed.id))!;
     expect(
       (await privateFeeds.read(
-        feed.credentialRef!,
+        repaired.credentialRef!,
       ))?.url.queryParameters['access_token'],
       'REPAIRED',
     );
@@ -953,77 +1744,72 @@ void main() {
     final firstFailure = expectLater(first, throwsA(anything));
     final second = repository.deleteFeed(feed.id);
 
-    await expectLater(second, throwsA(isA<StateError>()));
+    await expectLater(second, throwsA(anything));
     await firstFailure;
     expect(await database.feedById(feed.id), isNotNull);
     expect(await privateFeeds.read(feed.credentialRef!), isNotNull);
   });
 
   test(
-    'failed racing deletion restores the previous feed credential',
+    'concurrent private additions with the same credentials share one subscription',
     () async {
-      network.close();
-      await database.close();
-      database = AppDatabase.forTesting(NativeDatabase.memory());
-      network = SafeNetworkClient.forTesting(
-        Dio()..httpClientAdapter = _CredentialRaceAdapter(),
-        addressValidator: (_) async {},
-      );
-      const storage = FlutterSecureStorage();
-      privateFeeds = PrivateFeedStore(storage: storage);
-      repository = FeedRepository(
-        database: database,
-        network: network,
-        privateFeeds: privateFeeds,
-      );
-      final feed = await repository.subscribe(
-        'https://example.test/feed.xml?access_token=ORIGINAL',
-      );
-      await database.customStatement('''
-        CREATE TRIGGER reject_racing_feed_delete
-        BEFORE DELETE ON feeds
-        BEGIN
-          SELECT RAISE(FAIL, 'forced delete failure');
-        END
-      ''');
-      Future<void>? deletion;
-      void startFailingDeletion(String? value) {
-        if (deletion != null || value?.contains('REPLACEMENT') != true) return;
-        deletion = repository.deleteFeed(feed.id);
-        unawaited(deletion!.catchError((Object _) {}));
-      }
-
-      final credentialKey = 'private-feed:${feed.credentialRef}';
-      storage.registerListener(
-        key: credentialKey,
-        listener: startFailingDeletion,
-      );
-      try {
-        await expectLater(
-          repository.updatePrivateAccess(
-            feed.id,
-            'https://example.test/feed.xml?access_token=REPLACEMENT',
-          ),
-          throwsA(anything),
-        );
-        expect(deletion, isNotNull);
-        await expectLater(deletion!, throwsA(anything));
-      } finally {
-        storage.unregisterListener(
-          key: credentialKey,
-          listener: startFailingDeletion,
-        );
-      }
-
-      expect(await database.feedById(feed.id), isNotNull);
-      expect(
-        (await privateFeeds.read(
-          feed.credentialRef!,
-        ))?.url.queryParameters['access_token'],
-        'ORIGINAL',
-      );
+      const url = 'https://example.test/feed.xml?access_token=PRIVATE';
+      final added = await Future.wait([
+        repository.subscribe(url),
+        repository.subscribe(url),
+      ]);
+      expect(added.map((feed) => feed.id).toSet(), hasLength(1));
+      expect(await database.select(database.feeds).get(), hasLength(1));
+      expect(await database.select(database.episodes).get(), hasLength(1));
     },
   );
+
+  test('a stale credential update cannot restore an older media URL', () async {
+    final adapter = _CredentialRaceAdapter();
+    network.close();
+    network = SafeNetworkClient.forTesting(
+      Dio()..httpClientAdapter = adapter,
+      addressValidator: (_) async {},
+    );
+    repository = FeedRepository(
+      database: database,
+      network: network,
+      privateFeeds: privateFeeds,
+    );
+    final feed = await repository.subscribe(
+      'https://example.test/feed.xml?access_token=ORIGINAL',
+    );
+    final episode = (await database.select(database.episodes).getSingle());
+    final stale = repository.updatePrivateAccess(
+      feed.id,
+      'https://example.test/feed.xml?access_token=STALE',
+    );
+    final staleResult = expectLater(stale, throwsA(anything));
+    await adapter.started.future;
+    await repository.updatePrivateAccess(
+      feed.id,
+      'https://example.test/feed.xml?access_token=LATEST',
+    );
+    adapter.release.complete();
+    await staleResult;
+    final latest = (await database.feedById(feed.id))!;
+    expect(
+      (await privateFeeds.read(
+        latest.credentialRef!,
+      ))?.url.queryParameters['access_token'],
+      'LATEST',
+    );
+    expect(
+      (await privateFeeds.readMediaUrl(episode.id))?.queryParameters['token'],
+      'LATEST_MEDIA',
+    );
+    expect(
+      (await repository.subscribe(
+        'https://example.test/feed.xml?access_token=LATEST',
+      )).id,
+      feed.id,
+    );
+  });
 
   test('failed racing deletion restores previous private media URLs', () async {
     network.close();
@@ -1051,11 +1837,11 @@ void main() {
         SELECT RAISE(FAIL, 'forced delete failure');
       END
     ''');
-    Future<void>? deletion;
+    Future<List<String>>? deletion;
     void startFailingDeletion(String? value) {
       if (deletion != null || value?.contains('MEDIA_2') != true) return;
       deletion = repository.deleteFeed(feed.id);
-      unawaited(deletion!.catchError((Object _) {}));
+      unawaited(deletion!.then<void>((_) {}, onError: (Object _) {}));
     }
 
     final mediaKey = 'private-media:${episode.id}';
@@ -1158,12 +1944,39 @@ void main() {
 }
 
 final class _FeedAdapter implements HttpClientAdapter {
+  _FeedAdapter({this.feedPage});
+
+  final String? feedPage;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (options.uri.path == feedPage) {
+      return ResponseBody.fromString(
+        '<html><head>'
+        '<link rel="alternate" type="application/rss+xml" href="/retired.xml">'
+        '<link rel="alternate" type="application/rss+xml" href="/articles.xml">'
+        '<link rel="alternate" type="application/rss+xml" href="/feed.xml">'
+        '</head></html>',
+        200,
+        headers: {
+          Headers.contentTypeHeader: ['text/html'],
+        },
+      );
+    }
+    if (options.uri.path == '/retired.xml') {
+      return ResponseBody.fromString('', 404);
+    }
+    if (options.uri.path == '/articles.xml') {
+      return ResponseBody.fromString(
+        '<rss version="2.0"><channel><title>Articles</title>'
+        '<item><title>Text only</title></item></channel></rss>',
+        200,
+      );
+    }
     return ResponseBody.fromString(
       '''
       <rss version="2.0">
@@ -1206,6 +2019,14 @@ final class _RefreshReadSizes extends QueryInterceptor {
 }
 
 final class _ReaderFeedAdapter implements HttpClientAdapter {
+  _ReaderFeedAdapter({
+    this.includeGuid = true,
+    this.links = const ['https://example.test/field-notes'],
+  });
+
+  final bool includeGuid;
+  List<String> links;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -1217,11 +2038,11 @@ final class _ReaderFeedAdapter implements HttpClientAdapter {
       <rss version="2.0">
         <channel>
           <title>Written Signal</title>
-          <item>
-            <guid>article-1</guid>
+          ${links.map((link) => '''<item>
+            ${includeGuid ? '<guid>article-1</guid>' : ''}
             <title>Field notes</title>
-            <link>https://example.test/field-notes</link>
-          </item>
+            <link>$link</link>
+          </item>''').join()}
         </channel>
       </rss>
       ''',
@@ -1289,7 +2110,36 @@ final class _YouTubeFeedAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+final class _MovedFeedAdapter implements HttpClientAdapter {
+  bool redirect = false;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) {
+    if (redirect && options.uri.path == '/old.xml') {
+      return Future.value(
+        ResponseBody.fromString(
+          '',
+          301,
+          headers: {
+            'location': ['/new.xml'],
+          },
+        ),
+      );
+    }
+    return _FeedAdapter().fetch(options, requestStream, cancelFuture);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 final class _SignedRedirectAdapter implements HttpClientAdapter {
+  int redirectStatus = 308;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -1299,7 +2149,7 @@ final class _SignedRedirectAdapter implements HttpClientAdapter {
     if (!options.uri.hasQuery) {
       return ResponseBody.fromString(
         '',
-        302,
+        redirectStatus,
         headers: {
           'location': [
             'https://example.test/feed.xml?access_token=REDIRECT_SECRET',
@@ -1307,7 +2157,25 @@ final class _SignedRedirectAdapter implements HttpClientAdapter {
         },
       );
     }
-    return _FeedAdapter().fetch(options, requestStream, cancelFuture);
+    if (options.headers.containsKey('If-None-Match')) {
+      return ResponseBody.fromString('', 304);
+    }
+    if (redirectStatus == 302) {
+      return ResponseBody.fromString(
+        '<rss version="2.0"><channel><title>Refreshed feed</title></channel></rss>',
+        200,
+        headers: {
+          'etag': ['"new-target"'],
+        },
+      );
+    }
+    final body = await _FeedAdapter().fetch(
+      options,
+      requestStream,
+      cancelFuture,
+    );
+    body.headers['etag'] = ['"signed-target"'];
+    return body;
   }
 
   @override
@@ -1549,6 +2417,9 @@ final class _ChangingFeedAdapter implements HttpClientAdapter {
 }
 
 final class _RotatingFeedAdapter implements HttpClientAdapter {
+  _RotatingFeedAdapter({this.episodeNumbers = const [42]});
+
+  List<int> episodeNumbers;
   int _requests = 0;
 
   @override
@@ -1563,14 +2434,16 @@ final class _RotatingFeedAdapter implements HttpClientAdapter {
       <rss version="2.0">
         <channel>
           <title>Rotating Signal</title>
+          ${episodeNumbers.map((episode) => '''
           <item>
             <title>Stable Dispatch</title>
             <enclosure
-              url="https://cdn.example.test/audio.mp3?episode=42&amp;token=MEDIA_$_requests"
+              url="https://cdn.example.test/audio.mp3?episode=$episode&amp;token=MEDIA_$_requests"
               type="audio/mpeg"
               length="${42000 + _requests}"
             />
           </item>
+          ''').join()}
         </channel>
       </rss>
       ''',
@@ -1586,6 +2459,9 @@ final class _RotatingFeedAdapter implements HttpClientAdapter {
 }
 
 final class _CredentialRaceAdapter implements HttpClientAdapter {
+  final started = Completer<void>();
+  final release = Completer<void>();
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -1593,6 +2469,10 @@ final class _CredentialRaceAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     final token = options.uri.queryParameters['access_token'] ?? 'NONE';
+    if (token == 'STALE') {
+      started.complete();
+      await release.future;
+    }
     return ResponseBody.fromString(
       '''
       <rss version="2.0">

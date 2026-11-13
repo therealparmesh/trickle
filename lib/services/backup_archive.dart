@@ -11,6 +11,8 @@ import '../core/errors.dart';
 final class BackupArchive {
   BackupArchive._(this.directory);
 
+  static const maxFileBytes = _maxExpandedBytes + 1024 * 1024;
+
   final Directory directory;
   int _expandedBytes = 0;
   final Map<String, int> _chunks = {};
@@ -115,7 +117,6 @@ const _recordLimits = {
 const _maxExpandedBytes = 2 * 1024 * 1024 * 1024;
 const _maxChunkBytes = 32 * 1024 * 1024;
 const _targetChunkBytes = 1024 * 1024;
-const _maxArchiveBytes = _maxExpandedBytes + 1024 * 1024;
 
 String _chunkName(String table, int index) =>
     '$table-${index.toString().padLeft(6, '0')}.json';
@@ -138,7 +139,7 @@ void _zipBackup((String, String) paths) {
     } finally {
       encoder.closeSync();
     }
-    if (partial.lengthSync() > _maxArchiveBytes) {
+    if (partial.lengthSync() > BackupArchive.maxFileBytes) {
       throw const BackupException('Backup exceeds the 2 GiB size limit.');
     }
     partial.renameSync(destination.path);
@@ -150,7 +151,7 @@ void _zipBackup((String, String) paths) {
 Future<void> _unpackBackup((String, String) paths) async {
   InputFileStream? input;
   try {
-    if (File(paths.$1).lengthSync() > _maxArchiveBytes) {
+    if (File(paths.$1).lengthSync() > BackupArchive.maxFileBytes) {
       throw const BackupException('Backup exceeds the 2 GiB size limit.');
     }
     input = InputFileStream(paths.$1);

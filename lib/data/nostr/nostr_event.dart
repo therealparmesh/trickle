@@ -135,7 +135,10 @@ NostrRefreshData parseAndVerifyNostrEvents(Map<String, Object?> input) {
     final event = _verifiedEvent(raw, expectedKey);
     if (event != null) events.add(event);
   }
-  events.sort((left, right) => right.createdAt.compareTo(left.createdAt));
+  events.sort((left, right) {
+    final date = right.createdAt.compareTo(left.createdAt);
+    return date != 0 ? date : left.id.compareTo(right.id);
+  });
 
   NostrProfileData? profile;
   final deletedEvents = <String, DateTime>{};
@@ -171,7 +174,7 @@ NostrRefreshData parseAndVerifyNostrEvents(Map<String, Object?> input) {
   for (final event in events) {
     if (!nostrPostKinds.contains(event.kind) ||
         event.isReply ||
-        _deletedAtOrAfter(deletedEvents[event.id], event.createdAt) ||
+        deletedEvents.containsKey(event.id) ||
         _deletedAtOrAfter(
           event.address == null ? null : deletedAddresses[event.address],
           event.createdAt,
@@ -203,6 +206,18 @@ void _recordLatestDeletion(
 
 bool _deletedAtOrAfter(DateTime? deletion, DateTime event) =>
     deletion != null && !deletion.isBefore(event);
+
+bool isNostrPostDeleted(
+  Map<String, DateTime> deletions, {
+  required String? eventId,
+  required String? address,
+  required DateTime? publishedAt,
+}) {
+  if (eventId != null && deletions.containsKey('e:$eventId')) return true;
+  final cutoff = address == null ? null : deletions['a:$address'];
+  return cutoff != null &&
+      (publishedAt == null || !publishedAt.isAfter(cutoff));
+}
 
 NostrEvent? _verifiedEvent(Map<String, Object?> json, String expectedKey) {
   final id = json['id'];

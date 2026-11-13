@@ -180,7 +180,7 @@ The workflow produces:
 - `trickle-<version>-<build>-universal.apk`
 - `trickle-<version>-<build>-universal.apk.sha256`
 
-Do not replace an APK attached to a published release. Fix the source, increment the build number, and create a new release.
+Do not overwrite a published APK. If replacing a candidate before its App Store version goes live, increment the build number and replace the GitHub release and tag as described in [Versioning](RELEASE.md#versioning).
 
 Google Play support still requires these release-only additions:
 

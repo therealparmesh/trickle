@@ -92,7 +92,7 @@ final class SyncCoordinator {
     await applyPodcastAutomation(
       database: _database,
       feedIds: {feed.id},
-      queueEpisodes: _audio.addEpisodesToQueue,
+      onQueueStaged: _audio.reloadQueueFromDatabase,
       downloadEpisode: (id) => _downloads.startDownload(id, automatic: true),
     );
     await _downloads.cleanupPlayed();
@@ -105,7 +105,7 @@ final class SyncCoordinator {
     );
     await applyPodcastAutomation(
       database: _database,
-      queueEpisodes: _audio.addEpisodesToQueue,
+      onQueueStaged: _audio.reloadQueueFromDatabase,
       downloadEpisode: (id) => _downloads.startDownload(id, automatic: true),
     );
     await _downloads.cleanupPlayed();
@@ -156,9 +156,10 @@ final class SyncCoordinator {
 
 Future<void> applyPodcastAutomation({
   required AppDatabase database,
-  required Future<void> Function(Iterable<String> episodeIds) queueEpisodes,
   required Future<void> Function(String episodeId) downloadEpisode,
+  Future<void> Function()? onQueueStaged,
   Set<String>? feedIds,
+  bool Function()? canStartDownload,
 }) async {
   final query = database.select(database.feeds);
   query.where(
@@ -217,14 +218,21 @@ Future<void> applyPodcastAutomation({
     for (final feed in feeds)
       if (feed.autoQueue)
         for (final episode in pendingByFeed[feed.id] ?? const <Episode>[])
-          episode.id,
+          if (!episode.queueAutomationApplied) episode.id,
   ];
   var queueSucceeded = true;
   if (queueIds.isNotEmpty) {
     try {
-      await queueEpisodes(queueIds);
+      await database.stageAutomaticQueueAdditions(queueIds);
     } on Object {
       queueSucceeded = false;
+    }
+    if (queueSucceeded && onQueueStaged != null) {
+      try {
+        await onQueueStaged();
+      } on Object {
+        // The staged queue is durable; a later reload can publish it.
+      }
     }
   }
   final appliedIds = <String>[];
@@ -244,18 +252,23 @@ Future<void> applyPodcastAutomation({
       }
     }
     for (final episode in pending) {
-      if (feed.autoQueue && !queueSucceeded) continue;
+      if (feed.autoQueue &&
+          !episode.queueAutomationApplied &&
+          !queueSucceeded) {
+        continue;
+      }
       try {
         if (downloadIds.contains(episode.id)) {
           final existing = downloadsByEpisode[episode.id];
           if (existing == null ||
               existing.status == DownloadState.failed.index ||
               existing.status == DownloadState.canceled.index) {
+            if (canStartDownload?.call() == false) continue;
             await downloadEpisode(episode.id);
           }
         }
         appliedIds.add(episode.id);
-      } on DownloadException {
+      } on UnsupportedDownloadException {
         // Permanently unsupported media should not retry every refresh.
         appliedIds.add(episode.id);
       } on Object {

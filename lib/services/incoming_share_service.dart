@@ -1,11 +1,9 @@
 import 'package:flutter/services.dart';
 
 final class IncomingShareService {
-  IncomingShareService() {
+  IncomingShareService({required void Function() onAvailable}) {
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'sharedText') {
-        _pendingText = (call.arguments as String?)?.trim();
-      }
+      if (call.method == 'shareAvailable') onAvailable();
     });
   }
 
@@ -13,23 +11,8 @@ final class IncomingShareService {
     'com.parmscript.trickle/incoming-share',
   );
 
-  String? _pendingText;
-
-  Future<String?> takePendingText() async {
-    final current = _pendingText;
-    _pendingText = null;
-    try {
-      final native = (await _channel.invokeMethod<String>(
-        'takePendingText',
-      ))?.trim();
-      return current?.isNotEmpty == true ? current : native;
-    } on Object {
-      // Do not lose an event already delivered to Dart if the native handoff
-      // is temporarily unavailable. A newer event always wins.
-      _pendingText ??= current;
-      rethrow;
-    }
-  }
+  Future<String?> takePendingText() =>
+      _channel.invokeMethod<String>('takePendingText');
 
   void dispose() {
     _channel.setMethodCallHandler(null);

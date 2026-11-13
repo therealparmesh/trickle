@@ -34,14 +34,16 @@ void backgroundCallbackDispatcher() {
         privateFeeds: privateFeeds,
       );
       final settings = SettingsRepository(database);
-      final now = DateTime.now().toUtc();
-      final startedAt = now;
+      final startedAt = DateTime.now().toUtc();
       final interval = await settings.refreshInterval();
+      final stopwatch = Stopwatch()..start();
+      Duration remaining() =>
+          AppConstants.backgroundRefreshBudget - stopwatch.elapsed;
       // Feed revisions make a foreground refresh that overlaps this task a
       // safe no-op instead of making either isolate wait on a process lock.
       await repository.refreshAll(
-        budget: AppConstants.backgroundRefreshBudget,
-        dueAt: now,
+        budget: remaining(),
+        dueAt: startedAt,
         minimumAge: interval.duration,
         maxConcurrent: 2,
       );
@@ -50,13 +52,17 @@ void backgroundCallbackDispatcher() {
         database: database,
         sources: sources,
         settings: settings,
+        recoverInterruptedDownloads: false,
       );
       await downloads.initialize();
       await applyPodcastAutomation(
         database: database,
-        queueEpisodes: database.stageQueueAdditions,
-        downloadEpisode: (episodeId) =>
-            downloads!.startDownload(episodeId, automatic: true),
+        canStartDownload: () => remaining() > Duration.zero,
+        downloadEpisode: (episodeId) => downloads!.startDownload(
+          episodeId,
+          automatic: true,
+          remainingNetworkTime: remaining,
+        ),
       );
       await downloads.cleanupPlayed();
       final notifiedFeedIds =

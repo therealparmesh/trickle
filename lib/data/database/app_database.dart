@@ -1,5 +1,5 @@
+import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -69,6 +69,7 @@ class Feeds extends Table {
 
 class Episodes extends Table {
   TextColumn get id => text()();
+  TextColumn get refreshId => text().nullable()();
   TextColumn get feedId =>
       text().references(Feeds, #id, onDelete: KeyAction.cascade)();
   TextColumn get guid => text().nullable()();
@@ -87,6 +88,8 @@ class Episodes extends Table {
   BoolColumn get starred => boolean().withDefault(const Constant(false))();
   BoolColumn get automationApplied =>
       boolean().withDefault(const Constant(false))();
+  BoolColumn get queueAutomationApplied =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -94,6 +97,7 @@ class Episodes extends Table {
 
 class Articles extends Table {
   TextColumn get id => text()();
+  TextColumn get refreshId => text().nullable()();
   TextColumn get feedId =>
       text().references(Feeds, #id, onDelete: KeyAction.cascade)();
   TextColumn get guid => text().nullable()();
@@ -135,6 +139,16 @@ class NostrRelays extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {feedId, url};
+}
+
+class NostrDeletions extends Table {
+  TextColumn get feedId =>
+      text().references(Feeds, #id, onDelete: KeyAction.cascade)();
+  TextColumn get target => text()();
+  DateTimeColumn get deletedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {feedId, target};
 }
 
 class ArticleAttachments extends Table {
@@ -270,6 +284,7 @@ class SearchCaches extends Table {
     Articles,
     NostrProfiles,
     NostrRelays,
+    NostrDeletions,
     ArticleAttachments,
     PlaybackProgresses,
     QueueEntries,
@@ -290,17 +305,18 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) async {
       await migrator.createAll();
       await _createIndexes();
+      await _createRefreshIdentityIndexes();
       await _createSearchIndex();
     },
     onUpgrade: (migrator, from, to) async {
-      if (from < 1 || from > 6 || to != 7) {
+      if (from < 1 || from >= 10 || to != 10) {
         throw StateError('Unsupported database migration from $from to $to.');
       }
       if (from < 3) {
@@ -346,8 +362,30 @@ class AppDatabase extends _$AppDatabase {
         }
         await _createIndexes();
       }
-      await migrator.addColumn(articles, articles.readerHtml);
-      await migrator.addColumn(articles, articles.readerFetchedAt);
+      if (from < 7) {
+        await migrator.addColumn(articles, articles.readerHtml);
+        await migrator.addColumn(articles, articles.readerFetchedAt);
+      }
+      if (from < 8) {
+        await transaction(() async {
+          await migrator.addColumn(episodes, episodes.queueAutomationApplied);
+          // A download could still be pending after the older app queued it.
+          await customStatement(
+            'UPDATE episodes SET queue_automation_applied = 1 '
+            'WHERE automation_applied = 0 AND (id IN '
+            '(SELECT episode_id FROM queue_entries) OR id IN '
+            '(SELECT episode_id FROM pending_queue_adds))',
+          );
+        });
+      }
+      if (from < 9) {
+        await transaction(() async {
+          await migrator.addColumn(episodes, episodes.refreshId);
+          await migrator.addColumn(articles, articles.refreshId);
+          await _createRefreshIdentityIndexes();
+        });
+      }
+      await migrator.createTable(nostrDeletions);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -357,6 +395,15 @@ class AppDatabase extends _$AppDatabase {
       );
     },
   );
+
+  Future<void> _createRefreshIdentityIndexes() async {
+    for (final name in [episodes.actualTableName, articles.actualTableName]) {
+      await customStatement(
+        'CREATE UNIQUE INDEX idx_${name}_refresh_id '
+        'ON $name(refresh_id) WHERE refresh_id IS NOT NULL',
+      );
+    }
+  }
 
   Future<void> _repairLegacyMixedFeeds() async {
     // Version 1 stored mixed feeds as kind 2 and surfaced them in both
@@ -699,6 +746,26 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  Future<void> markDownloadFileUnavailable(MediaDownload download) async {
+    // Keep the path so removing or retrying the download also removes the
+    // unusable file. Do not touch a replacement task or a newer file.
+    await (update(mediaDownloads)..where(
+          (row) =>
+              row.taskId.equals(download.taskId) &
+              row.status.equals(DownloadState.complete.index) &
+              row.filePath.equalsNullable(download.filePath) &
+              row.updatedAt.equals(download.updatedAt),
+        ))
+        .write(
+          MediaDownloadsCompanion(
+            status: Value(DownloadState.failed.index),
+            bytesDownloaded: const Value(0),
+            totalBytes: const Value(null),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
+  }
+
   Stream<List<Episode>> watchDownloadedEpisodes() {
     final query = select(episodes).join([
       innerJoin(
@@ -714,88 +781,172 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<Episode>> watchQueuedEpisodes() {
     final query = select(episodes).join([
       innerJoin(queueEntries, queueEntries.episodeId.equalsExp(episodes.id)),
-    ]);
+    ])..orderBy([OrderingTerm.asc(queueEntries.sortKey)]);
     return query.watch().map(
       (rows) => rows.map((row) => row.readTable(episodes)).toList(),
     );
   }
 
-  Future<void> stageQueueAdditions(Iterable<String> episodeIds) async {
+  Expression<bool> episodeHasLibraryState(Episodes episode) {
+    return episode.starred.equals(true) |
+        existsQuery(
+          selectOnly(playbackProgresses)
+            ..addColumns([playbackProgresses.episodeId])
+            ..where(
+              playbackProgresses.episodeId.equalsExp(episode.id) &
+                  playbackProgresses.positionMs.isBiggerThanValue(0),
+            ),
+        ) |
+        existsQuery(
+          selectOnly(queueEntries)
+            ..addColumns([queueEntries.episodeId])
+            ..where(queueEntries.episodeId.equalsExp(episode.id)),
+        ) |
+        existsQuery(
+          selectOnly(pendingQueueAdds)
+            ..addColumns([pendingQueueAdds.episodeId])
+            ..where(pendingQueueAdds.episodeId.equalsExp(episode.id)),
+        ) |
+        existsQuery(
+          selectOnly(mediaDownloads)
+            ..addColumns([mediaDownloads.episodeId])
+            ..where(mediaDownloads.episodeId.equalsExp(episode.id)),
+        ) |
+        episode.id.isInQuery(
+          selectOnly(bookmarks)..addColumns([bookmarks.episodeId]),
+        );
+  }
+
+  Future<void> stageAutomaticQueueAdditions(Iterable<String> episodeIds) async {
     final requested = episodeIds.toSet().toList(growable: false);
     if (requested.isEmpty) return;
     await transaction(() async {
-      final queued = await select(queueEntries).get();
-      final pending = await select(pendingQueueAdds).get();
-      final excluded = {
-        ...queued.map((entry) => entry.episodeId),
-        ...pending.map((entry) => entry.episodeId),
-      };
-      var sortKey = pending.fold(
-        -1024,
-        (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
-      );
-      final now = DateTime.now().toUtc();
+      final maxSortKey = pendingQueueAdds.sortKey.max();
+      final row = await (selectOnly(
+        pendingQueueAdds,
+      )..addColumns([maxSortKey])).getSingle();
+      var sortKey = row.read(maxSortKey) ?? -1024;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      const eligible =
+          'episodes.id = ? AND episodes.automation_applied = 0 '
+          'AND episodes.queue_automation_applied = 0 AND EXISTS '
+          '(SELECT 1 FROM feeds WHERE feeds.id = episodes.feed_id '
+          'AND feeds.subscribed = 1 AND feeds.auto_queue = 1)';
       await batch((batch) {
         for (final episodeId in requested) {
-          if (excluded.contains(episodeId)) continue;
           sortKey += 1024;
-          batch.insert(
-            pendingQueueAdds,
-            PendingQueueAddsCompanion.insert(
-              episodeId: episodeId,
-              sortKey: sortKey,
-              addedAt: now,
-            ),
-            mode: InsertMode.insertOrIgnore,
+          batch.customStatement(
+            'INSERT OR IGNORE INTO pending_queue_adds (episode_id, sort_key, added_at) '
+            'SELECT episodes.id, ?, ? FROM episodes WHERE $eligible AND NOT EXISTS '
+            '(SELECT 1 FROM queue_entries WHERE queue_entries.episode_id = episodes.id)',
+            [sortKey, now, episodeId],
+            [
+              TableUpdate(
+                pendingQueueAdds.actualTableName,
+                kind: UpdateKind.insert,
+              ),
+            ],
+          );
+          batch.customStatement(
+            'UPDATE episodes SET queue_automation_applied = 1 WHERE $eligible',
+            [episodeId],
+            [TableUpdate(episodes.actualTableName, kind: UpdateKind.update)],
           );
         }
       });
     });
   }
 
-  Future<List<String>> mergePendingQueueAdditions() {
+  Future<Set<String>> replaceQueue(
+    List<String> episodeIds, {
+    required bool clearPending,
+  }) {
     return transaction(() async {
-      final pending = await (select(
-        pendingQueueAdds,
-      )..orderBy([(row) => OrderingTerm.asc(row.sortKey)])).get();
-      if (pending.isEmpty) return const <String>[];
-      final queued = await select(queueEntries).get();
-      final queuedIds = queued.map((entry) => entry.episodeId).toSet();
-      var sortKey = queued.fold(
-        -1024,
-        (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
+      final requested = jsonEncode(episodeIds);
+      if (clearPending) {
+        await delete(pendingQueueAdds).go();
+      } else {
+        // A queued episode no longer needs its staged add, even if this edit
+        // is removing it from Up next.
+        await customUpdate(
+          'DELETE FROM pending_queue_adds WHERE episode_id IN '
+          '(SELECT episode_id FROM queue_entries UNION ALL '
+          'SELECT value FROM json_each(?))',
+          variables: [Variable(requested)],
+          updates: {pendingQueueAdds},
+          updateKind: UpdateKind.delete,
+        );
+      }
+      await delete(queueEntries).go();
+      if (episodeIds.isEmpty) return <String>{};
+      // Join against the library so a stale episode ID cannot fail the write.
+      final inserted = await customWriteReturning(
+        'INSERT INTO queue_entries (id, episode_id, sort_key, added_at) '
+        "SELECT 'queue:' || episodes.id, episodes.id, CAST(requested.key AS INTEGER) * 1024, ? "
+        'FROM json_each(?) AS requested JOIN episodes ON episodes.id = requested.value '
+        'RETURNING episode_id',
+        variables: [Variable(DateTime.now().toUtc()), Variable(requested)],
+        updates: {queueEntries},
+        updateKind: UpdateKind.insert,
       );
-      await batch((batch) {
-        for (final entry in pending) {
-          if (queuedIds.add(entry.episodeId)) {
-            sortKey += 1024;
-            batch.insert(
-              queueEntries,
-              QueueEntriesCompanion.insert(
-                id: stableContentId('queue', entry.episodeId),
-                episodeId: entry.episodeId,
-                sortKey: sortKey,
-                addedAt: entry.addedAt,
-              ),
-              mode: InsertMode.insertOrIgnore,
-            );
-          }
-        }
-      });
-      return pending.map((entry) => entry.episodeId).toList(growable: false);
+      return {for (final row in inserted) row.read<String>('episode_id')};
     });
   }
 
-  Future<void> acknowledgePendingQueueAdditions(
-    Iterable<String> episodeIds,
-  ) async {
-    final ids = episodeIds.toSet().toList(growable: false);
-    for (var start = 0; start < ids.length; start += safeVariableBatchSize) {
-      final end = math.min(start + safeVariableBatchSize, ids.length);
-      await (delete(
-        pendingQueueAdds,
-      )..where((row) => row.episodeId.isIn(ids.sublist(start, end)))).go();
-    }
+  Future<List<(Episode, Feed)>> loadQueue() {
+    return transaction(() async {
+      await mergePendingQueueAdditions();
+      final query = select(queueEntries).join([
+        innerJoin(episodes, episodes.id.equalsExp(queueEntries.episodeId)),
+        innerJoin(feeds, feeds.id.equalsExp(episodes.feedId)),
+      ])..orderBy([OrderingTerm.asc(queueEntries.sortKey)]);
+      return [
+        for (final row in await query.get())
+          (row.readTable(episodes), row.readTable(feeds)),
+      ];
+    });
+  }
+
+  Future<void> removeFinishedQueueEpisode(String id) async {
+    await batch((batch) {
+      batch.deleteWhere(queueEntries, (row) => row.episodeId.equals(id));
+      batch.deleteWhere(pendingQueueAdds, (row) => row.episodeId.equals(id));
+    });
+  }
+
+  // Call inside the transaction that reads or appends to the visible queue.
+  Future<void> mergePendingQueueAdditions() async {
+    final pending =
+        await (select(pendingQueueAdds)..orderBy([
+              (row) => OrderingTerm.asc(row.sortKey),
+              (row) => OrderingTerm.asc(row.episodeId),
+            ]))
+            .get();
+    if (pending.isEmpty) return;
+    final queued = await select(queueEntries).get();
+    final queuedIds = queued.map((entry) => entry.episodeId).toSet();
+    var sortKey = queued.fold(
+      -1024,
+      (maximum, entry) => entry.sortKey > maximum ? entry.sortKey : maximum,
+    );
+    await batch((batch) {
+      for (final entry in pending) {
+        if (queuedIds.add(entry.episodeId)) {
+          sortKey += 1024;
+          batch.insert(
+            queueEntries,
+            QueueEntriesCompanion.insert(
+              id: stableContentId('queue', entry.episodeId),
+              episodeId: entry.episodeId,
+              sortKey: sortKey,
+              addedAt: entry.addedAt,
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+        }
+      }
+    });
+    await delete(pendingQueueAdds).go();
   }
 
   Stream<List<Bookmark>> watchBookmarksForEpisode(String episodeId) {
@@ -872,14 +1023,14 @@ class AppDatabase extends _$AppDatabase {
     )..where((row) => row.id.equals(id))).watchSingleOrNull();
   }
 
-  Future<List<ArticleAttachment>> attachmentsForArticle(String articleId) {
+  Stream<List<ArticleAttachment>> watchArticleAttachments(String articleId) {
     return (select(articleAttachments)
           ..where((row) => row.articleId.equals(articleId))
           ..orderBy([
             (row) => OrderingTerm.asc(row.position),
             (row) => OrderingTerm.asc(row.id),
           ]))
-        .get();
+        .watch();
   }
 
   Selectable<Episode> _episodesForFeedQuery(
@@ -919,26 +1070,7 @@ class AppDatabase extends _$AppDatabase {
           mediaDownloads,
           mediaDownloads.episodeId.equalsExp(episodes.id),
         ),
-    ])..where(episodes.feedId.equals(feedId));
-    final normalizedQuery = query.trim().toLowerCase();
-    if (normalizedQuery.isNotEmpty) {
-      statement.where(
-        episodes.title.lower().contains(normalizedQuery) |
-            episodes.description.lower().contains(normalizedQuery),
-      );
-    }
-    statement.where(switch (filter) {
-      EpisodeFeedFilter.all => const Constant(true),
-      EpisodeFeedFilter.unplayed => _unplayedEpisode(),
-      EpisodeFeedFilter.inProgress =>
-        episodes.played.equals(false) &
-            playbackProgresses.completed.equals(false) &
-            playbackProgresses.positionMs.isBiggerThanValue(0),
-      EpisodeFeedFilter.saved => episodes.starred.equals(true),
-      EpisodeFeedFilter.downloaded => mediaDownloads.status.equals(
-        DownloadState.complete.index,
-      ),
-    });
+    ])..where(_episodeFilter(feedId, filter, query));
     statement
       ..orderBy([
         sort == ContentSort.newest
@@ -975,38 +1107,52 @@ class AppDatabase extends _$AppDatabase {
               ),
           ])
           ..addColumns([count])
-          ..where(episodes.feedId.equals(feedId));
+          ..where(_episodeFilter(feedId, filter, query));
+    return statement.watchSingle().map((row) => row.read(count) ?? 0);
+  }
+
+  Expression<bool> _episodeFilter(
+    String feedId,
+    EpisodeFeedFilter filter,
+    String query,
+  ) {
+    var selection = episodes.feedId.equals(feedId);
     final normalizedQuery = query.trim().toLowerCase();
     if (normalizedQuery.isNotEmpty) {
-      statement.where(
-        episodes.title.lower().contains(normalizedQuery) |
-            episodes.description.lower().contains(normalizedQuery),
-      );
+      selection =
+          selection &
+          (episodes.title.lower().contains(normalizedQuery) |
+              episodes.description.lower().contains(normalizedQuery));
     }
-    statement.where(switch (filter) {
-      EpisodeFeedFilter.all => const Constant(true),
-      EpisodeFeedFilter.unplayed => _unplayedEpisode(),
-      EpisodeFeedFilter.inProgress =>
-        episodes.played.equals(false) &
-            playbackProgresses.completed.equals(false) &
-            playbackProgresses.positionMs.isBiggerThanValue(0),
-      EpisodeFeedFilter.saved => episodes.starred.equals(true),
-      EpisodeFeedFilter.downloaded => mediaDownloads.status.equals(
-        DownloadState.complete.index,
-      ),
-    });
-    return statement.watchSingle().map((row) => row.read(count) ?? 0);
+    return selection &
+        (switch (filter) {
+          EpisodeFeedFilter.all => const Constant(true),
+          EpisodeFeedFilter.unplayed => _unplayedEpisode(),
+          EpisodeFeedFilter.inProgress =>
+            episodes.played.equals(false) &
+                playbackProgresses.completed.equals(false) &
+                playbackProgresses.positionMs.isBiggerThanValue(0),
+          EpisodeFeedFilter.saved => episodes.starred.equals(true),
+          EpisodeFeedFilter.downloaded => mediaDownloads.status.equals(
+            DownloadState.complete.index,
+          ),
+        });
   }
 
   Stream<List<Article>> watchFilteredArticles({
     String? feedId,
-    String? category,
+    String? categoryFeedIdsJson,
     required int limit,
     required ContentSort sort,
     required ArticleFeedFilter filter,
     String query = '',
   }) {
-    final selection = _articleFilter(feedId, category, filter, query);
+    final selection = _articleFilter(
+      feedId,
+      categoryFeedIdsJson,
+      filter,
+      query,
+    );
     final direction = sort == ContentSort.newest ? 'DESC' : 'ASC';
     // List rows do not need cached reader HTML. EXISTS keeps SQLite on the
     // ordered article index instead of joining and sorting every feed's items.
@@ -1028,11 +1174,16 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<int> watchFilteredArticleCount({
     String? feedId,
-    String? category,
+    String? categoryFeedIdsJson,
     required ArticleFeedFilter filter,
     String query = '',
   }) {
-    final selection = _articleFilter(feedId, category, filter, query);
+    final selection = _articleFilter(
+      feedId,
+      categoryFeedIdsJson,
+      filter,
+      query,
+    );
     return customSelect(
       'SELECT COUNT(*) AS count FROM articles WHERE ${selection.sql}',
       variables: selection.variables,
@@ -1042,7 +1193,7 @@ class AppDatabase extends _$AppDatabase {
 
   ({String sql, List<Variable> variables}) _articleFilter(
     String? feedId,
-    String? category,
+    String? categoryFeedIdsJson,
     ArticleFeedFilter filter,
     String query,
   ) {
@@ -1055,10 +1206,9 @@ class AppDatabase extends _$AppDatabase {
       clauses.add('articles.feed_id = ?');
       variables.add(Variable(feedId));
     }
-    final categoryIdentity = category?.trim().toLowerCase();
-    if (categoryIdentity?.isNotEmpty == true) {
-      feedClauses.add('LOWER(feeds.category) = ?');
-      variables.add(Variable(categoryIdentity!));
+    if (categoryFeedIdsJson != null) {
+      clauses.add('articles.feed_id IN (SELECT value FROM json_each(?))');
+      variables.add(Variable(categoryFeedIdsJson));
     }
     clauses.add(
       'EXISTS (SELECT 1 FROM feeds WHERE ${feedClauses.join(' AND ')})',

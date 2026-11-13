@@ -95,15 +95,21 @@ The unsigned build commands verify compilation without requiring publisher crede
 
 ### Data and refresh
 
-The SQLite database uses schema version 7, WAL mode, foreign keys, indexed timeline queries, and FTS5 search backed by stable document IDs. Upgrades preserve library data and search text; legacy feed repairs run only during migration. Feed HTML and downloaded reader HTML are stored separately. The reader builds its own cache without converting old article content. Cache timestamps prevent stale downloads from replacing newer text. Refresh reads are limited to incoming items and explicit Nostr deletion targets. Older refresh results cannot replace newer content or settings. Background automation stages Up next additions, and the audio handler acknowledges them only after merging them into the active queue.
+The SQLite database uses schema version 10, WAL mode, foreign keys, indexed timeline queries, and FTS5 search backed by stable document IDs. Upgrades preserve library data and search text. Feed HTML and downloaded reader HTML are stored separately. The reader builds its own cache without converting old article content. Cache timestamps prevent stale downloads from replacing newer text. Routine refresh reads are limited to incoming items and explicit Nostr deletion targets. Verified Nostr deletions are remembered on the device for the life of the feed record, so lagging relays cannot bring those posts back. When an existing feed becomes private, its item IDs stay stable and refresh uses indexed aliases where needed. Older refresh results cannot replace newer content or settings. Automatic Up next additions are staged until the audio handler merges them. Download retries do not re-add episodes you removed from the queue. Unsubscribing retains queued episodes; clearing Up next removes staged and visible entries together.
 
 Catalog subscriptions and typed OPML imports carry an explicit feed type. Untyped manual and mixed OPML adds use podcast metadata or an all-audio entry list to identify podcasts. Once stored, a subscription keeps its type across refreshes, including empty feeds and text-only announcements. Subscription identity uses the complete normalized URL and authorization headers; token differences do not merge different feeds. OPML exports record the type in an optional namespaced attribute while retaining standard RSS outlines and category folders.
 
-New ZIP backups use version 3: a manifest and numbered JSON chunks. Export reads a consistent database snapshot in batches; restore validates every chunk before applying an atomic merge. The shared limits are 2 GiB of expanded records, 32 MiB per chunk, 5,000 feeds, 200,000 episodes and articles each, and 500,000 attachments. Version 1 and 2 backups remain readable within their original 50 MiB expanded-size limit. Sign-in headers and downloaded media are excluded.
+Episodes without GUIDs use the enclosure URL and publication date (or title if no date is available). The URL comparison ignores recognized credentials but keeps parameters that select different audio. Private media URLs stay in secure storage.
+
+Articles without GUIDs use the same rule with the article link. Without a link, trickle falls back to title and publication date. For a private feed, rotating a recognized access token keeps the saved reader text without merging different article links.
+
+New ZIP backups use version 3: a manifest and numbered JSON chunks. Export reads a consistent database snapshot in batches; restore validates every chunk before applying an atomic merge. Portable private URLs restore to secure storage on a new device. They match an existing private subscription only when the full URL matches and no separate sign-in headers are required. The shared limits are 2 GiB of expanded records, 32 MiB per chunk, 5,000 feeds, 200,000 episodes and articles each, and 500,000 attachments. Version 1 and 2 backups remain readable within their original 50 MiB expanded-size limit. Sign-in headers and downloaded media are excluded.
 
 ### Playback
 
-The latest audio or video selection owns playback. Native player commands are ordered, and a slow media lookup cannot block a newer selection. Podcast playback reapplies its spoken-audio session before starting and makes one bounded recovery attempt after an unexpected stop.
+The latest audio or video selection owns playback. Up next selects episodes by ID, so reordering does not change what you tapped. Podcast playback reapplies its spoken-audio session before starting and makes one bounded recovery attempt after an unexpected stop. Downloads are resolved relative to app storage so they survive an update, and the end-of-episode sleep timer takes precedence over repeat.
+
+Foreground and background workers share one download record per episode. Played-download cleanup checks the current retention setting and Keep status before removing a file. Manual downloads of already-played episodes start with Keep on so old playback history cannot remove them as soon as they finish. Turning off Keep makes that download eligible for cleanup again.
 
 ### Performance
 
@@ -127,9 +133,10 @@ App-defined deadlines are centralized in `AppConstants`:
 | SQLite lock wait                                                                   | 5 seconds  |
 | Network connection, DNS, each video-source attempt                                 | 10 seconds |
 | Catalog search, media URL resolution, link previews, total background network work | 15 seconds |
-| Feed, relay, reader, image, and OPML documents                                     | 30 seconds |
+| Feed, relay, reader, image, OPML, and native audio preparation                     | 30 seconds |
+| Android transient audio interruption                                               | 10 minutes |
 
-Redirects share the request's total deadline. Local searches use a 250 ms debounce; catalog search uses 500 ms. Transient player messages follow the standard four-second message duration. Native audio buffering and background downloads follow platform timing; these request limits do not stop a long episode or download.
+Redirects share the request's total deadline. Requests cancel unread response bodies when they finish or reject a redirect. Background feed requests and automatic-download URL checks share a 15-second budget; work that has not started stays eligible for a later run. Native downloads already handed to the OS can continue. Local searches use a 250 ms debounce; catalog search uses 500 ms. Transient player messages follow the standard four-second message duration.
 
 ## Project layout
 

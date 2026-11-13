@@ -31,7 +31,7 @@ final class ArticlePage extends ConsumerStatefulWidget {
 }
 
 class _ArticlePageState extends ConsumerState<ArticlePage> {
-  String? _contentSignature;
+  (String, String?, String, int, String?)? _contentSource;
   Future<ExtractedArticle>? _content;
   String? _presentedVideoArticleId;
   Future<void> _readStateWrite = Future<void>.value();
@@ -120,8 +120,10 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
               _presentVideo(value, sourceUri, playbackUri);
               return _videoDetails(value, sourceUri, playbackUri);
             }
+            final content = _contentFor(value);
             return FutureBuilder(
-              future: _contentFor(value),
+              key: ValueKey(_contentSource),
+              future: content,
               builder: (context, snapshot) {
                 if (!snapshot.hasData &&
                     snapshot.connectionState != ConnectionState.done) {
@@ -241,14 +243,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                                           ),
                                         ),
                                         FilledButton.tonalIcon(
-                                          onPressed: () => _runAction(
-                                            () => ref
-                                                .read(feedRepositoryProvider)
-                                                .markArticleRead(
-                                                  value.id,
-                                                  read: value.readAt == null,
-                                                ),
-                                          ),
+                                          onPressed: () => _toggleRead(value),
                                           icon: Icon(
                                             value.readAt == null
                                                 ? Icons.mark_email_read_outlined
@@ -381,14 +376,7 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
                         ),
                       ),
                       FilledButton.tonalIcon(
-                        onPressed: () => _runAction(
-                          () => ref
-                              .read(feedRepositoryProvider)
-                              .markArticleRead(
-                                article.id,
-                                read: article.readAt == null,
-                              ),
-                        ),
+                        onPressed: () => _toggleRead(article),
                         icon: Icon(
                           article.readAt == null
                               ? Icons.visibility_outlined
@@ -417,15 +405,16 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     Uri playbackUri, {
     bool force = false,
   }) {
+    final presentation = (article.id, playbackUri);
     if (!force && _presentedVideoArticleId == article.id) return;
     _presentedVideoArticleId = article.id;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
+      if (!_isCurrentVideo(presentation)) return;
       final handler = ref.read(audioHandlerProvider);
       final intent = handler.beginWebVideoPlayback();
       try {
         final prepared = await handler.prepareWebVideoPlayback(intent);
-        if (!prepared || !mounted || widget.articleId != article.id) {
+        if (!prepared || !_isCurrentVideo(presentation)) {
           await handler.endWebVideoPlayback(intent).catchError((Object _) {});
           return;
         }
@@ -445,49 +434,51 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     });
   }
 
+  bool _isCurrentVideo((String, Uri) presentation) {
+    final (articleId, playbackUri) = presentation;
+    if (!mounted || widget.articleId != articleId) return false;
+    final url = ref.read(articleProvider(articleId)).value?.canonicalUrl;
+    return privacyYouTubePlaybackUri(Uri.tryParse(url ?? '')) == playbackUri;
+  }
+
   Future<ExtractedArticle> _contentFor(Article article) {
-    // The load itself may store extracted HTML and rebuild this page. Keep the
-    // generation tied to the article, not to that cache write, so a short
-    // article is never downloaded twice.
-    final signature = '${article.id}|${article.canonicalUrl}';
-    if (_content == null || _contentSignature != signature) {
-      _contentSignature = signature;
-      final format =
-          ArticleContentFormat.values[article.contentFormat.clamp(
-            0,
-            ArticleContentFormat.values.length - 1,
-          )];
-      _content = format == ArticleContentFormat.html
-          ? ref.read(articleRepositoryProvider).load(article)
-          : compute(_renderStoredArticle, (
-              format: format.index,
-              content: article.contentHtml ?? article.summary ?? '',
-            ));
+    // Source changes need a fresh snapshot. Cache writes and read or saved
+    // status updates must not restart an extraction.
+    final source = (
+      article.id,
+      article.canonicalUrl,
+      article.title,
+      article.contentFormat,
+      article.contentHtml ?? article.summary,
+    );
+    if (_content == null || _contentSource != source) {
+      _contentSource = source;
+      _content = _loadContent(article);
     }
     return _content!;
   }
 
-  void _refreshContent(Article article) {
+  Future<ExtractedArticle> _loadContent(
+    Article article, {
+    bool forceRefresh = false,
+  }) {
     final format =
         ArticleContentFormat.values[article.contentFormat.clamp(
           0,
           ArticleContentFormat.values.length - 1,
         )];
-    if (format != ArticleContentFormat.html) {
-      setState(() {
-        _content = compute(_renderStoredArticle, (
-          format: format.index,
-          content: article.contentHtml ?? article.summary ?? '',
-        ));
-      });
-      return;
-    }
-    setState(() {
-      _content = ref
-          .read(articleRepositoryProvider)
-          .load(article, forceRefresh: true);
-    });
+    return format == ArticleContentFormat.html
+        ? ref
+              .read(articleRepositoryProvider)
+              .load(article, forceRefresh: forceRefresh)
+        : compute(_renderStoredArticle, (
+            format: format.index,
+            content: article.contentHtml ?? article.summary ?? '',
+          ));
   }
+
+  void _refreshContent(Article article) =>
+      setState(() => _content = _loadContent(article, forceRefresh: true));
 
   void _changeTextSize(String action, int current) {
     final next = switch (action) {
@@ -502,16 +493,17 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
     );
   }
 
-  Future<void> _setSaved(Article article) async {
-    if (!article.starred &&
-        privacyYouTubePlaybackUri(Uri.tryParse(article.canonicalUrl ?? '')) ==
-            null) {
-      await _contentFor(article);
-    }
-    await ref
-        .read(feedRepositoryProvider)
-        .starArticle(article.id, starred: !article.starred);
-  }
+  Future<void> _setSaved(Article article) => ref
+      .read(articleRepositoryProvider)
+      .setSaved(article.id, saved: !article.starred);
+
+  Future<void> _toggleRead(Article article) => _runAction(() async {
+    final repository = ref.read(feedRepositoryProvider);
+    // Explicit read changes must follow the automatic write, even if the
+    // reader closes while that write is pending.
+    await _readStateWrite;
+    await repository.markArticleRead(article.id, read: article.readAt == null);
+  });
 
   Future<void> _share(Article article) async {
     final url = article.canonicalUrl;
@@ -552,9 +544,6 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
 
   Future<void> _runAction(Future<void> Function() action) async {
     try {
-      // Preserve an explicit user choice made immediately after opening the
-      // page. It must run after the automatic mark-read write, not race it.
-      await _readStateWrite;
       await action();
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
@@ -578,11 +567,10 @@ class _ArticlePageState extends ConsumerState<ArticlePage> {
 
   void _markCurrentItemRead() {
     final articleId = widget.articleId;
+    final repository = ref.read(feedRepositoryProvider);
     _readStateWrite = Future<void>.microtask(() async {
       try {
-        await ref
-            .read(feedRepositoryProvider)
-            .markArticleRead(articleId, read: true);
+        await repository.markArticleRead(articleId, read: true);
       } on Object catch (error) {
         if (mounted) showErrorSnackBar(context, error);
       }

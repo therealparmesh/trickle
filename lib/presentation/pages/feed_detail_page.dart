@@ -41,14 +41,13 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
   static const _pageSize = 100;
   late String? _feedId = widget.feedId;
   late PodcastSearchResult? _podcast = widget.podcast;
-  Future<ParsedFeed>? _catalogPreview;
-  ParsedFeed? _catalogPreviewSnapshot;
+  Future<PodcastPreview>? _catalogPreview;
+  PodcastPreview? _catalogPreviewSnapshot;
   Feed? _transitionFeed;
   int _limit = _pageSize;
   bool _subscribing = false;
   bool _unsubscribing = false;
   bool _refreshing = false;
-  bool _forcePrivateResubscribe = false;
   final TextEditingController _search = TextEditingController();
   Timer? _searchDebounce;
   String _query = '';
@@ -69,7 +68,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     super.dispose();
   }
 
-  Future<ParsedFeed>? _loadCatalogPreview() {
+  Future<PodcastPreview>? _loadCatalogPreview() {
     final podcast = _podcast;
     if (_feedId != null || podcast == null) return null;
     return ref
@@ -482,16 +481,16 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
     try {
       final kind =
           FeedKind.values[feed.kind.clamp(0, FeedKind.values.length - 1)];
-      final episodes = kind == FeedKind.podcast
+      // A private feed cannot become a public catalog preview: its credentials
+      // and playable media may no longer exist after removal.
+      final canPreview = kind == FeedKind.podcast && !feed.isPrivate;
+      final episodes = canPreview
           ? await ref
                 .read(databaseProvider)
                 .episodesForFeed(feed.id, limit: _limit)
           : const <Episode>[];
-      final secret = feed.isPrivate && feed.credentialRef != null
-          ? await ref.read(privateFeedStoreProvider).read(feed.credentialRef!)
-          : null;
-      final address = secret?.url ?? Uri.tryParse(feed.feedUrl);
-      final podcast = kind == FeedKind.podcast && address != null
+      final address = canPreview ? Uri.tryParse(feed.feedUrl) : null;
+      final podcast = address != null
           ? PodcastSearchResult(
               name: feed.title,
               author: feed.author ?? '',
@@ -506,20 +505,24 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
           : null;
       final retainedPreview = podcast == null
           ? null
-          : _storedPodcastPreview(feed, episodes);
+          : (
+              feedUrl: podcast.feedUrl,
+              feed: _storedPodcastPreview(feed, episodes),
+            );
       await removeSubscription(ref, feed);
       if (!mounted) return;
       final retained = await ref.read(databaseProvider).feedById(feed.id);
       if (!mounted) return;
+      showMessageSnackBar(context, 'Unsubscribed from ${feed.title}');
       if (retained != null) {
-        showMessageSnackBar(context, 'Unsubscribed from ${feed.title}');
-      } else if (podcast != null) {
+        return;
+      }
+      if (podcast != null) {
         setState(() {
           _podcast = podcast;
           _catalogPreviewSnapshot = retainedPreview;
           _catalogPreview = Future.value(retainedPreview!);
           _feedId = null;
-          _forcePrivateResubscribe = feed.isPrivate;
           _transitionFeed = null;
           _unsubscribing = false;
         });
@@ -585,11 +588,12 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
         ),
       ),
       body: AppBackdrop(
-        child: FutureBuilder<ParsedFeed>(
+        child: FutureBuilder<PodcastPreview>(
           future: _catalogPreview,
           initialData: _catalogPreviewSnapshot,
           builder: (context, snapshot) {
-            final details = snapshot.data;
+            final preview = snapshot.data;
+            final details = preview?.feed;
             final episodes = details?.episodes ?? const <ParsedEpisode>[];
             final visibleCount = episodes.length < _limit
                 ? episodes.length
@@ -653,7 +657,7 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
                           details?.imageUrl ?? podcast.artworkUrl,
                       onPlay: () => _playPreviewEpisode(
                         podcast,
-                        details!,
+                        preview!,
                         episodes[index],
                       ),
                     ),
@@ -687,18 +691,20 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
 
   Future<void> _playPreviewEpisode(
     PodcastSearchResult podcast,
-    ParsedFeed details,
+    PodcastPreview preview,
     ParsedEpisode parsedEpisode,
   ) async {
     try {
-      final episode = await ref
-          .read(feedRepositoryProvider)
-          .cachePodcastPreviewEpisode(
-            podcast: podcast,
-            details: details,
-            episode: parsedEpisode,
-          );
-      await ref.read(audioHandlerProvider).playEpisode(episode.id);
+      final audio = ref.read(audioHandlerProvider);
+      final repository = ref.read(feedRepositoryProvider);
+      await audio.playPreviewEpisode(() async {
+        final episode = await repository.cachePodcastPreviewEpisode(
+          podcast: podcast,
+          preview: preview,
+          episode: parsedEpisode,
+        );
+        return episode.id;
+      });
     } on Object catch (error) {
       if (mounted) showErrorSnackBar(context, error);
     }
@@ -721,14 +727,12 @@ class _FeedDetailPageState extends ConsumerState<FeedDetailPage> {
           .read(feedRepositoryProvider)
           .subscribe(
             podcast.feedUrl.toString(),
-            forcePrivate: _forcePrivateResubscribe,
             expectedKind: FeedKind.podcast,
           );
       if (!mounted) return;
       setState(() {
         _feedId = feed.id;
         _transitionFeed = feed;
-        _forcePrivateResubscribe = false;
         _subscribing = false;
       });
       showMessageSnackBar(context, 'Subscribed to ${feed.title}');

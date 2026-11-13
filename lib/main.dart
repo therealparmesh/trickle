@@ -213,10 +213,8 @@ Future<_TrickleRuntime> _createRuntime() async {
     final backup = BackupService(
       database,
       privateFeeds: privateFeeds,
-      onImported: () async {
-        await audioHandler.reloadQueueFromDatabase();
-        await audioHandler.reloadSettingsFromDatabase();
-      },
+      applyRestore: audioHandler.restoreLibrary,
+      onImported: () async => feedRepository.invalidatePrivateFeedIndex(),
     );
     final opml = OpmlService(database, feedRepository, privateFeeds);
     final sync = SyncCoordinator(

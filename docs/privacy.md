@@ -16,7 +16,7 @@ Subscriptions, reading state, playback progress, queue entries, settings, bookma
 
 Private-feed URLs and authorization headers are stored using the operating system's Keychain or Keystore. Apple Keychain entries are restricted to the current device. An active authenticated media download may require the operating system's app-private download scheduler to retain its URL and request headers until that task ends.
 
-Deleting a feed removes its local content, files, and stored secrets. Uninstalling removes the application database and media. If an operating system retains Keychain entries across uninstall, trickle clears stale private-feed entries before a later fresh installation is used.
+Unsubscribing removes items without saved library state. Items you keep, such as saved articles and downloaded episodes, stay available. Private-feed credentials are removed when their feed is removed from the library entirely. Uninstalling removes the application database and media. If an operating system retains Keychain entries across uninstall, trickle clears stale private-feed entries before a later fresh installation is used.
 
 ## Network requests
 

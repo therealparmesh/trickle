@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
-import 'package:trickle/core/constants.dart';
 import 'package:trickle/core/formatters.dart';
 import 'package:trickle/core/playback_rules.dart';
 import 'package:trickle/core/url_identity.dart';
@@ -61,23 +60,6 @@ void main() {
       isPlaybackComplete(const Duration(hours: 4), Duration.zero),
       isFalse,
     );
-  });
-
-  test('interruption resume honors explicit intent before player state', () {
-    for (final scenario in const [
-      (playing: false, requested: true, expected: true),
-      (playing: false, requested: false, expected: false),
-      (playing: true, requested: false, expected: false),
-      (playing: true, requested: null, expected: true),
-    ]) {
-      expect(
-        shouldResumeAfterInterruption(
-          playing: scenario.playing,
-          playRequested: scenario.requested,
-        ),
-        scenario.expected,
-      );
-    }
   });
 
   test('playback recovery excludes pauses, transitions, and completion', () {
@@ -151,34 +133,10 @@ void main() {
   });
 
   group('native completion events', () {
-    test('ignores initial and in-flight completion events', () {
-      expect(
-        shouldHandlePlayerCompletion(
-          completed: true,
-          loadingMedia: true,
-          hasMedia: true,
-          playbackStarted: true,
-          position: const Duration(minutes: 19),
-          duration: const Duration(minutes: 20),
-        ),
-        isFalse,
-      );
-      expect(
-        shouldHandlePlayerCompletion(
-          completed: true,
-          loadingMedia: false,
-          hasMedia: false,
-          playbackStarted: true,
-          position: const Duration(minutes: 19),
-          duration: const Duration(minutes: 20),
-        ),
-        isFalse,
-      );
+    test('requires a completion event from playback that reached the end', () {
       expect(
         shouldHandlePlayerCompletion(
           completed: false,
-          loadingMedia: false,
-          hasMedia: true,
           playbackStarted: true,
           position: const Duration(minutes: 19),
           duration: const Duration(minutes: 20),
@@ -188,8 +146,6 @@ void main() {
       expect(
         shouldHandlePlayerCompletion(
           completed: true,
-          loadingMedia: false,
-          hasMedia: true,
           playbackStarted: false,
           position: const Duration(minutes: 19),
           duration: const Duration(minutes: 20),
@@ -199,8 +155,6 @@ void main() {
       expect(
         shouldHandlePlayerCompletion(
           completed: true,
-          loadingMedia: false,
-          hasMedia: true,
           playbackStarted: true,
           position: Duration.zero,
           duration: const Duration(minutes: 20),
@@ -210,8 +164,6 @@ void main() {
       expect(
         shouldHandlePlayerCompletion(
           completed: true,
-          loadingMedia: false,
-          hasMedia: true,
           playbackStarted: true,
           position: const Duration(minutes: 3),
           duration: Duration.zero,
@@ -230,8 +182,6 @@ void main() {
       expect(
         shouldHandlePlayerCompletion(
           completed: true,
-          loadingMedia: false,
-          hasMedia: true,
           playbackStarted: true,
           position: const Duration(minutes: 3),
           duration: duration,
@@ -241,8 +191,6 @@ void main() {
       expect(
         shouldHandlePlayerCompletion(
           completed: true,
-          loadingMedia: false,
-          hasMedia: true,
           playbackStarted: true,
           position: const Duration(minutes: 19),
           duration: duration,
@@ -272,7 +220,6 @@ void main() {
   test('outro skip runs only for started current media inside the outro', () {
     expect(
       shouldHandleOutroSkip(
-        loadingMedia: false,
         playbackStarted: true,
         position: const Duration(minutes: 19, seconds: 30),
         duration: const Duration(minutes: 20),
@@ -281,13 +228,11 @@ void main() {
       isTrue,
     );
     for (final state in const [
-      (loading: true, started: true, position: Duration(minutes: 20)),
-      (loading: false, started: false, position: Duration(minutes: 20)),
-      (loading: false, started: true, position: Duration(minutes: 19)),
+      (started: false, position: Duration(minutes: 20)),
+      (started: true, position: Duration(minutes: 19)),
     ]) {
       expect(
         shouldHandleOutroSkip(
-          loadingMedia: state.loading,
           playbackStarted: state.started,
           position: state.position,
           duration: const Duration(minutes: 20),
@@ -302,23 +247,6 @@ void main() {
     expect(compactDuration(1), '<1m');
     expect(compactDuration(const Duration(seconds: 59).inMilliseconds), '<1m');
     expect(compactDuration(const Duration(minutes: 1).inMilliseconds), '1m');
-  });
-
-  test('refresh labels match their scheduling intervals', () {
-    expect(
-      RefreshInterval.values
-          .map((interval) => (interval.duration, interval.label))
-          .toList(),
-      const [
-        (Duration(hours: 1), '1 hour'),
-        (Duration(hours: 2), '2 hours'),
-        (Duration(hours: 4), '4 hours'),
-        (Duration(hours: 8), '8 hours'),
-        (Duration(hours: 12), '12 hours'),
-        (Duration(days: 1), '1 day'),
-        (Duration(days: 7), '1 week'),
-      ],
-    );
   });
 
   group('public URL identity', () {

@@ -503,16 +503,13 @@ final class _ArticleTileState extends ConsumerState<ArticleTile>
     final article = widget.article;
     try {
       if (action == 'star') {
-        if (!article.starred &&
-            privacyYouTubePlaybackUri(
-                  Uri.tryParse(article.canonicalUrl ?? ''),
-                ) ==
-                null) {
-          await ref.read(articleRepositoryProvider).load(article);
-        }
         await ref
-            .read(feedRepositoryProvider)
-            .starArticle(article.id, starred: !article.starred);
+            .read(articleRepositoryProvider)
+            .setSaved(
+              article.id,
+              saved: !article.starred,
+              cacheForOffline: true,
+            );
       } else {
         await ref
             .read(feedRepositoryProvider)

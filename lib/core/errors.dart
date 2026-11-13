@@ -22,6 +22,10 @@ final class DownloadException extends TrickleException {
   const DownloadException(super.message);
 }
 
+final class UnsupportedDownloadException extends TrickleException {
+  const UnsupportedDownloadException(super.message);
+}
+
 final class BackupException extends TrickleException {
   const BackupException(super.message);
 }

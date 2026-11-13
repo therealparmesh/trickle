@@ -33,15 +33,6 @@ Duration completedProgressDuration({
     ? position
     : Duration.zero;
 
-/// Whether a pause-type audio interruption should resume when it ends.
-///
-/// A requested episode can still be loading, so the player may not yet report
-/// itself as playing even though the user asked it to play.
-bool shouldResumeAfterInterruption({
-  required bool playing,
-  required bool? playRequested,
-}) => playRequested ?? playing;
-
 /// Allows one recovery attempt only when requested playback stopped before the
 /// episode finished. Explicit pauses, source changes, and completion handling
 /// must never restart audio.
@@ -61,22 +52,14 @@ bool shouldRecoverUnexpectedPlaybackStop({
     !terminalState &&
     (duration <= Duration.zero || position < duration);
 
-/// Filters the player's initial/transition `completed` events.
-///
-/// Some native backends report `completed` while they still have no source or
-/// while a new source is opening. Treating that as a real episode completion
-/// would mark an untouched episode played and remove it from Up next.
+/// A native completion must belong to started audio that reached the end.
 bool shouldHandlePlayerCompletion({
   required bool completed,
-  required bool loadingMedia,
-  required bool hasMedia,
   required bool playbackStarted,
   required Duration position,
   required Duration duration,
 }) =>
     completed &&
-    !loadingMedia &&
-    hasMedia &&
     playbackStarted &&
     (duration > Duration.zero
         ? isPlaybackComplete(position, duration)
@@ -84,13 +67,11 @@ bool shouldHandlePlayerCompletion({
 
 /// Whether the current position has entered this episode's configured outro.
 bool shouldHandleOutroSkip({
-  required bool loadingMedia,
   required bool playbackStarted,
   required Duration position,
   required Duration duration,
   required Duration outro,
 }) =>
-    !loadingMedia &&
     playbackStarted &&
     outro > Duration.zero &&
     duration > outro &&

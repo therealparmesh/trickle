@@ -7,8 +7,10 @@ import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:trickle/app/app_providers.dart';
 import 'package:trickle/core/constants.dart';
 import 'package:trickle/data/database/app_database.dart';
@@ -18,31 +20,23 @@ import 'package:trickle/data/repositories/feed_repository.dart';
 import 'package:trickle/data/repositories/settings_repository.dart';
 import 'package:trickle/data/security/private_feed_store.dart';
 import 'package:trickle/features/player/trickle_audio_handler.dart';
-import 'package:trickle/features/downloads/download_coordinator.dart';
 import 'package:trickle/features/video/video_session.dart';
 import 'package:trickle/presentation/playback_presentation.dart';
 import 'package:trickle/presentation/subscription_actions.dart';
+import 'package:trickle/presentation/widgets/article_attachments.dart';
 import 'package:trickle/presentation/widgets/video_player_host.dart';
 
-import 'support/unused_downloader.dart';
+import 'support/playback_harness.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   testWidgets(
     'unsubscribe finishes playback cleanup after leaving the screen',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
-      final harness = _createPlaybackHarness();
+      final harness = createPlaybackHarness();
       final database = harness.database;
-      final downloads = DownloadCoordinator(
-        downloader: UnusedDownloader(),
-        database: database,
-        sources: PlaybackSourceResolver(
-          database,
-          PrivateFeedStore(),
-          harness.network,
-        ),
-        settings: SettingsRepository(database),
-      );
       final repository = FeedRepository(
         database: database,
         network: harness.network,
@@ -53,13 +47,11 @@ void main() {
           databaseProvider.overrideWithValue(database),
           feedRepositoryProvider.overrideWithValue(repository),
           audioHandlerProvider.overrideWithValue(harness.handler),
-          downloadCoordinatorProvider.overrideWithValue(downloads),
         ],
       );
       addTearDown(() async {
         container.dispose();
-        await downloads.dispose();
-        await _disposePlaybackHarness(harness);
+        await disposePlaybackHarness(harness);
       });
       final now = DateTime.utc(2026, 9, 21);
       await database
@@ -116,9 +108,9 @@ void main() {
   );
 
   testWidgets(
-    'deleting a video item closes its session in every presentation',
+    'removing or replacing a video closes its session in every presentation',
     (tester) async {
-      final harness = _createPlaybackHarness();
+      final harness = createPlaybackHarness();
       final container = ProviderContainer(
         overrides: [
           databaseProvider.overrideWithValue(harness.database),
@@ -128,7 +120,7 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        await _disposePlaybackHarness(harness);
+        await disposePlaybackHarness(harness);
       });
       final now = DateTime.utc(2026, 9, 21);
       await harness.database
@@ -149,13 +141,16 @@ void main() {
         ),
       );
       for (final presentation in VideoPresentation.values) {
+        const original = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+        final article = harness.database.articles;
         await harness.database
             .into(harness.database.articles)
-            .insert(
+            .insertOnConflictUpdate(
               ArticlesCompanion.insert(
                 id: 'video',
                 feedId: 'feed',
                 title: 'Video',
+                canonicalUrl: const Value(original),
                 discoveredAt: now,
               ),
             );
@@ -165,7 +160,7 @@ void main() {
           intentRevision: intent,
           articleId: 'video',
           title: 'Video',
-          sourceUri: Uri.parse('https://example.test/video.mp4'),
+          sourceUri: Uri.parse(original),
           playbackUri: Uri.parse('https://example.test/video.mp4'),
         );
         if (presentation == VideoPresentation.minimized) notifier.minimize();
@@ -177,14 +172,90 @@ void main() {
           container.read(videoSessionProvider)?.presentation,
           presentation,
         );
-        await (harness.database.delete(
-          harness.database.articles,
-        )..where((row) => row.id.equals('video'))).go();
+        final current = harness.database.update(article)
+          ..where((row) => row.id.equals('video'));
+        await current.write(
+          const ArticlesCompanion(
+            canonicalUrl: Value('https://youtu.be/dQw4w9WgXcQ'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(container.read(videoSessionProvider)?.intentRevision, intent);
+        if (presentation == VideoPresentation.expanded) {
+          await (harness.database.delete(
+            article,
+          )..where((row) => row.id.equals('video'))).go();
+        } else {
+          await current.write(
+            const ArticlesCompanion(
+              canonicalUrl: Value(
+                'https://www.youtube.com/watch?v=aqz-KE-bpKQ',
+              ),
+            ),
+          );
+        }
         await tester.pumpAndSettle();
         expect(container.read(videoSessionProvider), isNull);
         expect(harness.handler.isWebVideoPlaybackCurrent(intent), isFalse);
         expect(tester.takeException(), isNull);
       }
+      const primary = 'https://example.test/primary.mp4';
+      final fallback = Uri.parse('https://example.test/fallback.mp4');
+      final post = await harness.database
+          .into(harness.database.articles)
+          .insertReturning(
+            ArticlesCompanion.insert(
+              id: 'post',
+              feedId: 'feed',
+              title: 'Post',
+              discoveredAt: now,
+            ),
+          );
+      final attachments = harness.database.articleAttachments;
+      await harness.database
+          .into(attachments)
+          .insert(
+            ArticleAttachmentsCompanion.insert(
+              id: 'attachment',
+              articleId: post.id,
+              position: 0,
+              url: primary,
+            ),
+          );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: VideoPlayerHost(
+              child: Scaffold(body: ArticleAttachmentsView(article: post)),
+            ),
+          ),
+        ),
+      );
+      final intent = harness.handler.beginWebVideoPlayback();
+      container.read(videoSessionProvider.notifier)
+        ..open(
+          intentRevision: intent,
+          articleId: post.id,
+          title: 'Post',
+          sourceUri: fallback,
+          playbackUri: fallback,
+          attachmentId: 'attachment',
+        )
+        ..minimize();
+      await tester.pumpAndSettle();
+      expect(container.read(videoSessionProvider)?.intentRevision, intent);
+      expect(
+        find.widgetWithText(FilledButton, 'Open video player'),
+        findsOneWidget,
+      );
+      await (harness.database.delete(
+        attachments,
+      )..where((row) => row.id.equals('attachment'))).go();
+      await tester.pumpAndSettle();
+      expect(container.read(videoSessionProvider), isNull);
+      expect(harness.handler.isWebVideoPlaybackCurrent(intent), isFalse);
+      expect(find.widgetWithText(FilledButton, 'Play video'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       final disposal = harness.handler.disposeHandler();
       await tester.pumpAndSettle();
@@ -206,6 +277,7 @@ void main() {
         played: false,
         starred: false,
         automationApplied: false,
+        queueAutomationApplied: false,
       );
       final partial = PlaybackProgressesData(
         episodeId: episode.id,
@@ -311,10 +383,10 @@ void main() {
   test(
     'last unfinished audio restores paused and survives queue clearing but not removal',
     () async {
-      final harness = _createPlaybackHarness();
+      final harness = createPlaybackHarness();
       final database = harness.database;
       final handler = harness.handler;
-      addTearDown(() => _disposePlaybackHarness(harness));
+      addTearDown(() => disposePlaybackHarness(harness));
       final now = DateTime.utc(2026, 9, 21);
       await database
           .into(database.feeds)
@@ -457,9 +529,9 @@ void main() {
   });
 
   test('stale scrub cannot seek the newly selected episode', () async {
-    final harness = _createPlaybackHarness();
+    final harness = createPlaybackHarness();
     final handler = harness.handler;
-    addTearDown(() => _disposePlaybackHarness(harness));
+    addTearDown(() => disposePlaybackHarness(harness));
     const current = MediaItem(id: 'new-episode', title: 'New episode');
     handler.mediaItem.add(current);
 
@@ -472,9 +544,9 @@ void main() {
   });
 
   test('expired sleep timer clears when no player was initialized', () async {
-    final harness = _createPlaybackHarness();
+    final harness = createPlaybackHarness();
     final handler = harness.handler;
-    addTearDown(() => _disposePlaybackHarness(harness));
+    addTearDown(() => disposePlaybackHarness(harness));
 
     await handler.setSleepTimer(Duration.zero);
     await Future<void>.delayed(Duration.zero);
@@ -486,7 +558,7 @@ void main() {
   });
 
   test('a newer audio request supersedes a pending video request', () async {
-    final harness = _createPlaybackHarness();
+    final harness = createPlaybackHarness();
     final handler = harness.handler;
     final mediaIntents = <int>[];
     final subscription = handler.mediaPlaybackIntentStream.listen(
@@ -494,7 +566,7 @@ void main() {
     );
     addTearDown(() async {
       await subscription.cancel();
-      await _disposePlaybackHarness(harness);
+      await disposePlaybackHarness(harness);
     });
 
     final videoIntent = handler.beginWebVideoPlayback();
@@ -507,10 +579,10 @@ void main() {
   });
 
   test('native queue publishes valid artwork and current controls', () async {
-    final harness = _createPlaybackHarness();
+    final harness = createPlaybackHarness();
     final database = harness.database;
     final handler = harness.handler;
-    addTearDown(() => _disposePlaybackHarness(harness));
+    addTearDown(() => disposePlaybackHarness(harness));
     final now = DateTime.utc(2026, 7, 22);
     for (final feed in [
       FeedsCompanion.insert(
@@ -604,65 +676,392 @@ void main() {
     );
   });
 
-  test('queue reload cannot replace a newer in-memory edit', () async {
-    final harness = _createPlaybackHarness();
-    final database = harness.database;
-    final handler = harness.handler;
-    addTearDown(() => _disposePlaybackHarness(harness));
-    final now = DateTime.utc(2026, 8, 23);
-    await database
-        .into(database.feeds)
-        .insert(
-          FeedsCompanion.insert(
-            id: 'feed',
-            title: 'Feed',
-            feedUrl: 'https://example.test/feed',
-            createdAt: now,
-            updatedAt: now,
-          ),
-        );
-    for (final id in const ['stored', 'newer']) {
+  test(
+    'an add during queue reload keeps the stored and new episodes',
+    () async {
+      final harness = createPlaybackHarness();
+      final database = harness.database;
+      final handler = harness.handler;
+      addTearDown(() => disposePlaybackHarness(harness));
+      final now = DateTime.utc(2026, 8, 23);
       await database
-          .into(database.episodes)
+          .into(database.feeds)
           .insert(
-            EpisodesCompanion.insert(
-              id: id,
-              feedId: 'feed',
-              title: id,
-              enclosureUrl: 'https://example.test/$id.mp3',
-              discoveredAt: now,
+            FeedsCompanion.insert(
+              id: 'feed',
+              title: 'Feed',
+              feedUrl: 'https://example.test/feed',
+              createdAt: now,
+              updatedAt: now,
             ),
           );
-    }
-    await database
-        .into(database.queueEntries)
+      for (final id in const ['stored', 'newer']) {
+        await database
+            .into(database.episodes)
+            .insert(
+              EpisodesCompanion.insert(
+                id: id,
+                feedId: 'feed',
+                title: id,
+                enclosureUrl: 'https://example.test/$id.mp3',
+                discoveredAt: now,
+              ),
+            );
+      }
+      await database
+          .into(database.queueEntries)
+          .insert(
+            QueueEntriesCompanion.insert(
+              id: 'stored-queue-entry',
+              episodeId: 'stored',
+              sortKey: 0,
+              addedAt: now,
+            ),
+          );
+
+      final reload = handler.reloadQueueFromDatabase();
+      final add = handler.addEpisodeToQueue('newer');
+      await Future.wait([reload, add]);
+
+      expect(handler.queue.value.map((item) => item.id), ['stored', 'newer']);
+      expect(
+        (await database.watchQueuedEpisodes().first).map(
+          (episode) => episode.id,
+        ),
+        ['stored', 'newer'],
+      );
+    },
+  );
+
+  test(
+    'queue edits skip a deleted episode without losing valid entries',
+    () async {
+      final harness = createPlaybackHarness();
+      addTearDown(() => disposePlaybackHarness(harness));
+      final (current, deleted, other) = await seedPlaybackQueue(harness);
+      final database = harness.database;
+      final handler = harness.handler;
+      await (database.delete(
+        database.episodes,
+      )..where((row) => row.id.equals(deleted.id))).go();
+
+      // A second queue edit can arrive while the first write is still pending.
+      final stale = handler.updateQueue([deleted, current, other]);
+      final latest = handler.updateQueue([other, deleted, current]);
+      await Future.wait([stale, latest]);
+      expect(handler.queue.value.map((item) => item.id), [
+        other.id,
+        current.id,
+      ]);
+      await handler.reloadQueueFromDatabase();
+      expect(handler.queue.value.map((item) => item.id), [
+        other.id,
+        current.id,
+      ]);
+    },
+  );
+
+  test('subscription cleanup preserves an unloaded queue', () async {
+    final harness = createPlaybackHarness();
+    addTearDown(() => disposePlaybackHarness(harness));
+    final (current, _, other) = await seedPlaybackQueue(harness);
+    final database = harness.database;
+    // Use a fresh handler that has not restored the persisted queue yet.
+    final handler = TrickleAudioHandler(
+      database: database,
+      settings: SettingsRepository(database),
+      sourceResolver: PlaybackSourceResolver(
+        database,
+        PrivateFeedStore(),
+        harness.network,
+      ),
+    );
+    addTearDown(handler.disposeHandler);
+    await (database.delete(
+      database.episodes,
+    )..where((row) => row.id.equals(current.id))).go();
+    await handler.removeEpisodesFromLibrary([current.id]);
+    await handler.reloadQueueFromDatabase();
+    expect(handler.queue.value.map((item) => item.id), ['selected', other.id]);
+  });
+
+  test('a failed episode load cannot erase its saved position', () async {
+    final harness = createPlaybackHarness(
+      addressValidator: (_) async {
+        throw StateError('Network unavailable');
+      },
+    );
+    addTearDown(() => disposePlaybackHarness(harness));
+    final (_, selected, _) = await seedPlaybackQueue(harness);
+    await harness.database
+        .into(harness.database.playbackProgresses)
         .insert(
-          QueueEntriesCompanion.insert(
-            id: 'stored-queue-entry',
-            episodeId: 'stored',
-            sortKey: 0,
-            addedAt: now,
+          PlaybackProgressesCompanion.insert(
+            episodeId: selected.id,
+            positionMs: const Value(55000),
+            updatedAt: DateTime.utc(2026, 9, 21),
           ),
         );
 
-    final reload = handler.reloadQueueFromDatabase();
-    final update = handler.updateQueue(const [
-      MediaItem(id: 'newer', title: 'newer'),
-    ]);
-    await Future.wait([reload, update]);
+    await expectLater(
+      harness.handler.playQueuedEpisode(selected.id),
+      throwsStateError,
+    );
+    await harness.handler.stop();
+    // A second stop after the error clears still has no loaded position.
+    await harness.handler.stop();
 
-    expect(handler.queue.value.map((item) => item.id), ['newer']);
+    final progress = await harness.database
+        .watchPlaybackProgressForEpisode(selected.id)
+        .first;
+    expect(progress?.positionMs, 55000);
+  });
+
+  test(
+    'a video opened during a podcast load leaves the right episode ready to resume',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'trickle-player-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final native = MockNativeAudio(directory.path);
+      final cache = CacheManager(
+        Config('test-player', repo: NonStoringObjectProvider()),
+      );
+      addTearDown(cache.dispose);
+      final resolvingSelected = Completer<void>();
+      final finishResolving = Completer<void>();
+      final harness = createPlaybackHarness(
+        adapter: MockMediaAdapter(),
+        artworkCache: cache,
+        addressValidator: (url) async {
+          if (url.path == '/selected.mp3' && !resolvingSelected.isCompleted) {
+            resolvingSelected.complete();
+            await finishResolving.future;
+          }
+        },
+      );
+      addTearDown(() => disposePlaybackHarness(harness));
+      final handler = harness.handler;
+      final (_, selected, _) = await seedPlaybackQueue(harness);
+      await harness.database
+          .into(harness.database.playbackProgresses)
+          .insert(
+            PlaybackProgressesCompanion.insert(
+              episodeId: selected.id,
+              positionMs: const Value(55000),
+              updatedAt: DateTime.utc(2026, 9, 21),
+            ),
+          );
+
+      await handler.play();
+      expect(native.loaded, ['/current.mp3']);
+
+      final switching = handler.playQueuedEpisode(selected.id);
+      await resolvingSelected.future;
+      await native.emit(position: const Duration(seconds: 20));
+      expect(await handler.positionStream.first, Duration.zero);
+      expect(handler.mediaItem.value?.duration, isNull);
+
+      final intent = handler.beginWebVideoPlayback();
+      finishResolving.complete();
+      expect(await handler.prepareWebVideoPlayback(intent), isTrue);
+      await switching;
+      await handler.endWebVideoPlayback(intent);
+      expect(
+        handler.playbackState.value.processingState,
+        AudioProcessingState.idle,
+      );
+      expect(handler.playbackState.value.playing, isFalse);
+
+      await handler.play();
+      expect(native.loaded, ['/current.mp3', '/selected.mp3']);
+      expect(native.seeks, [const Duration(seconds: 55)]);
+
+      // A fully loaded podcast stays paused in the native player while video
+      // owns the session, so returning to it doesn't reopen the media.
+      final secondIntent = handler.beginWebVideoPlayback();
+      expect(await handler.prepareWebVideoPlayback(secondIntent), isTrue);
+      await handler.endWebVideoPlayback(secondIntent);
+      await handler.play();
+      expect(native.loaded, ['/current.mp3', '/selected.mp3']);
+
+      await handler.clearQueue();
+      await handler.seekEpisode(selected.id, const Duration(seconds: 40));
+      await handler.setSpeed(1.25);
+      await Future<void>.delayed(Duration.zero);
+      expect(await handler.positionStream.first, const Duration(seconds: 40));
+      await handler.play();
+      expect(native.seeks.last, const Duration(seconds: 40));
+    },
+  );
+
+  test(
+    'clearing Up next drops staged entries but keeps later additions',
+    () async {
+      final harness = createPlaybackHarness();
+      addTearDown(() => disposePlaybackHarness(harness));
+      final (current, selected, staged) = await seedPlaybackQueue(harness);
+      await harness.handler.updateQueue([current]);
+      await harness.database
+          .update(harness.database.feeds)
+          .write(const FeedsCompanion(autoQueue: Value(true)));
+      await harness.database.stageAutomaticQueueAdditions([staged.id]);
+
+      final addBeforeClear = harness.handler.addEpisodeToQueue(staged.id);
+      final clear = harness.handler.clearQueue();
+      final add = harness.handler.addEpisodeToQueue(selected.id);
+      await Future.wait([addBeforeClear, clear, add]);
+      await harness.handler.reloadQueueFromDatabase();
+
+      expect(harness.handler.queue.value.single.id, selected.id);
+      expect(
+        (await harness.database
+                .select(harness.database.queueEntries)
+                .getSingle())
+            .episodeId,
+        selected.id,
+      );
+    },
+  );
+
+  test(
+    'queue navigation follows the selected episode across reordering',
+    () async {
+      final requests = <String>[];
+      final harness = createPlaybackHarness(
+        addressValidator: (url) async {
+          requests.add(url.path);
+          throw StateError('Stop before loading a native player');
+        },
+      );
+      addTearDown(() => disposePlaybackHarness(harness));
+      final (current, selected, other) = await seedPlaybackQueue(harness);
+
+      final playback = expectLater(
+        harness.handler.skipToQueueItem(1),
+        throwsStateError,
+      );
+      await harness.handler.updateQueue([current, other, selected]);
+      await playback;
+
+      expect(requests, ['/selected.mp3']);
+      expect(harness.handler.mediaItem.value?.id, selected.id);
+    },
+  );
+
+  test('a stale reorder cannot discard an episode added to Up next', () async {
+    final harness = createPlaybackHarness();
+    addTearDown(() => disposePlaybackHarness(harness));
+    final (current, selected, added) = await seedPlaybackQueue(harness);
+    final handler = harness.handler;
+    await handler.updateQueue([current, selected]);
+    final displayed = handler.queue.value;
+    await handler.addEpisodeToQueue(added.id);
+
+    await handler.reorderQueue(displayed, 0, 1);
+    expect(handler.queue.value.map((item) => item.id), [
+      current.id,
+      selected.id,
+      added.id,
+    ]);
+
+    await handler.reorderQueue(handler.queue.value, 0, 1);
     expect(
-      (await database.select(database.queueEntries).get()).single.episodeId,
-      'newer',
+      (await harness.database.watchQueuedEpisodes().first).map(
+        (item) => item.id,
+      ),
+      [selected.id, current.id, added.id],
     );
   });
 
-  test('background queue additions survive handoff and merge once', () async {
-    final harness = _createPlaybackHarness();
+  test('a failed queue edit leaves the queue visible and reloadable', () async {
+    final harness = createPlaybackHarness();
+    addTearDown(() => disposePlaybackHarness(harness));
+    final (current, selected, staged) = await seedPlaybackQueue(harness);
     final database = harness.database;
     final handler = harness.handler;
-    addTearDown(() => _disposePlaybackHarness(harness));
+    await handler.updateQueue([current, selected]);
+    await database
+        .update(database.feeds)
+        .write(const FeedsCompanion(autoQueue: Value(true)));
+    await database.customStatement(
+      'CREATE TRIGGER reject_queue_edit BEFORE DELETE ON queue_entries '
+      "BEGIN SELECT RAISE(ABORT, 'Queue edit rejected'); END",
+    );
+
+    await expectLater(
+      handler.removeQueueItem(selected),
+      throwsA(isA<Exception>()),
+    );
+    expect(handler.queue.value.map((item) => item.id), [
+      current.id,
+      selected.id,
+    ]);
+    await database.stageAutomaticQueueAdditions([staged.id]);
+    await handler.reloadQueueFromDatabase();
+
+    expect(handler.queue.value.map((item) => item.id), [
+      current.id,
+      selected.id,
+      staged.id,
+    ]);
+    expect(await database.select(database.pendingQueueAdds).get(), isEmpty);
+  });
+
+  test('a staged addition cannot requeue a manually removed episode', () async {
+    final harness = createPlaybackHarness();
+    addTearDown(() => disposePlaybackHarness(harness));
+    final (current, selected, other) = await seedPlaybackQueue(harness);
+    final database = harness.database;
+    final handler = harness.handler;
+    await handler.updateQueue([current]);
+    await database
+        .update(database.feeds)
+        .write(const FeedsCompanion(autoQueue: Value(true)));
+    await database.stageAutomaticQueueAdditions([selected.id, other.id]);
+
+    await handler.addEpisodeToQueue(selected.id);
+    await handler.removeQueueItem(selected);
+    await handler.reloadQueueFromDatabase();
+
+    expect(handler.queue.value.map((item) => item.id), [current.id, other.id]);
+  });
+
+  test(
+    'removing the playing queue entry leaves a newer playback choice alone',
+    () async {
+      final requests = <String>[];
+      final harness = createPlaybackHarness(
+        addressValidator: (url) async {
+          requests.add(url.path);
+          throw StateError('Stop before loading a native player');
+        },
+      );
+      addTearDown(() => disposePlaybackHarness(harness));
+      final (current, selected, other) = await seedPlaybackQueue(harness);
+
+      final removal = harness.handler.removeQueueItem(current);
+      final playback = expectLater(
+        harness.handler.playQueuedEpisode(other.id),
+        throwsStateError,
+      );
+      await Future.wait([removal, playback]);
+
+      expect(requests, ['/other.mp3']);
+      expect(harness.handler.mediaItem.value?.id, other.id);
+      expect(harness.handler.queue.value.map((item) => item.id), [
+        selected.id,
+        other.id,
+      ]);
+    },
+  );
+
+  test('background queue additions survive handoff and merge once', () async {
+    final harness = createPlaybackHarness();
+    final database = harness.database;
+    final handler = harness.handler;
+    addTearDown(() => disposePlaybackHarness(harness));
     final now = DateTime.utc(2026, 9, 1);
     await database
         .into(database.feeds)
@@ -671,6 +1070,7 @@ void main() {
             id: 'feed',
             title: 'Feed',
             feedUrl: 'https://example.test/feed',
+            autoQueue: const Value(true),
             createdAt: now,
             updatedAt: now,
           ),
@@ -698,27 +1098,31 @@ void main() {
             addedAt: now,
           ),
         );
-    await database.stageQueueAdditions(const [
+    await database.stageAutomaticQueueAdditions(const [
       'first-pending',
+      'episode-removed-during-refresh',
       'second-pending',
       'first-pending',
     ]);
 
-    // Simulate a foreground queue snapshot winning after the background
-    // additions were merged but before the active handler acknowledged them.
-    await database.mergePendingQueueAdditions();
-    await database.batch((batch) {
-      batch.deleteAll(database.queueEntries);
-      batch.insert(
-        database.queueEntries,
-        QueueEntriesCompanion.insert(
-          id: 'replacement-current-entry',
-          episodeId: 'current',
-          sortKey: 0,
-          addedAt: now,
-        ),
-      );
-    });
+    // A failed handoff must leave neither half committed.
+    await database.customStatement(
+      'CREATE TRIGGER reject_queue_handoff BEFORE DELETE ON pending_queue_adds '
+      "BEGIN SELECT RAISE(ABORT, 'Queue handoff rejected'); END",
+    );
+    await expectLater(
+      handler.reloadQueueFromDatabase(),
+      throwsA(isA<Exception>()),
+    );
+    expect(
+      (await database.select(database.queueEntries).getSingle()).episodeId,
+      'current',
+    );
+    expect(
+      await database.select(database.pendingQueueAdds).get(),
+      hasLength(2),
+    );
+    await database.customStatement('DROP TRIGGER reject_queue_handoff');
 
     await handler.reloadQueueFromDatabase();
     await handler.reloadQueueFromDatabase();
@@ -732,123 +1136,132 @@ void main() {
     expect(await database.select(database.queueEntries).get(), hasLength(3));
   });
 
-  test('only a usable completed audio file bypasses streaming', () async {
-    final database = AppDatabase.forTesting(NativeDatabase.memory());
-    final adapter = _MediaAdapter();
-    final network = SafeNetworkClient.forTesting(
-      Dio()..httpClientAdapter = adapter,
-      addressValidator: (_) async {},
-    );
-    final directory = await Directory.systemTemp.createTemp('trickle-audio-');
-    addTearDown(() async {
-      network.close();
-      await database.close();
-      if (await directory.exists()) await directory.delete(recursive: true);
-    });
-    final emptyFile = File('${directory.path}/empty.mp3');
-    await emptyFile.create();
-    final now = DateTime.utc(2026, 7, 18);
-    await database
-        .into(database.feeds)
-        .insert(
-          FeedsCompanion.insert(
-            id: 'feed',
-            title: 'Feed',
-            feedUrl: 'https://example.test/feed',
-            createdAt: now,
-            updatedAt: now,
-          ),
-        );
-    await database
-        .into(database.episodes)
-        .insert(
-          EpisodesCompanion.insert(
-            id: 'episode',
-            feedId: 'feed',
-            title: 'Episode',
-            enclosureUrl: 'https://example.test/audio.mp3',
-            discoveredAt: now,
-          ),
-        );
-    await database
-        .into(database.mediaDownloads)
-        .insert(
-          MediaDownloadsCompanion.insert(
-            episodeId: 'episode',
-            taskId: 'task',
-            status: Value(DownloadState.complete.index),
-            filePath: Value(emptyFile.path),
-            updatedAt: now,
-          ),
-        );
+  test(
+    'download playback rebases valid paths and repairs missing files',
+    () async {
+      final database = AppDatabase.forTesting(NativeDatabase.memory());
+      final adapter = MockMediaAdapter();
+      final network = SafeNetworkClient.forTesting(
+        Dio()..httpClientAdapter = adapter,
+        addressValidator: (_) async {},
+      );
+      final directory = await Directory.systemTemp.createTemp('trickle-audio-');
+      const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(
+        pathProvider,
+        (_) async => directory.path,
+      );
+      addTearDown(() async {
+        messenger.setMockMethodCallHandler(pathProvider, null);
+        network.close();
+        await database.close();
+        if (await directory.exists()) await directory.delete(recursive: true);
+      });
+      final localFile = File('${directory.path}/media/episode-task.mp3');
+      await localFile.create(recursive: true);
+      final now = DateTime.utc(2026, 7, 18);
+      await database
+          .into(database.feeds)
+          .insert(
+            FeedsCompanion.insert(
+              id: 'feed',
+              title: 'Feed',
+              feedUrl: 'https://example.test/feed',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      await database
+          .into(database.episodes)
+          .insert(
+            EpisodesCompanion.insert(
+              id: 'episode',
+              feedId: 'feed',
+              title: 'Episode',
+              enclosureUrl: 'https://example.test/audio.mp3',
+              discoveredAt: now,
+            ),
+          );
+      await database
+          .into(database.mediaDownloads)
+          .insert(
+            MediaDownloadsCompanion.insert(
+              episodeId: 'episode',
+              taskId: 'task',
+              status: Value(DownloadState.complete.index),
+              filePath: const Value(
+                '/old-container/Library/Application Support/media/episode-task.mp3',
+              ),
+              updatedAt: now,
+            ),
+          );
 
-    final resolver = PlaybackSourceResolver(
-      database,
-      PrivateFeedStore(),
-      network,
-    );
-    final episode = (await database.episodeById('episode'))!;
-
-    final emptySource = await resolver.resolve(episode);
-    await emptyFile.writeAsString('<html>expired download</html>');
-    final webPageSource = await resolver.resolve(episode);
-    await emptyFile.writeAsBytes(const [0x49, 0x44, 0x33, 0x04]);
-    final localSource = await resolver.resolve(episode);
-
-    expect(emptySource.isLocal, isFalse);
-    expect(webPageSource.isLocal, isFalse);
-    expect(localSource.isLocal, isTrue);
-    expect(localSource.resource, emptyFile.path);
-    expect(adapter.requests, 2);
-  });
-}
-
-typedef _PlaybackHarness = ({
-  AppDatabase database,
-  SafeNetworkClient network,
-  TrickleAudioHandler handler,
-});
-
-_PlaybackHarness _createPlaybackHarness() {
-  final database = AppDatabase.forTesting(NativeDatabase.memory());
-  final network = SafeNetworkClient.forTesting(
-    Dio(),
-    addressValidator: (_) async {},
-  );
-  return (
-    database: database,
-    network: network,
-    handler: TrickleAudioHandler(
-      database: database,
-      settings: SettingsRepository(database),
-      sourceResolver: PlaybackSourceResolver(
+      final resolver = PlaybackSourceResolver(
         database,
         PrivateFeedStore(),
         network,
-      ),
-    ),
+      );
+      final episode = (await database.episodeById('episode'))!;
+
+      await localFile.writeAsBytes(const [0x49, 0x44, 0x33, 0x04]);
+      final localSource = await resolver.resolve(episode);
+
+      expect(localSource.isLocal, isTrue);
+      expect(localSource.resource, localFile.path);
+      await database
+          .update(database.mediaDownloads)
+          .write(
+            const MediaDownloadsCompanion(
+              filePath: Value('media/episode-task.mp3'),
+            ),
+          );
+      expect((await resolver.resolve(episode)).resource, localFile.path);
+      expect(adapter.requests, 0);
+
+      for (final missing in [true, false]) {
+        if (missing) {
+          await localFile.delete();
+        } else {
+          await localFile.writeAsString('<html>expired download</html>');
+        }
+        await database
+            .update(database.mediaDownloads)
+            .write(
+              MediaDownloadsCompanion(
+                status: Value(DownloadState.complete.index),
+                bytesDownloaded: const Value(100),
+                totalBytes: const Value(100),
+              ),
+            );
+        expect((await resolver.resolve(episode)).isLocal, isFalse);
+        final row = await database.select(database.mediaDownloads).getSingle();
+        expect(row.status, DownloadState.failed.index);
+        expect(row.bytesDownloaded, 0);
+        expect(row.totalBytes, isNull);
+        expect(row.filePath, 'media/episode-task.mp3');
+      }
+      expect(adapter.requests, 2);
+
+      final old = await database.select(database.mediaDownloads).getSingle();
+      await database
+          .update(database.mediaDownloads)
+          .write(
+            MediaDownloadsCompanion(
+              taskId: const Value('replacement'),
+              status: Value(DownloadState.complete.index),
+              filePath: const Value('media/replacement.mp3'),
+              bytesDownloaded: const Value(200),
+              totalBytes: const Value(200),
+            ),
+          );
+      await database.markDownloadFileUnavailable(old);
+      final replacement = await database
+          .select(database.mediaDownloads)
+          .getSingle();
+      expect(replacement.status, DownloadState.complete.index);
+      expect(replacement.bytesDownloaded, 200);
+    },
   );
-}
-
-Future<void> _disposePlaybackHarness(_PlaybackHarness harness) async {
-  await harness.handler.disposeHandler();
-  harness.network.close();
-  await harness.database.close();
-}
-
-final class _MediaAdapter implements HttpClientAdapter {
-  int requests = 0;
-
-  @override
-  Future<ResponseBody> fetch(
-    RequestOptions options,
-    Stream<Uint8List>? requestStream,
-    Future<void>? cancelFuture,
-  ) async {
-    requests++;
-    return ResponseBody.fromString('', HttpStatus.partialContent);
-  }
-
-  @override
-  void close({bool force = false}) {}
 }

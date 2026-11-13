@@ -10,6 +10,7 @@ import 'package:reader_mode/reader_mode.dart' as reader;
 
 import '../../core/constants.dart';
 import '../../core/url_identity.dart';
+import '../../core/youtube_support.dart';
 import '../database/app_database.dart';
 import '../network/safe_network_client.dart';
 import '../security/private_feed_store.dart';
@@ -52,6 +53,43 @@ final class ArticleRepository {
   final Set<String> _previewMisses = {};
   final Queue<Completer<void>> _previewWaiters = Queue();
   int _activePreviewLoads = 0;
+
+  Future<void> setSaved(
+    String articleId, {
+    required bool saved,
+    bool cacheForOffline = false,
+  }) async {
+    final updated =
+        await (_database.update(_database.articles)
+              ..where((row) => row.id.equals(articleId)))
+            .write(ArticlesCompanion(starred: Value(saved)));
+    if (saved && cacheForOffline && updated > 0) {
+      unawaited(_cacheSavedArticle(articleId));
+    }
+  }
+
+  Future<void> _cacheSavedArticle(String articleId) async {
+    try {
+      // List rows omit HTML, which is needed to validate cache writes.
+      final article = await _database.articleById(articleId);
+      if (article == null ||
+          !article.starred ||
+          article.contentFormat != ArticleContentFormat.html.index ||
+          (article.readerFetchedAt != null &&
+              article.readerHtml?.trim().isNotEmpty == true)) {
+        return;
+      }
+      final url = Uri.tryParse(article.canonicalUrl ?? '');
+      if (url == null ||
+          !const {'http', 'https'}.contains(url.scheme) ||
+          privacyYouTubePlaybackUri(url) != null) {
+        return;
+      }
+      await load(article);
+    } on Object {
+      // The bookmark still works with feed text if offline caching fails.
+    }
+  }
 
   /// Finds and stores a publisher-provided image when the feed omitted one.
   /// Requests are deduplicated and capped at two at a time so a long article

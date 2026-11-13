@@ -13,6 +13,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/youtube_support.dart';
+import '../../data/database/app_database.dart';
 import '../../features/player/trickle_audio_handler.dart';
 import '../../features/video/video_session.dart';
 import 'common.dart';
@@ -56,7 +57,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
   bool _pausedForBackground = false;
   bool _requestingPictureInPicture = false;
   bool _pictureInPictureBackgrounded = false;
+  Timer? _playbackReplyTimeout;
   bool _awaitingPictureInPictureResume = false;
+  _VideoEvent? _lastObservedPlayback;
   Timer? _pictureInPictureRequestTimeout;
   AppLifecycleState _lifecycleState =
       WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
@@ -96,6 +99,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _loadTimeout?.cancel();
     _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
+    _clearPlaybackReply();
     final intent = _loadedIntentRevision;
     if (intent != null) {
       unawaited(
@@ -147,15 +151,20 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     final article = session == null
         ? null
         : ref.watch(articleProvider(session.articleId)).asData;
+    final attachments = session?.attachmentId == null
+        ? null
+        : ref.watch(articleAttachmentsProvider(session!.articleId)).asData;
     if (session != null &&
-        article != null &&
-        !article.isLoading &&
-        article.value == null) {
+        _isRemovedOrReplaced(session, article, attachments)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final current = ref.read(videoSessionProvider);
-        if (current?.articleId == session.articleId &&
-            current?.intentRevision == session.intentRevision) {
+        final latest = ref.read(articleProvider(session.articleId)).asData;
+        final latestAttachments = session.attachmentId == null
+            ? null
+            : ref.read(articleAttachmentsProvider(session.articleId)).asData;
+        if (current?.intentRevision == session.intentRevision &&
+            _isRemovedOrReplaced(session, latest, latestAttachments)) {
           unawaited(_close());
         }
       });
@@ -194,6 +203,27 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           _pictureInPictureBar(context, session),
       ],
     );
+  }
+
+  bool _isRemovedOrReplaced(
+    VideoSession session,
+    AsyncData<Article?>? article,
+    AsyncData<List<ArticleAttachment>>? attachments,
+  ) {
+    if (article != null && !article.isLoading && article.value == null) {
+      return true;
+    }
+    if (session.attachmentId case final id?) {
+      return attachments != null &&
+          !attachments.isLoading &&
+          !attachments.value.any((attachment) => attachment.id == id);
+    }
+    final videoId = youtubeVideoId(session.sourceUri);
+    return article != null &&
+        !article.isLoading &&
+        videoId != null &&
+        youtubeVideoId(Uri.tryParse(article.value?.canonicalUrl ?? '')) !=
+            videoId;
   }
 
   Widget _pictureInPictureBar(BuildContext context, VideoSession session) {
@@ -258,7 +288,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                   ),
                   IconButton(
                     tooltip: 'Close video',
-                    onPressed: _close,
+                    onPressed: _dismissPlayer,
                     icon: const Icon(Icons.close_rounded),
                   ),
                   const SizedBox(width: AppSpacing.xs),
@@ -466,7 +496,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
                 ),
                 IconButton(
                   tooltip: 'Close video',
-                  onPressed: _close,
+                  onPressed: _dismissPlayer,
                   icon: const Icon(Icons.close_rounded),
                 ),
               ],
@@ -565,7 +595,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         ),
         IconButton(
           tooltip: 'Close video',
-          onPressed: _close,
+          onPressed: _dismissPlayer,
           icon: const Icon(Icons.close_rounded),
         ),
         const SizedBox(width: AppSpacing.xs),
@@ -734,6 +764,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
     _pictureInPictureRequestTimeout = null;
+    _clearPlaybackReply();
     if (mounted) {
       setState(() {
         _progress = 0;
@@ -742,7 +773,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         _videoPlaying = false;
         _videoBuffering = false;
         _requestingPictureInPicture = false;
-        _awaitingPictureInPictureResume = false;
         _error = null;
       });
     }
@@ -777,7 +807,26 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       await _serializeNavigation(() async {
         if (_isCurrentSession(session, generation) &&
             _activeRequestUri == requestUri) {
-          await controller.loadRequest(requestUri);
+          if (selectedSource == VideoPlaybackSource.directMedia) {
+            // WebKit can render a raw media URL in a native document without
+            // a scriptable video element. Use a regular HTML5 player instead.
+            final source = const HtmlEscape(
+              HtmlEscapeMode.attribute,
+            ).convert(requestUri.toString());
+            await controller.loadHtmlString('''
+<!doctype html>
+<html lang="en">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { margin: 0; background: #06080d; }
+  video { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+<video aria-label="Video" controls playsinline src="$source"></video>
+</html>
+''', baseUrl: requestUri.toString());
+          } else {
+            await controller.loadRequest(requestUri);
+          }
         }
       });
     } on Object {
@@ -837,6 +886,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     _loadTimeout?.cancel();
+    _clearPlaybackReply();
     _clearPlayerMessage();
     _pictureInPictureRequestTimeout?.cancel();
     _pictureInPictureRequestTimeout = null;
@@ -850,7 +900,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     });
   }
 
-  Future<void> _close() async {
+  Future<void> _dismissPlayer() => _close(cancelPendingPlayback: true);
+
+  Future<void> _close({bool cancelPendingPlayback = false}) async {
     if (!mounted) return;
     final session = ref.read(videoSessionProvider);
     if (session == null) return;
@@ -873,7 +925,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     _pausedForBackground = false;
     _requestingPictureInPicture = false;
     _pictureInPictureBackgrounded = false;
-    _awaitingPictureInPictureResume = false;
+    _clearPlaybackReply();
     _activeVideoObserverToken = ++_videoObserverToken;
     _lastVideoStateRevision = 0;
     _source = VideoPlaybackSource.privacyWrapper;
@@ -902,9 +954,15 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
               // Removing the platform view also stops playback.
             }
           });
+    // Cleanup stays ordered on the old controller. A new controller must not
+    // wait for a platform call on a WebView that has already been removed.
+    _navigationTail = Future<void>.value();
     await Future.wait([
       audioHandler
-          .endWebVideoPlayback(session.intentRevision)
+          .endWebVideoPlayback(
+            session.intentRevision,
+            cancelPendingPlayback: cancelPendingPlayback,
+          )
           .catchError((Object _) {}),
       stopPlayback,
     ]);
@@ -927,7 +985,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     if (call.method == 'pictureInPictureClosed') {
       // Android emits this only from onStop after the system PiP window has
       // been dismissed, so the user explicitly ended background playback.
-      if (call.arguments == _sessionGeneration) await _close();
+      if (call.arguments == _sessionGeneration) await _dismissPlayer();
       return null;
     }
     if (call.method != 'pictureInPictureChanged') return null;
@@ -987,40 +1045,29 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           ),
         );
       case 'pip-resume-result':
-        _handleObservedVideoPlayback(event, pictureInPictureResumeResult: true);
+        if (_awaitingPictureInPictureResume &&
+            event.controlRevision == _videoControlRevision) {
+          _clearPlaybackReply();
+          _applyVideoPlaybackEvent(event);
+        }
       case 'video-state':
-        _handleObservedVideoPlayback(
-          event,
-          pictureInPictureResumeResult: false,
-        );
+        if (_playbackReplyTimeout != null) _lastObservedPlayback = event;
+        if (!_awaitingPictureInPictureResume) {
+          if (!event.buffering) _clearPlaybackReply();
+          _applyVideoPlaybackEvent(event);
+        }
       case 'video-error':
-        _awaitingPictureInPictureResume = false;
         _fallbackOrShowError();
     }
   }
 
-  void _handleObservedVideoPlayback(
-    _VideoEvent event, {
-    required bool pictureInPictureResumeResult,
-  }) {
-    if (!shouldApplyVideoPlaybackState(
-      awaitingPictureInPictureResume: _awaitingPictureInPictureResume,
-      isPictureInPictureResumeResult: pictureInPictureResumeResult,
-    )) {
-      return;
-    }
-    if (pictureInPictureResumeResult) {
-      _awaitingPictureInPictureResume = false;
-    }
-    _applyVideoPlaybackEvent(event);
-  }
-
   void _applyVideoPlaybackEvent(_VideoEvent event) {
+    if (_lifecycleState == AppLifecycleState.detached) return;
     final session = ref.read(videoSessionProvider);
     if (session == null) return;
     if (event.playing &&
         shouldPauseVideoForLifecycle(_lifecycleState, session.presentation)) {
-      if (!_pausedForBackground) unawaited(_pauseForBackground());
+      unawaited(_pauseForBackground());
       return;
     }
     final audioHandler = ref.read(audioHandlerProvider);
@@ -1050,7 +1097,6 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         session.presentation != VideoPresentation.pictureInPicture) {
       return;
     }
-    final generation = _sessionGeneration;
     _pictureInPictureRequestTimeout?.cancel();
     _pictureInPictureRequestTimeout = null;
     final wasBackgrounded =
@@ -1064,28 +1110,22 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       backgroundedAtExit: wasBackgrounded,
     )) {
       case VideoPictureInPictureExitAction.close:
-        await _close();
+        await _dismissPlayer();
       case VideoPictureInPictureExitAction.minimize:
-        _awaitingPictureInPictureResume = false;
+        _clearPlaybackReply();
         ref.read(videoSessionProvider.notifier).leavePictureInPicture();
       case VideoPictureInPictureExitAction.resumeInMiniPlayer:
         ref.read(videoSessionProvider.notifier).leavePictureInPicture();
         _pausedForBackground = false;
-        _awaitingPictureInPictureResume = true;
-        if (_ready) {
-          _updateVideoPlayback(playing: true, buffering: true);
-        }
-        try {
-          await _sendVideoCommand('resume-after-picture-in-picture');
-        } on Object {
-          if (_isCurrentSession(session, generation)) {
-            _awaitingPictureInPictureResume = false;
-            if (_ready) {
-              _updateVideoPlayback(playing: false, buffering: false);
-            }
-          }
-        }
+        await _requestVideoPlay(session, resumeFromPictureInPicture: true);
     }
+  }
+
+  void _clearPlaybackReply() {
+    _playbackReplyTimeout?.cancel();
+    _playbackReplyTimeout = null;
+    _awaitingPictureInPictureResume = false;
+    _lastObservedPlayback = null;
   }
 
   _VideoEvent? _decodeVideoEvent(String message) {
@@ -1106,6 +1146,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       if (sourceUri == null) return null;
       final playing = value['playing'];
       final buffering = value['buffering'];
+      final controlRevision = value['controlRevision'];
       if ((state == 'video-state' || state == 'pip-resume-result') &&
           (playing is! bool || buffering is! bool)) {
         return null;
@@ -1118,6 +1159,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
         playing: playing == true,
         buffering: buffering == true,
         backgrounded: value['backgrounded'] == true,
+        controlRevision: controlRevision is int ? controlRevision : null,
       );
     } on FormatException {
       return null;
@@ -1150,7 +1192,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     final audioHandler = ref.read(audioHandlerProvider);
     _videoControlRevision++;
     _pausedForBackground = true;
-    _awaitingPictureInPictureResume = false;
+    _clearPlaybackReply();
     if (mounted &&
         generation == _sessionGeneration &&
         _ready &&
@@ -1162,9 +1204,9 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     } on Object {
       // The platform also suspends a detached WebView.
     }
+    if (!_isCurrentSession(session, generation)) return;
     final currentSession = ref.read(videoSessionProvider);
-    if (!_isCurrentSession(session, generation) ||
-        currentSession == null ||
+    if (currentSession == null ||
         !shouldPauseVideoForLifecycle(
           _lifecycleState,
           currentSession.presentation,
@@ -1188,7 +1230,7 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     final session = ref.read(videoSessionProvider)!;
     final generation = _sessionGeneration;
     _pictureInPictureBackgrounded = false;
-    _awaitingPictureInPictureResume = false;
+    _clearPlaybackReply();
     _clearPlayerMessage();
     setState(() => _requestingPictureInPicture = true);
     var awaitingWebResult = false;
@@ -1323,15 +1365,22 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
       return;
     }
     if (!_ready) return;
+    if (!_videoPlaying) {
+      await _requestVideoPlay(session);
+      return;
+    }
     final generation = _sessionGeneration;
-    final wasPlaying = _videoPlaying;
-    final wasBuffering = _videoBuffering;
-    final play = !wasPlaying;
+    final wasPlaying =
+        _lastObservedPlayback?.playing ??
+        (_playbackReplyTimeout == null && _videoPlaying);
+    final wasBuffering =
+        _lastObservedPlayback?.buffering ??
+        (_playbackReplyTimeout == null && _videoBuffering);
     final controlRevision = ++_videoControlRevision;
-    if (!play) _awaitingPictureInPictureResume = false;
-    _updateVideoPlayback(playing: play, buffering: play);
+    _clearPlaybackReply();
+    _updateVideoPlayback(playing: false, buffering: false);
     try {
-      await _sendVideoCommand(play ? 'play' : 'pause');
+      await _sendVideoCommand('pause', controlRevision: controlRevision);
     } on Object catch (error) {
       if (_isCurrentSession(session, generation) &&
           controlRevision == _videoControlRevision) {
@@ -1342,7 +1391,45 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
     }
   }
 
-  Future<void> _sendVideoCommand(String command) async {
+  Future<void> _requestVideoPlay(
+    VideoSession session, {
+    bool resumeFromPictureInPicture = false,
+  }) async {
+    final generation = _sessionGeneration;
+    final controlRevision = ++_videoControlRevision;
+    _clearPlaybackReply();
+    _awaitingPictureInPictureResume = resumeFromPictureInPicture;
+    void finishWithoutReply() {
+      if (!_isCurrentSession(session, generation) ||
+          controlRevision != _videoControlRevision ||
+          _playbackReplyTimeout == null) {
+        return;
+      }
+      final observed = _lastObservedPlayback;
+      _clearPlaybackReply();
+      if (observed != null) {
+        _applyVideoPlaybackEvent(observed);
+      } else if (_ready) {
+        _updateVideoPlayback(playing: false, buffering: false);
+      }
+    }
+
+    _playbackReplyTimeout = Timer(
+      AppConstants.videoSourceLoadTimeout,
+      finishWithoutReply,
+    );
+    if (_ready) _updateVideoPlayback(playing: true, buffering: true);
+    try {
+      await _sendVideoCommand(
+        resumeFromPictureInPicture ? 'resume-after-picture-in-picture' : 'play',
+        controlRevision: controlRevision,
+      );
+    } on Object {
+      finishWithoutReply();
+    }
+  }
+
+  Future<void> _sendVideoCommand(String command, {int? controlRevision}) async {
     final controller = _controller;
     final generation = _sessionGeneration;
     final controllerToken = _controllerToken;
@@ -1354,9 +1441,18 @@ class _VideoPlayerHostState extends ConsumerState<VideoPlayerHost>
           !_isCurrentController(controller, controllerToken)) {
         throw StateError('The video player changed before the command ran.');
       }
-      await controller.runJavaScript(
-        'window.postMessage({__trickleVideoCommand: ${_javascriptString(command)}}, "*");',
-      );
+      if (controlRevision != null &&
+          ((command != 'pause' && _playbackReplyTimeout == null) ||
+              controlRevision != _videoControlRevision)) {
+        return;
+      }
+      final message = jsonEncode({
+        '__trickleVideoCommand': command,
+        'controlRevision': ?controlRevision,
+      });
+      await controller
+          .runJavaScript('window.postMessage($message, "*");')
+          .timeout(AppConstants.shortOperationTimeout);
     });
   }
 
@@ -1464,12 +1560,12 @@ String _videoPresentationObserver(int observerToken) =>
       buffering: playing && buffering,
     };
   };
-  const reportState = (buffering = false) => {
+  const reportState = (buffering = false, force = false) => {
     const video = selectVideo();
     if (!video) return;
     const details = playbackDetails(video, buffering);
     const signature = details.playing + ':' + details.buffering;
-    if (signature === lastPlaybackSignature) return;
+    if (!force && signature === lastPlaybackSignature) return;
     lastPlaybackSignature = signature;
     send('video-state', details);
   };
@@ -1520,53 +1616,25 @@ String _videoPresentationObserver(int observerToken) =>
     });
     reportState();
   };
-  const command = (video, action) => {
-    if (action === 'play') {
+  const command = (video, action, controlRevision) => {
+    if (action === 'play' || action === 'resume-after-picture-in-picture') {
+      const report = action === 'play'
+        ? () => reportState(false, true)
+        : () => send('pip-resume-result', {
+            ...playbackDetails(video), controlRevision,
+          });
       try {
         const result = video.play();
         if (result && typeof result.then === 'function') {
-          result.then(
-            () => reportState(),
-            () => send('video-state', {
-              playing: false,
-              buffering: false,
-            }),
-          );
+          result.then(report, report);
         } else {
-          setTimeout(() => reportState(), 0);
+          setTimeout(report, 0);
         }
       } catch (_) {
-        send('video-state', {
-          playing: false,
-          buffering: false,
-        });
+        report();
       }
+      return;
     }
-    if (action === 'resume-after-picture-in-picture') {
-      try {
-        const result = video.play();
-        if (result && typeof result.then === 'function') {
-          result.then(
-            () => send('pip-resume-result', playbackDetails(video)),
-            () => send('pip-resume-result', {
-              playing: false,
-              buffering: false,
-            }),
-          );
-        } else {
-          setTimeout(
-            () => send('pip-resume-result', playbackDetails(video)),
-            0,
-          );
-        }
-      } catch (_) {
-        send('pip-resume-result', {
-          playing: false,
-          buffering: false,
-        });
-      }
-    }
-    if (action === 'pause') video.pause();
     if (action === 'picture-in-picture') {
       let webKitSupport = null;
       if (typeof video.webkitSupportsPresentationMode === 'function') {
@@ -1605,7 +1673,7 @@ String _videoPresentationObserver(int observerToken) =>
       send('pip-request-failed');
     }
   };
-  const dispatchCommand = (action) => {
+  const dispatchCommand = (action, controlRevision) => {
     if (action === 'pause') {
       document.querySelectorAll('video').forEach((video) => video.pause());
       setTimeout(() => reportState(), 0);
@@ -1617,7 +1685,10 @@ String _videoPresentationObserver(int observerToken) =>
         send('pip-resume-result', {
           playing: false,
           buffering: false,
+          controlRevision,
         });
+      } else if (action === 'play') {
+        send('video-state', {playing: false, buffering: false});
       } else if (action === 'picture-in-picture-status') {
         send('pip-dismissed');
       } else if (action === 'picture-in-picture') {
@@ -1632,8 +1703,8 @@ String _videoPresentationObserver(int observerToken) =>
       ));
       return;
     }
-    command(video, action);
-    if (action === 'resume-after-picture-in-picture') return;
+    command(video, action, controlRevision);
+    if (action === 'play' || action === 'resume-after-picture-in-picture') return;
     setTimeout(() => reportState(), 0);
     setTimeout(() => reportState(), 250);
   };
@@ -1643,7 +1714,7 @@ String _videoPresentationObserver(int observerToken) =>
         action === 'picture-in-picture' ||
         action === 'resume-after-picture-in-picture' ||
         action === 'picture-in-picture-status') {
-      dispatchCommand(action);
+      dispatchCommand(action, event.data.controlRevision);
     }
   };
   window.addEventListener('message', receiveCommand);
@@ -1815,9 +1886,6 @@ double videoMiniPlayerHeight(BuildContext context) {
   return 104 + (scale - 1) * 30;
 }
 
-String _javascriptString(String value) =>
-    "'${value.replaceAll(r'\\', r'\\\\').replaceAll("'", r"\'")}'";
-
 enum _VideoPhase { loading, buffering, playing, paused, error }
 
 final class _VideoEvent {
@@ -1829,6 +1897,7 @@ final class _VideoEvent {
     required this.playing,
     required this.buffering,
     required this.backgrounded,
+    required this.controlRevision,
   });
 
   final String state;
@@ -1838,6 +1907,7 @@ final class _VideoEvent {
   final bool playing;
   final bool buffering;
   final bool backgrounded;
+  final int? controlRevision;
 }
 
 extension on _VideoPhase {

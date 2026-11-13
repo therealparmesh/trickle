@@ -194,34 +194,19 @@ final class OpmlService {
     FeedKind? kind,
   }) async {
     final url = subscription.feedUrl;
-    final parsed = Uri.parse(url.trim());
-    Feed feed;
-    if (!parsed.hasQuery) {
-      final normalized = feedUrlIdentity(url);
-      final existing = await _database.feedByUrl(normalized);
-      if (existing != null && kind != null && existing.kind != kind.index) {
-        throw const FeedParseException(
-          'This address is already added with a different feed type.',
-        );
-      }
-      if (existing?.subscribed == true) {
-        feed = existing!;
-      } else if (existing != null) {
-        feed = await _feeds.resubscribe(existing);
-      } else {
-        feed = await _feeds.subscribe(
-          url,
-          expectedKind: kind,
-          totalTimeout: AppConstants.opmlImportFeedTimeout,
-        );
-      }
-    } else {
-      feed = await _feeds.subscribe(
-        url,
-        expectedKind: kind,
-        totalTimeout: AppConstants.opmlImportFeedTimeout,
+    final existing = Uri.parse(url.trim()).hasQuery
+        ? null
+        : await _database.feedByUrl(feedUrlIdentity(url));
+    if (existing != null && kind != null && existing.kind != kind.index) {
+      throw const FeedParseException(
+        'This address is already added with a different feed type.',
       );
     }
+    final feed = switch (existing) {
+      null => await _feeds.subscribe(url, expectedKind: kind),
+      Feed(subscribed: true) => existing,
+      _ => await _feeds.resubscribe(existing),
+    };
     final category = normalizeFeedCategory(subscription.category);
     if (category != null && feed.kind == FeedKind.reader.index) {
       await _feeds.updateFeedCategories([feed.id], category);

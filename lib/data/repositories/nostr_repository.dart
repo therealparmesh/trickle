@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/errors.dart';
@@ -29,12 +30,25 @@ final class NostrRepository {
 
   final AppDatabase _database;
   final SafeNetworkClient _network;
-  final Map<String, Future<bool>> _refreshes = {};
+  final Map<(String, DateTime), Future<bool>> _refreshes = {};
 
   Future<Episode> cacheAudioAttachment({
-    required Article article,
+    required String articleId,
     required ArticleAttachment attachment,
-  }) async {
+  }) => _database.transaction(() async {
+    final article = await _database.articleById(articleId);
+    final attachments = _database.articleAttachments;
+    final currentAttachment =
+        await (_database.selectOnly(attachments)
+              ..addColumns([attachments.id])
+              ..where(
+                attachments.id.equals(attachment.id) &
+                    attachments.articleId.equals(articleId),
+              ))
+            .getSingleOrNull();
+    if (article == null || currentAttachment == null) {
+      throw const FeedParseException('This audio post is no longer available.');
+    }
     final existing = await _database.episodeById(attachment.id);
     final now = DateTime.now().toUtc();
     await _database
@@ -59,24 +73,25 @@ final class NostrRepository {
           ),
         );
     return (await _database.episodeById(attachment.id))!;
-  }
+  });
 
   Future<Feed> subscribe(String rawAddress, {String? category}) async {
     final address = parseNostrProfile(rawAddress);
-    final existingProfile =
-        await (_database.select(_database.nostrProfiles)
-              ..where((row) => row.publicKey.equals(address.publicKey)))
-            .getSingleOrNull();
-    final existing = existingProfile == null
-        ? null
-        : await _database.feedById(existingProfile.feedId);
-    final feedId =
-        existing?.id ?? stableContentId('nostr-profile', address.publicKey);
     final relays = _preferredRelays(
       address.relays.map((relay) => relay.toString()),
     );
     final now = DateTime.now().toUtc();
-    await _database.transaction(() async {
+    final feed = await _database.transaction(() async {
+      final existingProfile =
+          await (_database.select(_database.nostrProfiles)
+                ..where((row) => row.publicKey.equals(address.publicKey)))
+              .getSingleOrNull();
+      final existing = existingProfile == null
+          ? null
+          : await _database.feedById(existingProfile.feedId);
+      // The public key identifies the profile, but a fully deleted feed must
+      // not reuse the row ID of a refresh that can still be in flight.
+      final feedId = existing?.id ?? const Uuid().v4();
       await _database
           .into(_database.feeds)
           .insertOnConflictUpdate(
@@ -118,36 +133,39 @@ final class NostrRepository {
             ),
           );
       await _replaceRelays(feedId, relays);
+      return (await _database.feedById(feedId))!;
     });
-    final feed = (await _database.feedById(feedId))!;
     await refresh(feed);
-    return (await _database.feedById(feedId))!;
+    final current = await _database.feedById(feed.id);
+    if (current == null || !current.subscribed) {
+      throw const FeedParseException('This profile was removed.');
+    }
+    return current;
   }
 
   Future<bool> refresh(
     Feed requestedFeed, {
     Duration totalTimeout = AppConstants.feedRefreshTimeout,
   }) async {
-    final active = _refreshes[requestedFeed.id];
-    if (active != null) return active;
-    final refresh = _refresh(requestedFeed, totalTimeout);
-    _refreshes[requestedFeed.id] = refresh;
-    try {
-      return await refresh;
-    } finally {
-      if (identical(_refreshes[requestedFeed.id], refresh)) {
-        final _ = _refreshes.remove(requestedFeed.id);
-      }
-    }
-  }
-
-  Future<bool> _refresh(Feed requestedFeed, Duration totalTimeout) async {
     final feed = await _database.feedById(requestedFeed.id);
     if (feed == null ||
         feed.protocol != FeedProtocol.nostr.index ||
         !feed.subscribed) {
       return false;
     }
+    final key = (feed.id, feed.updatedAt);
+    final active = _refreshes[key];
+    if (active != null) return active;
+    final refresh = _refresh(feed, totalTimeout);
+    _refreshes[key] = refresh;
+    try {
+      return await refresh;
+    } finally {
+      final _ = _refreshes.remove(key);
+    }
+  }
+
+  Future<bool> _refresh(Feed feed, Duration totalTimeout) async {
     final profile = await (_database.select(
       _database.nostrProfiles,
     )..where((row) => row.feedId.equals(feed.id))).getSingleOrNull();
@@ -169,17 +187,18 @@ final class NostrRepository {
       await _persist(feed, profile.publicKey, relays, data);
       return true;
     } on Object catch (error) {
-      final current = await _database.feedById(feed.id);
-      if (current != null && current.updatedAt == feed.updatedAt) {
-        await (_database.update(
-          _database.feeds,
-        )..where((row) => row.id.equals(feed.id))).write(
-          FeedsCompanion(
-            lastRefresh: Value(DateTime.now().toUtc()),
-            refreshError: Value(friendlyError(error)),
-          ),
-        );
-      }
+      await (_database.update(_database.feeds)..where(
+            (row) =>
+                row.id.equals(feed.id) &
+                row.subscribed.equals(true) &
+                row.updatedAt.equals(feed.updatedAt),
+          ))
+          .write(
+            FeedsCompanion(
+              lastRefresh: Value(DateTime.now().toUtc()),
+              refreshError: Value(friendlyError(error)),
+            ),
+          );
       return false;
     }
   }
@@ -237,7 +256,7 @@ final class NostrRepository {
     );
     final remaining = timeout - stopwatch.elapsed;
     if (remaining <= Duration.zero) {
-      await connection.close();
+      _closeRelay(connection);
       throw const NetworkException('The relay request timed out.');
     }
     final subscription = 'trickle-${DateTime.now().microsecondsSinceEpoch}';
@@ -314,9 +333,14 @@ final class NostrRepository {
       return events;
     } finally {
       timer.cancel();
-      await stream.cancel();
-      await connection.close();
+      unawaited(stream.cancel().catchError((Object _) {}));
+      _closeRelay(connection);
     }
+  }
+
+  void _closeRelay(NetworkWebSocket connection) {
+    // A stalled closing handshake must not extend the refresh deadline.
+    unawaited(connection.close().catchError((Object _) {}));
   }
 
   Future<void> _persist(
@@ -386,9 +410,20 @@ final class NostrRepository {
           }
         }
       }
+      final deletions = await _rememberDeletions(
+        feed.id,
+        data,
+        existing.values,
+      );
       final deletedArticleIds = {
         for (final article in existing.values)
-          if (_deletionApplies(article, data)) article.id,
+          if (isNostrPostDeleted(
+            deletions,
+            eventId: article.sourceEventId,
+            address: article.sourceAddress,
+            publishedAt: article.publishedAt,
+          ))
+            article.id,
       };
       if (deletedArticleIds.isNotEmpty) {
         await _database.customStatement(
@@ -410,7 +445,6 @@ final class NostrRepository {
             _database.articles,
           )..where((row) => row.id.isIn(chunk))).go();
         }
-        existing.removeWhere((id, _) => deletedArticleIds.contains(id));
       }
       final searchItems = <SearchIndexEntry>[
         SearchIndexEntry(
@@ -425,6 +459,23 @@ final class NostrRepository {
         final identity = post.address ?? post.eventId;
         final id = stableContentId(feed.id, identity);
         final stored = existing[id];
+        if (isNostrPostDeleted(
+          deletions,
+          eventId: post.eventId,
+          address: post.address,
+          publishedAt: post.publishedAt,
+        )) {
+          continue;
+        }
+        final storedAt = stored?.publishedAt;
+        final storedEventId = stored?.sourceEventId;
+        if (storedAt != null &&
+            (storedAt.isAfter(post.publishedAt) ||
+                (storedAt.isAtSameMomentAs(post.publishedAt) &&
+                    storedEventId != null &&
+                    storedEventId.compareTo(post.eventId) < 0))) {
+          continue;
+        }
         final primaryImage = post.attachments
             .where(
               (attachment) => attachment.mimeType?.startsWith('image/') == true,
@@ -491,23 +542,85 @@ final class NostrRepository {
           ),
         );
       }
-      await _database.customStatement(
-        "DELETE FROM episodes WHERE feed_id = ? AND guid LIKE 'nostr-media:%' "
-        'AND NOT EXISTS (SELECT 1 FROM article_attachments '
-        'WHERE article_attachments.id = episodes.id) AND starred = 0 '
-        'AND NOT EXISTS (SELECT 1 FROM playback_progresses '
-        'WHERE playback_progresses.episode_id = episodes.id '
-        'AND playback_progresses.position_ms > 0) '
-        'AND NOT EXISTS (SELECT 1 FROM queue_entries '
-        'WHERE queue_entries.episode_id = episodes.id) '
-        'AND NOT EXISTS (SELECT 1 FROM media_downloads '
-        'WHERE media_downloads.episode_id = episodes.id) '
-        'AND NOT EXISTS (SELECT 1 FROM bookmarks '
-        'WHERE bookmarks.episode_id = episodes.id)',
-        [feed.id],
-      );
+      final attachments = _database.articleAttachments;
+      await (_database.delete(_database.episodes)..where(
+            (episode) =>
+                episode.feedId.equals(feed.id) &
+                episode.guid.like('nostr-media:%') &
+                existsQuery(
+                  _database.selectOnly(attachments)
+                    ..addColumns([attachments.id])
+                    ..where(attachments.id.equalsExp(episode.id)),
+                ).not() &
+                _database.episodeHasLibraryState(episode).not(),
+          ))
+          .go();
       await _database.indexSearchItems(searchItems);
     });
+  }
+
+  Future<Map<String, DateTime>> _rememberDeletions(
+    String feedId,
+    NostrRefreshData data,
+    Iterable<Article> existing,
+  ) async {
+    final table = _database.nostrDeletions;
+    final incoming = {
+      for (final entry in data.deletedEvents.entries)
+        'e:${entry.key}': entry.value,
+      for (final entry in data.deletedAddresses.entries)
+        'a:${entry.key}': entry.value,
+    };
+    final targets = {
+      ...incoming.keys,
+      for (final post in data.posts) ...[
+        'e:${post.eventId}',
+        if (post.address case final address?) 'a:$address',
+      ],
+      for (final article in existing) ...[
+        if (article.sourceEventId case final event?) 'e:$event',
+        if (article.sourceAddress case final address?) 'a:$address',
+      ],
+    }.toList();
+    final known = <String, DateTime>{};
+    for (
+      var start = 0;
+      start < targets.length;
+      start += AppDatabase.safeVariableBatchSize
+    ) {
+      final end = (start + AppDatabase.safeVariableBatchSize).clamp(
+        0,
+        targets.length,
+      );
+      final rows =
+          await (_database.select(table)..where(
+                (row) =>
+                    row.feedId.equals(feedId) &
+                    row.target.isIn(targets.sublist(start, end)),
+              ))
+              .get();
+      for (final row in rows) {
+        known[row.target] = row.deletedAt;
+      }
+    }
+    final updates = <NostrDeletionsCompanion>[
+      for (final entry in incoming.entries)
+        if (known[entry.key]?.isBefore(entry.value) ?? true)
+          NostrDeletionsCompanion.insert(
+            feedId: feedId,
+            target: entry.key,
+            deletedAt: entry.value,
+          ),
+    ];
+    if (updates.isNotEmpty) {
+      await _database.batch(
+        (batch) => batch.insertAllOnConflictUpdate(table, updates),
+      );
+      for (final row in updates) {
+        known[row.target.value] = row.deletedAt.value;
+      }
+    }
+    return known;
   }
 
   Future<void> _replaceRelays(String feedId, Iterable<Uri> relays) async {
@@ -536,25 +649,6 @@ final class NostrRepository {
   String _abbreviatedKey(String publicKey) {
     final npub = encodeNpub(publicKey);
     return '${npub.substring(0, 12)}…${npub.substring(npub.length - 6)}';
-  }
-
-  bool _deletionApplies(Article article, NostrRefreshData data) {
-    final eventDeletion = article.sourceEventId == null
-        ? null
-        : data.deletedEvents[article.sourceEventId];
-    final addressDeletion = article.sourceAddress == null
-        ? null
-        : data.deletedAddresses[article.sourceAddress];
-    final cutoff = switch ((eventDeletion, addressDeletion)) {
-      (final event?, final address?) =>
-        event.isAfter(address) ? event : address,
-      (final event?, null) => event,
-      (null, final address?) => address,
-      _ => null,
-    };
-    final publishedAt = article.publishedAt;
-    return cutoff != null &&
-        (publishedAt == null || !publishedAt.isAfter(cutoff));
   }
 
   DateTime _nextRevision(DateTime now, DateTime previous) {

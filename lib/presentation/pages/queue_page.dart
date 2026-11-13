@@ -9,15 +9,33 @@ import '../../app/app_providers.dart';
 import '../../core/constants.dart';
 import '../../core/errors.dart';
 import '../../data/database/app_database.dart';
+import '../../features/player/trickle_audio_handler.dart';
 import '../playback_presentation.dart';
 import '../widgets/common.dart';
 import '../widgets/design_system.dart';
 
-final class QueuePage extends ConsumerWidget {
+final class QueuePage extends ConsumerStatefulWidget {
   const QueuePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<QueuePage> createState() => _QueuePageState();
+}
+
+final class _QueuePageState extends ConsumerState<QueuePage> {
+  final _listKey = GlobalKey<ReorderableListState>();
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(queueProvider, (previous, next) {
+      if (TrickleAudioHandler.sameQueueOrder(previous?.value, next.value)) {
+        return;
+      }
+      // A drop also publishes a new queue, while Flutter is still finishing
+      // that gesture. Cancel before the next build, after the callback returns.
+      scheduleMicrotask(() {
+        if (mounted) _listKey.currentState?.cancelReorder();
+      });
+    });
     final queueState = ref.watch(queueProvider);
     final queue = queueState.value ?? const <MediaItem>[];
     final queuedEpisodes =
@@ -61,20 +79,20 @@ final class QueuePage extends ConsumerWidget {
                   message:
                       'Choose Play next or Add to Up next from an episode menu.',
                 )
-              : ReorderableListView.builder(
+              : ReorderableList(
+                  key: _listKey,
                   padding: const EdgeInsets.only(
                     top: AppSpacing.sm,
                     bottom: AppSpacing.xl,
                   ),
                   itemCount: queue.length,
                   onReorderItem: (oldIndex, newIndex) {
-                    final items = [...queue];
-                    final item = items.removeAt(oldIndex);
-                    items.insert(newIndex, item);
                     unawaited(
                       _run(
                         context,
-                        () => ref.read(audioHandlerProvider).updateQueue(items),
+                        () => ref
+                            .read(audioHandlerProvider)
+                            .reorderQueue(queue, oldIndex, newIndex),
                       ),
                     );
                   },
@@ -94,14 +112,19 @@ final class QueuePage extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      confirmDismiss: (_) =>
-                          _confirmRemove(context, item.title),
-                      onDismissed: (_) => _run(
-                        context,
-                        () => ref
-                            .read(audioHandlerProvider)
-                            .removeQueueItem(item),
-                      ),
+                      confirmDismiss: (_) async {
+                        final audio = ref.read(audioHandlerProvider);
+                        if (await _confirmRemove(context, item.title) &&
+                            context.mounted) {
+                          await _run(
+                            context,
+                            () => audio.removeQueueItem(item),
+                          );
+                        }
+                        // The queue stream removes the row on success. If the
+                        // action was rejected, leave it available to retry.
+                        return false;
+                      },
                       child: Consumer(
                         builder: (context, ref, _) {
                           final playback = ref.watch(
@@ -134,7 +157,7 @@ final class QueuePage extends ConsumerWidget {
                                         context,
                                         () => ref
                                             .read(audioHandlerProvider)
-                                            .skipToQueueItem(index),
+                                            .playQueuedEpisode(item.id),
                                       ),
                                 leading: episode == null
                                     ? Artwork(

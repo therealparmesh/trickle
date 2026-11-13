@@ -2,7 +2,15 @@
 
 ## What's new
 
-Requires iOS 17 or later. Check that episode and feed timestamps show minutes or hours ago for the first 24 hours, then the date. In a feed with long bylines, verify the date stays readable at both standard and accessibility text sizes.
+Requires iOS 17 or later. Refresh a library with both slow and healthy feeds, restore an older backup over newer playback progress, and clear Up next after background refresh. Try downloading the same episode while automatic downloads are enabled and removing a private subscription with missing credentials.
+
+Switch episodes while audio is loading, try Pause and Resume after a system interruption, and check that retrying a download does not add an episode back to Up next. After restoring newer playback progress, confirm the player stays paused at the restored position.
+
+Play a catalog preview before subscribing, refresh a private feed whose media links change, and reorder Up next while new episodes arrive. Check that playback progress, saved items, and newly queued episodes are preserved.
+
+Try Play on a slow video and pause immediately after closing Picture in Picture. The mini-player should recover from a missing reply and respect your last action.
+
+Unsubscribe during a slow refresh, then subscribe again; the old response must not overwrite the new subscription. Restore a backup made before unsubscribing or finishing an episode; untouched items and completed queue entries should not return.
 
 ## What to test
 
@@ -37,8 +45,10 @@ Please test the combined podcast and feed flow:
 - Add episodes to Up next, reorder the queue, and verify it survives relaunch
 - Pause an unfinished episode and relaunch; the mini player must restore it paused at the saved position without fetching audio. Resume it, then clear Up next; it should remain available in the mini player. Mark it unplayed and confirm its progress resets. Remove it from the library and confirm it no longer restores
 - Let an episode finish while pressing Pause or selecting another episode; the completed item must not restart playback or replace the newer selection
+- With Repeat episode enabled, let a downloaded episode loop. Then set the sleep timer to End of episode and confirm playback stops at the next end, including with an outro skip
+- Update over a build with existing downloads, then go offline and play one without downloading it again
 - Start one video, immediately choose another, then start a podcast; only the latest selection may remain visible or audible
-- Download an episode, use it offline, and test automatic cleanup after playback
+- Download an episode, use it offline, and test automatic cleanup after playback. Change the retention setting during cleanup and turn off Keep for a played download that is due for removal
 - Open Downloads and verify its item count and storage total, Remove played downloads keeps items marked Keep, and Remove all downloads cancels active work before clearing the list
 - With several subscriptions due, confirm background refresh does not postpone unprocessed feeds
 - With automatic queueing enabled, let a background refresh add episodes while Up next is open or playing; each episode should appear once after the existing queue
@@ -47,7 +57,7 @@ Please test the combined podcast and feed flow:
 - Check linked articles with ordinary HTML5 markup, including omitted optional closing tags, and podcast show notes with nested lists, tables, links, and code blocks. Long articles should scroll smoothly. Disable Remote images and confirm that no article images load. Retry an unavailable page and confirm that saved or feed text remains visible
 - Share a feed or website URL to trickle from Safari or another app, then open trickle if needed; verify Add feed appears with an editable address and canceling makes no subscription change
 - Add a Nostr profile by `npub` and `nprofile`; verify only signed root posts appear, replies and reposts are absent, content warnings require a reveal, Markdown is readable, images keep their aspect ratio, native audio saves progress, and direct video can be minimized
-- Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content
+- Refresh a Nostr profile while offline or while its relays are unavailable; existing verified posts must remain, the source must show a retryable failure, and a late older refresh must not replace newer content. Deleted posts must not return from an older relay response or backup. If a post removes the attachment currently playing, the video player must close
 - Paste a public YouTube handle, channel, playlist, video-with-playlist, and Atom feed URL; verify each resolves correctly and does not appear in Podcasts
 - Open YouTube entries from both a YouTube feed and a post attachment; both should use the same initial player path and keep any official-source fallback inside that player
 - Video items should change from Unopened to Opened when opened, without claiming playback completed. Mark opened and Mark unopened should update the item and Feeds count consistently
